@@ -1,0 +1,67 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: reedi-postgres
+    environment:
+      POSTGRES_DB: reedi
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/prisma/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    networks:
+      - reedi-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reedi-backend
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/reedi
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      PORT: 8088
+    ports:
+      - "8089:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - reedi-network
+    restart: unless-stopped
+
+  # Frontend Nginx Server (serves static files)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reedi-frontend
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:8089/api
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-your-nextauth-secret-change-in-production}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - reedi-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  reedi-network:
+    driver: bridge 

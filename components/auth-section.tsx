@@ -1,0 +1,306 @@
+'use client'
+
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from 'lucide-react'
+
+const loginSchema = z.object({
+  email: z.string().email('Please enter a valid email'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+
+const signupSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Please enter a valid email'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+})
+
+type LoginForm = z.infer<typeof loginSchema>
+type SignupForm = z.infer<typeof signupSchema>
+
+export function AuthSection() {
+  const [isLogin, setIsLogin] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const loginForm = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+  })
+
+  const signupForm = useForm<SignupForm>({
+    resolver: zodResolver(signupSchema),
+  })
+
+  const onLoginSubmit = async (data: LoginForm) => {
+    setIsLoading(true)
+    try {
+      console.log('Attempting login with:', data.email)
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      })
+
+      const result = await response.json()
+      console.log('Login response:', result)
+
+      if (response.ok && result.success) {
+        console.log('Login successful:', result)
+        // Store token in localStorage
+        localStorage.setItem('token', result.data.token)
+        console.log('Token stored, redirecting to dashboard...')
+        // Redirect to dashboard
+        window.location.href = '/dashboard'
+      } else {
+        console.error('Login failed:', result.error)
+        alert(result.error || 'Login failed. Please check your credentials.')
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      alert('An error occurred during login. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const onSignupSubmit = async (data: SignupForm) => {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          password: data.password,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        console.log('Signup successful:', result)
+        // Store token in localStorage
+        localStorage.setItem('token', result.data.token)
+        // Redirect to dashboard
+        window.location.href = '/dashboard'
+      } else {
+        console.error('Signup failed:', result.error)
+        alert(result.error || 'Signup failed. Please try again.')
+      }
+    } catch (error) {
+      console.error('Signup error:', error)
+      alert('An error occurred during signup. Please try again.')
+    }
+  }
+
+  return (
+    <div className="card max-w-md mx-auto">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-serif font-bold text-gray-900 mb-2">
+          {isLogin ? 'Welcome Back' : 'Join Reedi'}
+        </h2>
+        <p className="text-gray-600">
+          {isLogin ? 'Sign in to your account' : 'Create your account to get started'}
+        </p>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {isLogin ? (
+          <motion.form
+            key="login"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            onSubmit={loginForm.handleSubmit(onLoginSubmit)}
+            className="space-y-6"
+          >
+            <div>
+              <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="login-email"
+                  type="email"
+                  {...loginForm.register('email')}
+                  className="input-field pl-10"
+                  placeholder="Enter your email"
+                />
+              </div>
+              {loginForm.formState.errors.email && (
+                <p className="mt-1 text-sm text-red-600">{loginForm.formState.errors.email.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  {...loginForm.register('password')}
+                  className="input-field pl-10 pr-10"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+              {loginForm.formState.errors.password && (
+                <p className="mt-1 text-sm text-red-600">{loginForm.formState.errors.password.message}</p>
+              )}
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={isLoading}
+              className="btn-primary w-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? 'Signing In...' : 'Sign In'}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </button>
+          </motion.form>
+        ) : (
+          <motion.form
+            key="signup"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            onSubmit={signupForm.handleSubmit(onSignupSubmit)}
+            className="space-y-6"
+          >
+            <div>
+              <label htmlFor="signup-name" className="block text-sm font-medium text-gray-700 mb-2">
+                Full Name
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="signup-name"
+                  type="text"
+                  {...signupForm.register('name')}
+                  className="input-field pl-10"
+                  placeholder="Enter your full name"
+                />
+              </div>
+              {signupForm.formState.errors.name && (
+                <p className="mt-1 text-sm text-red-600">{signupForm.formState.errors.name.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="signup-email"
+                  type="email"
+                  {...signupForm.register('email')}
+                  className="input-field pl-10"
+                  placeholder="Enter your email"
+                />
+              </div>
+              {signupForm.formState.errors.email && (
+                <p className="mt-1 text-sm text-red-600">{signupForm.formState.errors.email.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="signup-password"
+                  type={showPassword ? 'text' : 'password'}
+                  {...signupForm.register('password')}
+                  className="input-field pl-10 pr-10"
+                  placeholder="Create a password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+              {signupForm.formState.errors.password && (
+                <p className="mt-1 text-sm text-red-600">{signupForm.formState.errors.password.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-700 mb-2">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="signup-confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  {...signupForm.register('confirmPassword')}
+                  className="input-field pl-10 pr-10"
+                  placeholder="Confirm your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+              {signupForm.formState.errors.confirmPassword && (
+                <p className="mt-1 text-sm text-red-600">{signupForm.formState.errors.confirmPassword.message}</p>
+              )}
+            </div>
+
+            <button type="submit" className="btn-primary w-full flex items-center justify-center">
+              Create Account
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </button>
+          </motion.form>
+        )}
+      </AnimatePresence>
+
+      <div className="mt-8 text-center">
+        <p className="text-gray-600">
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          <button
+            onClick={() => setIsLogin(!isLogin)}
+            className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
+          >
+            {isLogin ? 'Sign up' : 'Sign in'}
+          </button>
+        </p>
+      </div>
+    </div>
+  )
+} 

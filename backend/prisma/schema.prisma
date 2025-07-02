@@ -1,0 +1,245 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  username  String?  @unique
+  password  String
+  avatar    String?
+  bio       String?
+  location  String?
+  website   String?
+  isPrivate Boolean  @default(false)
+  isVerified Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Posts
+  posts Post[]
+
+  // Comments
+  comments Comment[]
+
+  // Reactions
+  reactions Reaction[]
+
+  // Images
+  images Image[]
+
+  // Galleries
+  galleries Gallery[]
+
+  // Followers/Following (self-referencing many-to-many)
+  followers Follows[] @relation("UserFollowers")
+  following Follows[] @relation("UserFollowing")
+
+  // Notifications
+  notifications Notification[]
+
+  // Search history
+  searchHistory SearchHistory[]
+  
+  // Mentions
+  mentions Mention[]
+
+  @@map("users")
+}
+
+model Post {
+  id          String   @id @default(cuid())
+  title       String?
+  content     String
+  isPublished Boolean  @default(true)
+  isPrivate   Boolean  @default(false)
+  authorId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  reactions Reaction[]
+  images    Image[]
+  hashtags  Hashtag[]
+  mentions  Mention[]
+  notifications Notification[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  authorId  String
+  parentId  String?  // For nested comments
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+  reactions Reaction[]
+  notifications Notification[]
+
+  @@map("comments")
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  type      ReactionType
+  postId    String?
+  commentId String?
+  authorId  String
+  createdAt DateTime @default(now())
+
+  // Relations
+  post     Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment  Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, authorId])
+  @@unique([commentId, authorId])
+  @@map("reactions")
+}
+
+model Image {
+  id          String   @id @default(cuid())
+  url         String
+  altText     String?
+  caption     String?
+  width       Int?
+  height      Int?
+  size        Int?     // File size in bytes
+  mimeType    String?
+  postId      String?
+  authorId    String
+  galleryId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  post    Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  gallery Gallery? @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+
+  @@map("images")
+}
+
+model Gallery {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isPrivate   Boolean  @default(false)
+  authorId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  author User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  images Image[]
+
+  @@map("galleries")
+}
+
+model Hashtag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  // Relations
+  posts Post[]
+
+  @@map("hashtags")
+}
+
+model Mention {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  // Relations
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("mentions")
+}
+
+model Follows {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  // Relations
+  follower  User @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  userId    String
+  postId    String?
+  commentId String?
+  createdAt DateTime         @default(now())
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  query     String
+  userId    String
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("search_history")
+}
+
+// Enums
+enum ReactionType {
+  LIKE
+  LOVE
+  HAHA
+  WOW
+  SAD
+  ANGRY
+}
+
+enum NotificationType {
+  NEW_FOLLOWER
+  NEW_COMMENT
+  NEW_REACTION
+  MENTION
+  POST_LIKE
+  COMMENT_LIKE
+} 
