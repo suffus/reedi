@@ -21,26 +21,50 @@ export default function HomePage() {
   }, [router])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-white relative overflow-hidden">
+      {/* Sophisticated background pattern inspired by neemlondon.com */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-primary-50 opacity-60"></div>
+      
+      {/* Subtle geometric pattern overlay */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute top-0 left-0 w-full h-full" 
+             style={{
+               backgroundImage: `
+                 linear-gradient(45deg, #171717 25%, transparent 25%), 
+                 linear-gradient(-45deg, #171717 25%, transparent 25%), 
+                 linear-gradient(45deg, transparent 75%, #171717 75%), 
+                 linear-gradient(-45deg, transparent 75%, #171717 75%)
+               `,
+               backgroundSize: '60px 60px',
+               backgroundPosition: '0 0, 0 30px, 30px -30px, -30px 0px'
+             }}>
+        </div>
+      </div>
+      
+      {/* Floating accent elements */}
+      <div className="absolute top-20 right-20 w-64 h-64 bg-primary-100 rounded-none opacity-20 transform rotate-12"></div>
+      <div className="absolute bottom-40 left-20 w-48 h-48 bg-primary-100 rounded-none opacity-15 transform -rotate-6"></div>
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-50 rounded-none opacity-10"></div>
+      
       <Header />
       
-      <main>
+      <main className="relative z-10">
         <HeroSection />
         
-        <section className="py-16 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid lg:grid-cols-2 gap-12 items-start">
+        <section className="section-padding bg-white/80 backdrop-blur-sm relative">
+          <div className="container-max">
+            <div className="grid lg:grid-cols-2 gap-16 items-start">
               <div className="space-y-8">
                 <div>
-                  <h2 className="text-3xl font-serif font-bold text-gray-900 mb-4">
+                  <h2 className="text-4xl font-serif font-semibold text-primary-900 mb-6">
                     Latest Stories
                   </h2>
-                  <p className="text-lg text-gray-600 mb-8">
+                  <p className="text-xl text-primary-600 mb-8 leading-relaxed">
                     Discover what your family and friends have been sharing
                   </p>
                 </div>
                 
-                <Suspense fallback={<div className="space-y-4">Loading posts...</div>}>
+                <Suspense fallback={<div className="space-y-4 text-primary-600">Loading posts...</div>}>
                   <LatestPosts />
                 </Suspense>
               </div>

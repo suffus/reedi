@@ -9,48 +9,54 @@ export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
-    <header className="relative z-50 bg-white/80 backdrop-blur-md border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <header className="relative z-50 bg-white/95 backdrop-blur-md border-b border-primary-100">
+      <div className="container-max px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-20">
           {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2">
+          <Link href="/" className="flex items-center space-x-3">
             <motion.div
-              whileHover={{ scale: 1.05 }}
-              className="flex items-center space-x-2"
+              whileHover={{ scale: 1.02 }}
+              className="flex items-center space-x-3"
             >
-              <Heart className="h-8 w-8 text-primary-600" />
-              <span className="text-2xl font-serif font-bold gradient-text">
+              <Heart className="h-8 w-8 text-primary-900" />
+              <span className="text-2xl font-serif font-semibold text-primary-900">
                 Reedi
               </span>
             </motion.div>
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-8">
+          <nav className="hidden md:flex items-center space-x-12">
             <Link 
               href="/about" 
-              className="text-gray-600 hover:text-primary-600 transition-colors duration-200"
+              className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
             >
               About
             </Link>
             <Link 
               href="/features" 
-              className="text-gray-600 hover:text-primary-600 transition-colors duration-200"
+              className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
             >
               Features
             </Link>
             <Link 
               href="/contact" 
-              className="text-gray-600 hover:text-primary-600 transition-colors duration-200"
+              className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
             >
               Contact
+            </Link>
+            <Link 
+              href="/dashboard" 
+              className="btn-outline"
+            >
+              Dashboard
             </Link>
           </nav>
 
           {/* Mobile menu button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden p-2 rounded-md text-gray-600 hover:text-primary-600 hover:bg-gray-100 transition-colors duration-200"
+            className="md:hidden p-2 rounded-none text-primary-600 hover:text-primary-900 hover:bg-primary-50 transition-colors duration-300"
           >
             {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
@@ -62,29 +68,36 @@ export function Header() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="md:hidden py-4 border-t border-gray-200"
+            className="md:hidden py-6 border-t border-primary-100"
           >
-            <nav className="flex flex-col space-y-4">
+            <nav className="flex flex-col space-y-6">
               <Link 
                 href="/about" 
-                className="text-gray-600 hover:text-primary-600 transition-colors duration-200"
+                className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
                 onClick={() => setIsMenuOpen(false)}
               >
                 About
               </Link>
               <Link 
                 href="/features" 
-                className="text-gray-600 hover:text-primary-600 transition-colors duration-200"
+                className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Features
               </Link>
               <Link 
                 href="/contact" 
-                className="text-gray-600 hover:text-primary-600 transition-colors duration-200"
+                className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Contact
+              </Link>
+              <Link 
+                href="/dashboard" 
+                className="btn-outline w-full text-center"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Dashboard
               </Link>
             </nav>
           </motion.div>
