@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Download, Trash2, Eye, Calendar, X } from 'lucide-react'
-import { useUserImages, useDeleteImage } from '../../lib/api-hooks'
+import { Camera, Download, Trash2, Eye, Calendar, X, Loader2 } from 'lucide-react'
+import { usePaginatedUserImages, useDeleteImage } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 
 interface GalleryImage {
@@ -44,11 +44,44 @@ interface UserGalleryProps {
 export function UserGallery({ userId }: UserGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const observerRef = useRef<HTMLDivElement>(null)
 
-  const { data: imagesData, isLoading } = useUserImages(userId)
+  const { 
+    images: rawImages, 
+    totalImages, 
+    hasMore, 
+    isLoading, 
+    isFetching, 
+    loadMore 
+  } = usePaginatedUserImages(userId)
+  
   const deleteImageMutation = useDeleteImage()
 
-  const images = (imagesData?.data?.images || []).map(mapImageData)
+  // Map the raw images to our frontend format
+  const images = rawImages.map(mapImageData)
+
+  // Intersection Observer for infinite scroll
+  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
+    const [target] = entries
+    if (target.isIntersecting && hasMore && !isFetching && !isLoading) {
+      loadMore()
+    }
+  }, [hasMore, isFetching, isLoading, loadMore])
+
+  useEffect(() => {
+    const element = observerRef.current
+    if (!element) return
+
+    const observer = new IntersectionObserver(handleObserver, {
+      root: null,
+      rootMargin: '100px', // Start loading 100px before reaching the bottom
+      threshold: 0.1
+    })
+
+    observer.observe(element)
+
+    return () => observer.disconnect()
+  }, [handleObserver])
 
   const handleDeleteImage = async (imageId: string) => {
     if (!confirm('Are you sure you want to delete this image?')) return
@@ -105,7 +138,12 @@ export function UserGallery({ userId }: UserGalleryProps) {
         <div>
           <h2 className="text-2xl font-serif font-bold text-gray-900">Your Gallery</h2>
           <p className="text-gray-600 mt-1">
-            {(images?.length ?? 0)} {(images?.length === 1 ? 'image' : 'images')} in your collection
+            {totalImages} {(totalImages === 1 ? 'image' : 'images')} in your collection
+            {images.length > 0 && images.length < totalImages && (
+              <span className="text-gray-500">
+                {' '}(showing {images.length} of {totalImages})
+              </span>
+            )}
           </p>
         </div>
         
@@ -276,6 +314,35 @@ export function UserGallery({ userId }: UserGalleryProps) {
               </div>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {/* Infinite Scroll Observer */}
+      {hasMore && (
+        <div 
+          ref={observerRef}
+          className="flex justify-center py-8"
+        >
+          {isFetching ? (
+            <div className="flex items-center space-x-2 text-gray-600">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Loading more images...</span>
+            </div>
+          ) : (
+            <div className="h-4" /> // Invisible element for intersection observer
+          )}
+        </div>
+      )}
+
+      {/* Manual Load More Button (fallback) */}
+      {hasMore && !isFetching && (
+        <div className="flex justify-center pt-6">
+          <button
+            onClick={loadMore}
+            className="btn-secondary flex items-center space-x-2 px-8 py-3"
+          >
+            <span>Load More Images</span>
+          </button>
         </div>
       )}
 

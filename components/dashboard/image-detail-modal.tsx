@@ -99,6 +99,11 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
     setZoom(1)
     setPan({ x: 0, y: 0 })
     setActiveCrop(null)
+    setIsDragging(false)
+    setIsCropping(false)
+    setIsCropMode(false)
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+
   }
 
   const toggleCropMode = () => {
@@ -154,126 +159,47 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
     // Apply the crop if we have a valid selection
     if (cropArea.width > 10 && cropArea.height > 10) {
       // Get the image element's actual position and size
-      const imageRect = imageRef.current?.getBoundingClientRect()
-      const containerRect = containerRef.current?.getBoundingClientRect()
+        const containerRect = containerRef.current?.getBoundingClientRect()
       
-              if (imageRect && containerRect) {
-          console.log('Crop debug - current state:', {
-            zoom,
-            pan,
-            cropArea,
-            imageRect: { width: imageRect.width, height: imageRect.height },
-            containerRect: { left: containerRect.left, top: containerRect.top }
-          })
+        if(!containerRect) {
+            return
+        }
+        const cropX = cropArea.x 
+        const cropY = cropArea.y 
+        const cropWidth = cropArea.width
+        const cropHeight = cropArea.height
 
-          // Convert crop coordinates from container-relative to image-relative
-          const imageX = imageRect.left - containerRect.left
-          const imageY = imageRect.top - containerRect.top
           
-          // Convert crop coordinates to be relative to the image
-          const cropX = cropArea.x - imageX
-          const cropY = cropArea.y - imageY
-          
-          // Ensure crop coordinates are within image bounds
-          const boundedCropX = Math.max(0, Math.min(cropX, imageRect.width))
-          const boundedCropY = Math.max(0, Math.min(cropY, imageRect.height))
-          const boundedCropWidth = Math.min(cropArea.width, imageRect.width - boundedCropX)
-          const boundedCropHeight = Math.min(cropArea.height, imageRect.height - boundedCropY)
-          
-          // Convert to coordinates relative to the original image (before zoom/pan)
-          const originalCropX = boundedCropX / zoom
-          const originalCropY = boundedCropY / zoom
-          const originalCropWidth = boundedCropWidth / zoom
-          const originalCropHeight = boundedCropHeight / zoom
-          
-          console.log('Crop debug - coordinate conversion:', {
-            cropArea,
-            imageX,
-            imageY,
-            cropX,
-            cropY,
-            boundedCropX,
-            boundedCropY,
-            boundedCropWidth,
-            boundedCropHeight,
-            zoom,
-            originalCropX,
-            originalCropY,
-            originalCropWidth,
-            originalCropHeight
-          })
-          
-          // The coordinates are already bounded, so use them directly
-          const finalCropX = originalCropX
-          const finalCropY = originalCropY
-          const cropWidth = originalCropWidth
-          const cropHeight = originalCropHeight
-          
-          console.log('Crop debug - calculated values:', {
-            imageX,
-            imageY,
-            cropX,
-            cropY,
-            originalCropX,
-            originalCropY,
-            originalCropWidth,
-            originalCropHeight,
-            finalCropX,
-            finalCropY,
-            cropWidth,
-            cropHeight
-          })
-        
         // Calculate the scale needed to make the crop fill the viewport
-        const viewportWidth = window.innerWidth - 450 // Account for comments sidebar
-        const viewportHeight = window.innerHeight
-        
+        const viewportWidth = containerRect.width 
+        const viewportHeight = containerRect.height
         // Calculate the scale to make the crop area fit the viewport
         // The crop dimensions are relative to the original image size
         const viewportAspectRatio = viewportWidth / viewportHeight
         const cropAspectRatio = cropWidth / cropHeight
         
-        let newScale
+        let newScale = zoom
         if (viewportAspectRatio > cropAspectRatio) {
           // Viewport is wider than crop, scale to fit height
-          newScale = viewportHeight / cropHeight
+          newScale *= viewportHeight / cropHeight
         } else {
           // Viewport is taller than crop, scale to fit width
-          newScale = viewportWidth / cropWidth
+          newScale *= viewportWidth / cropWidth
         }
         
         // Calculate the center of the crop area
-        const cropCenterX = finalCropX + cropWidth / 2
-        const cropCenterY = finalCropY + cropHeight / 2
+        const cropCenterX = cropX + cropWidth / 2
+        const cropCenterY = cropY + cropHeight / 2
         
         // Calculate the pan needed to center the crop area
         // The crop center should be at the viewport center
         const viewportCenterX = viewportWidth / 2
         const viewportCenterY = viewportHeight / 2
         
-        // The image is currently positioned in the viewport (likely centered)
-        // We need to account for the image's current position when calculating the pan
-        // imageRect and containerRect are already available from earlier in the function
-        
-        // The crop center is in original image coordinates
-        // When we scale by newScale, the crop center will be at (cropCenterX * newScale, cropCenterY * newScale)
+        // The crop center and pan are in zoomed image coordinates
         // We want this to be at the viewport center, so we need to pan by:
-        const newPanX = viewportCenterX - (cropCenterX * newScale)
-        const newPanY = viewportCenterY - (cropCenterY * newScale)
-        
-
-        
-        console.log('Crop debug - final values:', {
-          newScale,
-          newPanX,
-          newPanY,
-          cropCenterX,
-          cropCenterY,
-          viewportCenterX,
-          viewportCenterY,
-          imageRect: { left: imageRect.left, top: imageRect.top, width: imageRect.width, height: imageRect.height },
-          containerRect: { left: containerRect.left, top: containerRect.top }
-        })
+        const newPanX = (pan.x + viewportCenterX - cropCenterX) * newScale / zoom
+        const newPanY = (pan.y + viewportCenterY - cropCenterY) * newScale / zoom
         
         // Apply the new scale and pan
         setZoom(newScale)
@@ -281,8 +207,8 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
         
         // Store the crop info for reference
         setActiveCrop({
-          x: finalCropX,
-          y: finalCropY,
+          x: cropX,
+          y: cropY,
           width: cropWidth,
           height: cropHeight
         })
@@ -290,8 +216,8 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
       
       setIsCropMode(false)
       setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+    
     }
-  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (isCropMode) {
@@ -305,7 +231,7 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
     }
   }
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = (e: React.MouseEvent) => {
     if (isCropMode) {
       handleCropMouseMove(e)
       return
@@ -317,7 +243,7 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
         y: e.clientY - dragStart.y
       })
     }
-  }, [isDragging, zoom, dragStart, isCropMode, handleCropMouseMove])
+  }
 
   const handleMouseUp = () => {
     if (isCropMode) {
@@ -352,7 +278,7 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
         >
           {/* Close Button */}
           <button
-            onClick={onClose}
+            onClick={() => {resetView(); onClose()}}
             className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
           >
             <X className="h-5 w-5" />
