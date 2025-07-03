@@ -81,14 +81,16 @@ model Post {
 model Comment {
   id        String   @id @default(cuid())
   content   String
-  postId    String
+  postId    String?
+  imageId   String?
   authorId  String
   parentId  String?  // For nested comments
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post     Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  image    Image?    @relation(fields: [imageId], references: [id], onDelete: Cascade)
   author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies  Comment[] @relation("CommentReplies")
@@ -132,9 +134,10 @@ model Image {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  post    Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author  User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  gallery Gallery? @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+  post     Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  gallery  Gallery?  @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+  comments Comment[]
 
   @@map("images")
 }

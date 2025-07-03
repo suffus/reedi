@@ -3,11 +3,11 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Image as ImageIcon, Tag, FileText } from 'lucide-react'
+import { useUploadImage } from '../../lib/api-hooks'
 
 interface ImageUploaderProps {
   userId: string
   onClose: () => void
-  onUploadComplete: () => void
 }
 
 interface UploadFile {
@@ -18,11 +18,12 @@ interface UploadFile {
   tags: string[]
 }
 
-export function ImageUploader({ userId, onClose, onUploadComplete }: ImageUploaderProps) {
+export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
-  const [isUploading, setIsUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploadImageMutation = useUploadImage()
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -94,10 +95,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete }: ImageUpload
   const handleUpload = async () => {
     if (uploadFiles.length === 0) return
 
-    setIsUploading(true)
     try {
-      const token = localStorage.getItem('token')
-      
       for (const uploadFile of uploadFiles) {
         const formData = new FormData()
         formData.append('image', uploadFile.file)
@@ -106,25 +104,13 @@ export function ImageUploader({ userId, onClose, onUploadComplete }: ImageUpload
         formData.append('tags', JSON.stringify(uploadFile.tags))
         formData.append('userId', userId)
 
-        const response = await fetch('/api/images/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to upload ${uploadFile.file.name}`)
-        }
+        await uploadImageMutation.mutateAsync(formData)
       }
 
-      onUploadComplete()
+      onClose()
     } catch (error) {
       console.error('Upload failed:', error)
       alert('Failed to upload images. Please try again.')
-    } finally {
-      setIsUploading(false)
     }
   }
 
@@ -197,120 +183,109 @@ export function ImageUploader({ userId, onClose, onUploadComplete }: ImageUpload
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="btn-secondary"
+                    className="text-primary-600 hover:text-primary-700 font-medium"
                   >
                     Add More
                   </button>
                 </div>
 
                 <div className="space-y-4">
-                  {uploadFiles.map((uploadFile, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-gray-50 rounded-lg p-4"
-                    >
+                  {uploadFiles.map((file, index) => (
+                    <div key={index} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex space-x-4">
-                        {/* Image Preview */}
-                        <div className="flex-shrink-0">
+                        <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                           <img
-                            src={uploadFile.preview}
-                            alt={uploadFile.title}
-                            className="w-20 h-20 object-cover rounded-lg"
+                            src={file.preview}
+                            alt={file.title}
+                            className="w-full h-full object-cover"
                           />
                         </div>
-
-                        {/* File Details */}
+                        
                         <div className="flex-1 space-y-3">
-                          {/* Title */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <FileText className="h-4 w-4 inline mr-1" />
                               Title
                             </label>
                             <input
                               type="text"
-                              value={uploadFile.title}
+                              value={file.title}
                               onChange={(e) => updateFile(index, { title: e.target.value })}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              placeholder="Enter image title"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             />
                           </div>
-
-                          {/* Description */}
+                          
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               Description
                             </label>
                             <textarea
-                              value={uploadFile.description}
+                              value={file.description}
                               onChange={(e) => updateFile(index, { description: e.target.value })}
                               rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                              placeholder="Enter image description (optional)"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             />
                           </div>
-
-                          {/* Tags */}
+                          
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <Tag className="h-4 w-4 inline mr-1" />
                               Tags
                             </label>
                             <div className="flex flex-wrap gap-2 mb-2">
-                              {uploadFile.tags.map((tag, tagIndex) => (
+                              {file.tags.map((tag, tagIndex) => (
                                 <span
                                   key={tagIndex}
-                                  className="px-2 py-1 bg-primary-100 text-primary-700 text-sm rounded-full flex items-center space-x-1"
+                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary-100 text-primary-800"
                                 >
-                                  <span>{tag}</span>
+                                  {tag}
                                   <button
                                     type="button"
                                     onClick={() => removeTag(index, tag)}
-                                    className="hover:text-primary-900"
+                                    className="ml-1 hover:text-primary-600"
                                   >
                                     ×
                                   </button>
                                 </span>
                               ))}
                             </div>
-                            <input
-                              type="text"
-                              placeholder="Add a tag and press Enter"
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  addTag(index, e.currentTarget.value)
-                                  e.currentTarget.value = ''
-                                }
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                            />
+                            <div className="flex space-x-2">
+                              <input
+                                type="text"
+                                placeholder="Add a tag..."
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    addTag(index, e.currentTarget.value)
+                                    e.currentTarget.value = ''
+                                  }
+                                }}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  const input = e.currentTarget.previousElementSibling as HTMLInputElement
+                                  addTag(index, input.value)
+                                  input.value = ''
+                                }}
+                                className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors duration-200"
+                              >
+                                Add
+                              </button>
+                            </div>
                           </div>
                         </div>
-
-                        {/* Remove Button */}
+                        
                         <button
                           type="button"
                           onClick={() => removeFile(index)}
-                          className="flex-shrink-0 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors duration-200"
                         >
                           <X className="h-5 w-5" />
                         </button>
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
               </div>
             )}
           </div>
@@ -321,19 +296,17 @@ export function ImageUploader({ userId, onClose, onUploadComplete }: ImageUpload
               <button
                 type="button"
                 onClick={onClose}
-                className="btn-secondary"
-                disabled={isUploading}
+                className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleUpload}
-                disabled={isUploading}
-                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                disabled={uploadImageMutation.isPending}
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Upload className="h-4 w-4" />
-                <span>{isUploading ? 'Uploading...' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'Image' : 'Images'}`}</span>
+                {uploadImageMutation.isPending ? 'Uploading...' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'Image' : 'Images'}`}
               </button>
             </div>
           )}

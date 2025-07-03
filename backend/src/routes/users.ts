@@ -1,10 +1,27 @@
 import { Router } from 'express'
+import multer from 'multer'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 
 const router = Router()
+
+// Configure multer for avatar uploads
+const storage = multer.memoryStorage()
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only image files are allowed'))
+    }
+  }
+})
 
 // Update user profile
 router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
@@ -65,6 +82,57 @@ router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedReq
     success: true,
     data: { user: updatedUser },
     message: 'Profile updated successfully'
+  })
+}))
+
+// Upload avatar
+router.post('/avatar', authMiddleware, upload.single('avatar'), asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id
+  
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+  }
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No avatar file provided'
+    })
+  }
+
+  // For now, we'll store the file data as a base64 string
+  // In production, you'd want to upload to a cloud storage service
+  const base64Data = req.file.buffer.toString('base64')
+  const dataUrl = `data:${req.file.mimetype};base64,${base64Data}`
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      avatar: dataUrl
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      username: true,
+      avatar: true,
+      bio: true,
+      location: true,
+      website: true,
+      isPrivate: true,
+      isVerified: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  })
+
+  res.json({
+    success: true,
+    data: { user: updatedUser },
+    message: 'Avatar uploaded successfully'
   })
 }))
 

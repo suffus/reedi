@@ -74,10 +74,78 @@ router.get('/post/:postId', asyncHandler(async (req, res) => {
   })
 }))
 
+// Get comments for an image
+router.get('/image/:imageId', asyncHandler(async (req, res) => {
+  const { imageId } = req.params
+  const { page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  const [comments, total] = await Promise.all([
+    prisma.comment.findMany({
+      where: { 
+        imageId,
+        parentId: null // Only top-level comments
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        },
+        replies: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            replies: true,
+            reactions: true
+          }
+        }
+      },
+      skip: offset,
+      take: Number(limit),
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.comment.count({
+      where: { 
+        imageId,
+        parentId: null
+      }
+    })
+  ])
+
+  res.json({
+    success: true,
+    data: {
+      comments,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+        hasNext: offset + Number(limit) < total,
+        hasPrev: Number(page) > 1
+      }
+    }
+  })
+}))
+
 // Create a comment
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id
-  const { content, postId, parentId } = req.body
+  const { content, postId, imageId, parentId } = req.body
 
   if (!userId) {
     return res.status(401).json({
@@ -86,10 +154,26 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     })
   }
 
+  // Validate that either postId or imageId is provided, but not both
+  if (!postId && !imageId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Either postId or imageId is required'
+    })
+  }
+
+  if (postId && imageId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cannot comment on both post and image simultaneously'
+    })
+  }
+
   const comment = await prisma.comment.create({
     data: {
       content,
       postId,
+      imageId,
       parentId,
       authorId: userId
     },

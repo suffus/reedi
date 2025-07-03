@@ -83,8 +83,8 @@ router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(asyn
   const image = await prisma.image.create({
     data: {
       url: dataUrl,
-      altText: req.body.title || 'Uploaded image',
-      caption: req.body.description || '',
+      altText: req.body.title || req.body.altText || 'Uploaded image',
+      caption: req.body.description || req.body.caption || '',
       authorId: userId
     }
   })

@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from 'lucide-react'
+import { useLogin, useRegister } from '../lib/api-hooks'
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email'),
@@ -29,7 +30,6 @@ export function AuthSection() {
   const [isLogin, setIsLogin] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -39,72 +39,43 @@ export function AuthSection() {
     resolver: zodResolver(signupSchema),
   })
 
+  const loginMutation = useLogin()
+  const registerMutation = useRegister()
+
   const onLoginSubmit = async (data: LoginForm) => {
-    setIsLoading(true)
     try {
       console.log('Attempting login with:', data.email)
       
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      })
-
-      const result = await response.json()
-      console.log('Login response:', result)
-
-      if (response.ok && result.success) {
-        console.log('Login successful:', result)
-        // Store token in localStorage
-        localStorage.setItem('token', result.data.token)
-        console.log('Token stored, redirecting to dashboard...')
-        // Redirect to dashboard
-        window.location.href = '/dashboard'
-      } else {
-        console.error('Login failed:', result.error)
-        alert(result.error || 'Login failed. Please check your credentials.')
-      }
+      const result = await loginMutation.mutateAsync(data)
+      console.log('Login successful:', result)
+      
+      // Redirect to dashboard
+      window.location.href = '/dashboard'
     } catch (error) {
       console.error('Login error:', error)
-      alert('An error occurred during login. Please try again.')
-    } finally {
-      setIsLoading(false)
+      alert(error instanceof Error ? error.message : 'An error occurred during login. Please try again.')
     }
   }
 
   const onSignupSubmit = async (data: SignupForm) => {
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          password: data.password,
-        }),
+      const result = await registerMutation.mutateAsync({
+        name: data.name,
+        email: data.email,
+        password: data.password,
       })
 
-      const result = await response.json()
-
-      if (response.ok) {
-        console.log('Signup successful:', result)
-        // Store token in localStorage
-        localStorage.setItem('token', result.data.token)
-        // Redirect to dashboard
-        window.location.href = '/dashboard'
-      } else {
-        console.error('Signup failed:', result.error)
-        alert(result.error || 'Signup failed. Please try again.')
-      }
+      console.log('Signup successful:', result)
+      
+      // Redirect to dashboard
+      window.location.href = '/dashboard'
     } catch (error) {
       console.error('Signup error:', error)
-      alert('An error occurred during signup. Please try again.')
+      alert(error instanceof Error ? error.message : 'An error occurred during signup. Please try again.')
     }
   }
+
+  const isLoading = loginMutation.isPending || registerMutation.isPending
 
   return (
     <div className="card max-w-md mx-auto">
@@ -282,24 +253,25 @@ export function AuthSection() {
               )}
             </div>
 
-            <button type="submit" className="btn-primary w-full flex items-center justify-center">
-              Create Account
+            <button 
+              type="submit" 
+              disabled={isLoading}
+              className="btn-primary w-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? 'Creating Account...' : 'Create Account'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
           </motion.form>
         )}
       </AnimatePresence>
 
-      <div className="mt-8 text-center">
-        <p className="text-gray-600">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
-          >
-            {isLogin ? 'Sign up' : 'Sign in'}
-          </button>
-        </p>
+      <div className="mt-6 text-center">
+        <button
+          onClick={() => setIsLogin(!isLogin)}
+          className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
+        >
+          {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+        </button>
       </div>
     </div>
   )
