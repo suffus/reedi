@@ -84,6 +84,7 @@ interface Reaction {
 interface Image {
   id: string
   url: string
+  thumbnail: string | null
   altText: string | null
   caption: string | null
   width: number | null
@@ -133,6 +134,10 @@ export const useAuth = () => {
       })
       
       if (!response.ok) {
+        // Clear invalid token
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token')
+        }
         throw new Error('Authentication failed')
       }
       
@@ -393,17 +398,19 @@ export const useImageComments = (imageId: string) => {
   })
 }
 
-// Images Hooks
-export const useUserImages = (userId: string, page = 1, limit = 20) => {
+
+
+// Simple user images hook for the first page
+export const useUserImages = (userId: string) => {
   const isClient = useIsClient()
   
   return useQuery({
-    queryKey: ['images', 'user', userId, page, limit],
+    queryKey: ['images', 'user', userId],
     queryFn: async () => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/images/user/${userId}?page=${page}&limit=${limit}`, {
+      const response = await fetch(`${API_BASE_URL}/images/user/${userId}?page=1&limit=100`, {
         headers: getAuthHeaders(token)
       })
       
@@ -414,76 +421,6 @@ export const useUserImages = (userId: string, page = 1, limit = 20) => {
     },
     enabled: isClient && hasToken() && !!userId
   })
-}
-
-// Paginated user images hook that accumulates images from multiple pages
-export const usePaginatedUserImages = (userId: string) => {
-  const isClient = useIsClient()
-  const [currentPage, setCurrentPage] = useState(1)
-  const [allImages, setAllImages] = useState<any[]>([])
-  const [hasMore, setHasMore] = useState(true)
-  const [totalImages, setTotalImages] = useState(0)
-  
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['images', 'user', userId, currentPage],
-    queryFn: async () => {
-      const token = getToken()
-      if (!token) throw new Error('No token found')
-      
-      const response = await fetch(`${API_BASE_URL}/images/user/${userId}?page=${currentPage}&limit=20`, {
-        headers: getAuthHeaders(token)
-      })
-      
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to fetch images')
-      
-      return data
-    },
-    enabled: isClient && hasToken() && !!userId
-  })
-
-  // Update accumulated images when new data arrives
-  useEffect(() => {
-    if (data?.data) {
-      const newImages = data.data.images || []
-      const pagination = data.data.pagination
-      
-      if (currentPage === 1) {
-        // First page - replace all images
-        setAllImages(newImages)
-      } else {
-        // Subsequent pages - append new images
-        setAllImages(prev => [...prev, ...newImages])
-      }
-      
-      setTotalImages(pagination?.total || 0)
-      setHasMore(pagination?.hasNext || false)
-    }
-  }, [data, currentPage])
-
-  const loadMore = () => {
-    if (hasMore && !isFetching) {
-      setCurrentPage(prev => prev + 1)
-    }
-  }
-
-  const reset = () => {
-    setCurrentPage(1)
-    setAllImages([])
-    setHasMore(true)
-    setTotalImages(0)
-  }
-
-  return {
-    images: allImages,
-    totalImages,
-    hasMore,
-    isLoading: isLoading && currentPage === 1,
-    isFetching,
-    error,
-    loadMore,
-    reset
-  }
 }
 
 export const useUploadImage = () => {
@@ -507,7 +444,93 @@ export const useUploadImage = () => {
       
       return data
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      // Extract userId from form data to invalidate specific user's images
+      const userId = variables.get('userId') as string
+      console.log('Upload successful, invalidating queries for userId:', userId)
+      if (userId) {
+        // Invalidate queries but don't remove them - this will trigger refetch while keeping old data visible
+        queryClient.invalidateQueries({ 
+          queryKey: ['images', 'user', userId],
+          exact: false 
+        })
+        console.log('Invalidated user image queries')
+        
+        // Force a fresh fetch after a short delay to ensure DB transaction is committed
+        setTimeout(() => {
+          queryClient.refetchQueries({ 
+            queryKey: ['images', 'user', userId],
+            exact: false 
+          })
+          console.log('Forced fresh fetch of user images')
+        }, 500)
+      }
+      // Also invalidate general images queries
+      queryClient.invalidateQueries({ queryKey: ['images'] })
+      console.log('Invalidated general image queries')
+    }
+  })
+}
+
+export const useUpdateImage = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ imageId, altText, caption }: { imageId: string; altText?: string; caption?: string }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/images/${imageId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ altText, caption })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to update image')
+      
+      return data
+    },
+    onMutate: async ({ imageId, altText, caption }) => {
+      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries({ queryKey: ['images'] })
+      
+      // Snapshot the previous value
+      const previousImages = queryClient.getQueriesData({ queryKey: ['images'] })
+      
+      // Optimistically update all image queries that contain this image
+      queryClient.setQueriesData(
+        { queryKey: ['images'] },
+        (old: any) => {
+          if (!old?.data?.images) return old
+          
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              images: old.data.images.map((img: any) =>
+                img.id === imageId
+                  ? { ...img, altText: altText || null, caption: caption || null }
+                  : img
+              )
+            }
+          }
+        }
+      )
+      
+      // Return a context object with the snapshotted value
+      return { previousImages }
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousImages) {
+        context.previousImages.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure cache consistency
       queryClient.invalidateQueries({ queryKey: ['images'] })
     }
   })

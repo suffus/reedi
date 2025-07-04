@@ -5,6 +5,7 @@ import morgan from 'morgan'
 import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 import { PrismaClient } from '@prisma/client'
+import path from 'path'
 
 // Import routes
 import authRoutes from '@/routes/auth'
@@ -32,8 +33,10 @@ const PORT = process.env.PORT || 8088
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  max: 500, // limit each IP to 500 requests per windowMs (increased for debugging)
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 })
 
 // Middleware
@@ -46,6 +49,21 @@ app.use(limiter)
 app.use(morgan('combined'))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Serve uploads directory as static files
+app.use('/uploads', (req, res, next) => {
+  // Add CORS headers for image requests
+  res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000')
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Content-Type')
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin')
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200)
+  }
+  
+  next()
+}, express.static(path.join(process.cwd(), 'uploads')))
 
 // Health check endpoint
 app.get('/health', (req, res) => {

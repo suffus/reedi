@@ -3,16 +3,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, Download, Trash2, Eye, Calendar, X, Loader2 } from 'lucide-react'
-import { usePaginatedUserImages, useDeleteImage } from '../../lib/api-hooks'
+import { useUserImages, useDeleteImage } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
+import { getImageUrl } from '@/lib/api'
 
 interface GalleryImage {
   id: string
   url: string
+  thumbnail: string
   title: string | null
   description: string | null
   createdAt: string
   tags: string[]
+  authorId: string
   metadata: {
     width: number
     height: number
@@ -25,10 +28,12 @@ interface GalleryImage {
 const mapImageData = (image: any): GalleryImage => ({
   id: image.id,
   url: image.url,
+  thumbnail: image.thumbnail || image.url, // Use thumbnail if available, fallback to full image
   title: image.altText || image.title,
   description: image.caption || image.description,
   createdAt: image.createdAt,
   tags: image.tags || [],
+  authorId: image.authorId, // Include authorId for ownership checks
   metadata: {
     width: image.width || 0,
     height: image.height || 0,
@@ -44,44 +49,22 @@ interface UserGalleryProps {
 export function UserGallery({ userId }: UserGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const observerRef = useRef<HTMLDivElement>(null)
 
-  const { 
-    images: rawImages, 
-    totalImages, 
-    hasMore, 
-    isLoading, 
-    isFetching, 
-    loadMore 
-  } = usePaginatedUserImages(userId)
-  
+  const { data, isLoading, isFetching, error } = useUserImages(userId)
+
   const deleteImageMutation = useDeleteImage()
 
-  // Map the raw images to our frontend format
-  const images = rawImages.map(mapImageData)
-
-  // Intersection Observer for infinite scroll
-  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
-    const [target] = entries
-    if (target.isIntersecting && hasMore && !isFetching && !isLoading) {
-      loadMore()
+  // Map the raw images to our frontend format and include full URLs
+  const images = (data?.data?.images || []).map((image: any) => {
+    const mapped = mapImageData(image)
+    return {
+      ...mapped,
+      url: getImageUrl(mapped.url),
+      thumbnail: getImageUrl(mapped.thumbnail || mapped.url), // Use thumbnail if available, fallback to full image
     }
-  }, [hasMore, isFetching, isLoading, loadMore])
+  })
 
-  useEffect(() => {
-    const element = observerRef.current
-    if (!element) return
-
-    const observer = new IntersectionObserver(handleObserver, {
-      root: null,
-      rootMargin: '100px', // Start loading 100px before reaching the bottom
-      threshold: 0.1
-    })
-
-    observer.observe(element)
-
-    return () => observer.disconnect()
-  }, [handleObserver])
+  const totalImages = data?.data?.pagination?.total || 0
 
   const handleDeleteImage = async (imageId: string) => {
     if (!confirm('Are you sure you want to delete this image?')) return
@@ -193,7 +176,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
             >
               <div className="relative aspect-square overflow-hidden">
                 <img
-                  src={image.url}
+                  src={image.thumbnail}
                   alt={image.title || 'Gallery image'}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
@@ -246,6 +229,21 @@ export function UserGallery({ userId }: UserGalleryProps) {
               </div>
             </motion.div>
           ))}
+          
+          {/* Loading Spinner for Grid View */}
+          {isFetching && (
+            <>
+              {[...Array(4)].map((_, i) => (
+                <div key={`loading-${i}`} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 animate-pulse">
+                  <div className="w-full h-48 bg-gray-200 rounded-lg mb-3"></div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -260,7 +258,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
               <div className="flex items-center space-x-4">
                 <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                   <img
-                    src={image.url}
+                    src={image.thumbnail}
                     alt={image.title || 'Gallery image'}
                     className="w-full h-full object-cover"
                   />
@@ -314,40 +312,29 @@ export function UserGallery({ userId }: UserGalleryProps) {
               </div>
             </motion.div>
           ))}
-        </div>
-      )}
-
-      {/* Infinite Scroll Observer */}
-      {hasMore && (
-        <div 
-          ref={observerRef}
-          className="flex justify-center py-8"
-        >
-          {isFetching ? (
-            <div className="flex items-center space-x-2 text-gray-600">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span>Loading more images...</span>
-            </div>
-          ) : (
-            <div className="h-4" /> // Invisible element for intersection observer
+          
+          {/* Loading Spinner for List View */}
+          {isFetching && (
+            <>
+              {[...Array(3)].map((_, i) => (
+                <div key={`loading-list-${i}`} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 animate-pulse">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-16 h-16 bg-gray-200 rounded-lg flex-shrink-0"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}
 
-      {/* Manual Load More Button (fallback) */}
-      {hasMore && !isFetching && (
-        <div className="flex justify-center pt-6">
-          <button
-            onClick={loadMore}
-            className="btn-secondary flex items-center space-x-2 px-8 py-3"
-          >
-            <span>Load More Images</span>
-          </button>
-        </div>
-      )}
-
       {/* Empty State */}
-      {images.length === 0 && !isLoading && (
+      {images.length === 0 && !isLoading && !isFetching && (
         <div className="text-center py-12">
           <div className="text-gray-400 mb-4">
             <Camera className="h-12 w-12 mx-auto" />
@@ -357,11 +344,24 @@ export function UserGallery({ userId }: UserGalleryProps) {
         </div>
       )}
 
+      {/* Refetching State */}
+      {isFetching && images.length > 0 && (
+        <div className="text-center py-8">
+          <div className="flex items-center justify-center space-x-2 text-gray-600">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Updating gallery...</span>
+          </div>
+        </div>
+      )}
+
       {/* Image Detail Modal */}
       <ImageDetailModal
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
+        onImageUpdate={() => {
+          // The optimistic update will handle this automatically
+        }}
       />
     </div>
   )
-} 
+}

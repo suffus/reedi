@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Camera, Settings, LogOut, Plus, Grid, List } from 'lucide-react'
@@ -31,12 +31,21 @@ export function DashboardWrapper() {
 
   const { data: authData, isLoading, error } = useAuth()
 
+  const handleUploadComplete = useCallback(() => {
+    // The optimistic update will handle this automatically
+    console.log('Upload complete')
+  }, [])
+
   useEffect(() => {
     setIsClient(true)
   }, [])
 
   useEffect(() => {
     if (isClient && !isLoading && !authData) {
+      // Clear any invalid token and redirect to login
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token')
+      }
       router.push('/')
     }
   }, [authData, isLoading, router, isClient])
@@ -219,7 +228,7 @@ export function DashboardWrapper() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
             >
-              <PersonalFeed userId={user.id} />
+              <PersonalFeed />
             </motion.div>
           )}
 
@@ -255,6 +264,7 @@ export function DashboardWrapper() {
           <ImageUploader
             userId={user.id}
             onClose={() => setShowImageUploader(false)}
+            onUploadComplete={handleUploadComplete}
           />
         )}
       </AnimatePresence>

@@ -3,3 +3,5 @@ backend/node_modules
 .next
 .env.local
 backend/.env
+backend/uploads
+out/

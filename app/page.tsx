@@ -20,6 +20,8 @@ export default function HomePage() {
     }
   }, [router])
 
+  console.log('HomePage rendered', new Date().toISOString())
+
   return (
     <div className="min-h-screen bg-white relative overflow-hidden">
       {/* Sophisticated background pattern inspired by neemlondon.com */}

@@ -1,14 +1,17 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop } from 'lucide-react'
-import { useImageComments, useCreateComment } from '@/lib/api-hooks'
+import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon } from 'lucide-react'
+import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
+import { getImageUrl } from '@/lib/api'
 
 interface GalleryImage {
   id: string
   url: string
+  thumbnail: string
   title: string | null
   description: string | null
   createdAt: string
+  authorId: string
   tags: string[]
   metadata: {
     width: number
@@ -22,9 +25,11 @@ interface GalleryImage {
 const mapImageData = (image: any): GalleryImage => ({
   id: image.id,
   url: image.url,
+  thumbnail: image.thumbnail || image.url, // Use thumbnail if available, fallback to full image
   title: image.altText || image.title,
   description: image.caption || image.description,
   createdAt: image.createdAt,
+  authorId: image.authorId,
   tags: image.tags || [],
   metadata: {
     width: image.width || 0,
@@ -50,9 +55,15 @@ interface Comment {
 interface ImageDetailModalProps {
   image: GalleryImage | null
   onClose: () => void
+  onImageUpdate?: () => void
 }
 
-export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
+export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailModalProps) {
+  // Return early if no image
+  if (!image) {
+    return null
+  }
+
   const [commentText, setCommentText] = useState('')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -63,18 +74,42 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
   const [isCropping, setIsCropping] = useState(false)
   const [cropStart, setCropStart] = useState({ x: 0, y: 0 })
   const [activeCrop, setActiveCrop] = useState<{ x: number, y: number, width: number, height: number } | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [localTitle, setLocalTitle] = useState(image?.title || '')
+  const [localDescription, setLocalDescription] = useState(image?.description || '')
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
-  const { data: commentsData, isLoading: commentsLoading } = useImageComments(image?.id || '')
+  const { data: commentsData, isLoading: commentsLoading } = useImageComments(image.id)
   const createCommentMutation = useCreateComment()
+  const updateImageMutation = useUpdateImage()
+  const { data: authData } = useAuth()
+  
+  // Update local state when image prop changes
+  useEffect(() => {
+    setLocalTitle(image?.title || '')
+    setLocalDescription(image?.description || '')
+  }, [image])
+  
+  // Check if current user is the image owner
+  const isOwner = authData?.data?.user?.id === image.authorId
+  
 
-  // Map the image data if it's in backend format
-  const mappedImage = image ? mapImageData(image) : null
+
+  // Map image to include full URL and use local state for updated fields
+  const mappedImage = {
+    ...image,
+    title: localTitle,
+    description: localDescription,
+    url: getImageUrl(image.url),
+    thumbnail: getImageUrl(image.thumbnail || image.url), // Use thumbnail if available, fallback to full image
+  }
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!commentText.trim() || !mappedImage) return
+    if (!commentText.trim()) return
 
     try {
       await createCommentMutation.mutateAsync({
@@ -84,6 +119,40 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
       setCommentText('')
     } catch (error) {
       console.error('Failed to create comment:', error)
+    }
+  }
+
+  const handleStartEdit = () => {
+    // Use the local state which reflects the latest updates
+    setEditTitle(localTitle || '')
+    setEditDescription(localDescription || '')
+    setIsEditing(true)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditTitle('')
+    setEditDescription('')
+  }
+
+  const handleSaveEdit = async () => {
+    try {
+      await updateImageMutation.mutateAsync({
+        imageId: mappedImage.id,
+        altText: editTitle || undefined,
+        caption: editDescription || undefined
+      })
+      setIsEditing(false)
+      
+      // Update local state to reflect changes immediately
+      setLocalTitle(editTitle || '')
+      setLocalDescription(editDescription || '')
+      
+      // Notify parent component that image was updated
+      onImageUpdate?.()
+    } catch (error) {
+      console.error('Failed to update image:', error)
+      alert('Failed to update image. Please try again.')
     }
   }
 
@@ -276,18 +345,17 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
           exit={{ opacity: 0, scale: 0.9 }}
           className="bg-white w-full h-full flex flex-col"
         >
-          {/* Close Button */}
-          <button
-            onClick={() => {resetView(); onClose()}}
-            className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
-          >
-            <X className="h-5 w-5" />
-          </button>
-
           {/* Content */}
           <div className="flex flex-1 overflow-hidden">
             {/* Image Section */}
             <div className="flex-1 flex items-center justify-center bg-gray-100 relative overflow-hidden">
+              {/* Close Button */}
+              <button
+                onClick={() => {resetView(); onClose()}}
+                className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
               {/* Zoom Controls */}
               <div className="absolute top-4 right-4 z-20 flex flex-col space-y-2">
                 <button
@@ -327,17 +395,7 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
 
               </div>
 
-              {/* Crop Mode Indicator */}
-              {isCropMode && (
-                <div className="absolute top-4 left-4 z-20 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium">
-                  Crop Mode - Click and drag to select area
-                </div>
-              )}
-              {activeCrop && (
-                <div className="absolute top-4 left-4 z-20 bg-green-600 text-white px-3 py-1 rounded-full text-sm font-medium">
-                  Cropped View - Click Reset to restore original
-                </div>
-              )}
+
 
               {/* Image Container */}
               <div 
@@ -382,14 +440,64 @@ export function ImageDetailModal({ image, onClose }: ImageDetailModalProps) {
             <div className="w-[450px] border-l border-gray-200 flex flex-col bg-white">
               {/* Image Info */}
               <div className="p-4 border-b border-gray-200">
-                <h4 className="font-medium text-gray-900 mb-2">
-                  {mappedImage.title || 'Untitled'}
-                </h4>
-                {mappedImage.description && (
+                <div className="flex items-start justify-between mb-2">
+                  {isEditing ? (
+                    <div className="flex-1 space-y-3">
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        placeholder="Image title..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      />
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Image description..."
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+                      />
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={handleSaveEdit}
+                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors duration-200 flex items-center space-x-1"
+                        >
+                          <Save className="h-3 w-3" />
+                          Save
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600 transition-colors duration-200 flex items-center space-x-1"
+                        >
+                          <XIcon className="h-3 w-3" />
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="font-medium text-gray-900 flex-1">
+                        {localTitle || 'Untitled'}
+                      </h4>
+                      {isOwner && (
+                        <button
+                          onClick={handleStartEdit}
+                          className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-200 border border-blue-200 hover:border-blue-300"
+                          title="Edit image details"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+                
+                {!isEditing && localDescription && (
                   <p className="text-sm text-gray-600 mb-3">
-                    {mappedImage.description}
+                    {localDescription}
                   </p>
                 )}
+                
                 <div className="flex items-center text-xs text-gray-500">
                   <Calendar className="h-3 w-3 mr-1" />
                   Posted {formatDate(mappedImage.createdAt)}

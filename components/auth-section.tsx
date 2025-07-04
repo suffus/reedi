@@ -76,7 +76,6 @@ export function AuthSection() {
   }
 
   const isLoading = loginMutation.isPending || registerMutation.isPending
-
   return (
     <div className="card-elevated max-w-md mx-auto bg-white/95 backdrop-blur-md shadow-2xl border-primary-100">
       <div className="text-center mb-10">

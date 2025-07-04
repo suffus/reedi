@@ -1,5 +1,9 @@
 // API configuration
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api'
+export const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8088'
+
+// Image serving configuration
+export const IMAGE_BASE_URL = process.env.NEXT_PUBLIC_IMAGE_BASE_URL || BACKEND_BASE_URL
 
 // API endpoints
 export const API_ENDPOINTS = {
@@ -79,6 +83,29 @@ export const getAuthHeaders = (token?: string) => {
   }
   
   return headers
+}
+
+// Helper function to get full image URL
+export const getImageUrl = (imagePath: string): string => {
+  if (!imagePath) return ''
+  
+  // If it's already a full URL, return as is
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  
+  // If it's a data URL, return as is
+  if (imagePath.startsWith('data:')) {
+    return imagePath
+  }
+  
+  // For relative paths starting with /uploads, use the appropriate base URL
+  if (imagePath.startsWith('/uploads/')) {
+    return `${IMAGE_BASE_URL}${imagePath}`
+  }
+  
+  // Default: assume it's a relative path and prepend the appropriate base URL
+  return `${IMAGE_BASE_URL}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`
 }
 
 // Helper function to handle API responses

@@ -120,13 +120,15 @@ model Reaction {
 
 model Image {
   id          String   @id @default(cuid())
-  url         String
+  url         String   // Path to the full-size image file
+  thumbnail   String?  // Path to the thumbnail image file
   altText     String?
   caption     String?
   width       Int?
   height      Int?
   size        Int?     // File size in bytes
   mimeType    String?
+  tags        String[] @default([])  // Array of tag strings
   postId      String?
   authorId    String
   galleryId   String?

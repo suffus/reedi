@@ -2,12 +2,13 @@
 
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, X, Image as ImageIcon, Tag, FileText } from 'lucide-react'
+import { Upload, X, Image as ImageIcon, Tag, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { useUploadImage } from '../../lib/api-hooks'
 
 interface ImageUploaderProps {
   userId: string
   onClose: () => void
+  onUploadComplete?: () => void
 }
 
 interface UploadFile {
@@ -18,9 +19,19 @@ interface UploadFile {
   tags: string[]
 }
 
-export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
+interface UploadProgress {
+  [key: number]: {
+    status: 'pending' | 'uploading' | 'success' | 'error'
+    progress?: number
+    error?: string
+  }
+}
+
+export function ImageUploader({ userId, onClose, onUploadComplete }: ImageUploaderProps) {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [dragActive, setDragActive] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const uploadImageMutation = useUploadImage()
@@ -70,6 +81,12 @@ export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
 
   const removeFile = (index: number) => {
     setUploadFiles(prev => prev.filter((_, i) => i !== index))
+    // Clear progress for removed file
+    setUploadProgress(prev => {
+      const newProgress = { ...prev }
+      delete newProgress[index]
+      return newProgress
+    })
   }
 
   const updateFile = (index: number, updates: Partial<UploadFile>) => {
@@ -95,24 +112,106 @@ export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
   const handleUpload = async () => {
     if (uploadFiles.length === 0) return
 
-    try {
-      for (const uploadFile of uploadFiles) {
-        const formData = new FormData()
-        formData.append('image', uploadFile.file)
-        formData.append('title', uploadFile.title)
-        formData.append('description', uploadFile.description)
-        formData.append('tags', JSON.stringify(uploadFile.tags))
-        formData.append('userId', userId)
+    setIsUploading(true)
+    
+    // Initialize progress for all files
+    const initialProgress: UploadProgress = {}
+    uploadFiles.forEach((_, index) => {
+      initialProgress[index] = { status: 'pending' }
+    })
+    setUploadProgress(initialProgress)
 
-        await uploadImageMutation.mutateAsync(formData)
+    const results = []
+    let hasErrors = false
+
+    try {
+      for (let i = 0; i < uploadFiles.length; i++) {
+        const uploadFile = uploadFiles[i]
+        
+        // Update status to uploading
+        setUploadProgress(prev => ({
+          ...prev,
+          [i]: { status: 'uploading', progress: 0 }
+        }))
+
+        try {
+          const formData = new FormData()
+          formData.append('image', uploadFile.file)
+          formData.append('title', uploadFile.title)
+          formData.append('description', uploadFile.description)
+          formData.append('tags', JSON.stringify(uploadFile.tags))
+          formData.append('userId', userId)
+
+          // Simulate progress updates (since we can't get real progress from the mutation)
+          const progressInterval = setInterval(() => {
+            setUploadProgress(prev => ({
+              ...prev,
+              [i]: { 
+                ...prev[i], 
+                progress: Math.min((prev[i]?.progress || 0) + Math.random() * 20, 90)
+              }
+            }))
+          }, 200)
+
+          const result = await uploadImageMutation.mutateAsync(formData)
+          
+          console.log('Upload result:', result)
+          
+          clearInterval(progressInterval)
+          
+          // Mark as success
+          setUploadProgress(prev => ({
+            ...prev,
+            [i]: { status: 'success', progress: 100 }
+          }))
+          
+          results.push(result)
+        } catch (error) {
+          hasErrors = true
+          console.error(`Upload failed for file ${i}:`, error)
+          
+          // Mark as error
+          setUploadProgress(prev => ({
+            ...prev,
+            [i]: { 
+              status: 'error', 
+              error: error instanceof Error ? error.message : 'Upload failed'
+            }
+          }))
+        }
       }
 
-      onClose()
+      // Wait a moment to show completion status and ensure DB transaction is committed
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      if (!hasErrors) {
+        // All uploads successful
+        onUploadComplete?.()
+        onClose()
+      } else {
+        // Some uploads failed - let user decide what to do
+        const successCount = Object.values(uploadProgress).filter(p => p.status === 'success').length
+        const errorCount = Object.values(uploadProgress).filter(p => p.status === 'error').length
+        
+        if (successCount > 0) {
+          // Some succeeded - refresh gallery and close
+          onUploadComplete?.()
+          onClose()
+        }
+        // If all failed, dialog stays open so user can retry
+      }
     } catch (error) {
-      console.error('Upload failed:', error)
-      alert('Failed to upload images. Please try again.')
+      console.error('Upload process failed:', error)
+    } finally {
+      setIsUploading(false)
     }
   }
+
+  const canClose = !isUploading && uploadFiles.length === 0
+  const canUpload = uploadFiles.length > 0 && !isUploading
+  const hasUploads = uploadFiles.length > 0
+  const hasErrors = Object.values(uploadProgress).some(p => p.status === 'error')
+  const allSuccessful = hasUploads && Object.values(uploadProgress).every(p => p.status === 'success')
 
   return (
     <AnimatePresence>
@@ -125,18 +224,83 @@ export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Upload Images</h2>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {isUploading ? 'Uploading Images...' : 'Upload Images'}
+            </h2>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors duration-200"
+              disabled={isUploading}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                isUploading 
+                  ? 'text-gray-400 cursor-not-allowed' 
+                  : 'text-gray-500 hover:bg-gray-100'
+              }`}
             >
-              <X className="h-5 w-5 text-gray-500" />
+              <X className="h-5 w-5" />
             </button>
           </div>
 
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+            {/* Upload Progress */}
+            {isUploading && (
+              <div className="mb-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Upload Progress
+                </h3>
+                <div className="space-y-3">
+                  {uploadFiles.map((file, index) => {
+                    const progress = uploadProgress[index]
+                    return (
+                      <div key={index} className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {file.title}
+                          </span>
+                          <div className="flex items-center space-x-2">
+                            {progress?.status === 'pending' && (
+                              <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                            )}
+                            {progress?.status === 'uploading' && (
+                              <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+                            )}
+                            {progress?.status === 'success' && (
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                            )}
+                            {progress?.status === 'error' && (
+                              <AlertCircle className="h-4 w-4 text-red-500" />
+                            )}
+                          </div>
+                        </div>
+                        
+                        {progress?.status === 'uploading' && (
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${progress.progress || 0}%` }}
+                            />
+                          </div>
+                        )}
+                        
+                        {progress?.status === 'success' && (
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-green-500 h-2 rounded-full" style={{ width: '100%' }} />
+                          </div>
+                        )}
+                        
+                        {progress?.status === 'error' && (
+                          <div className="text-sm text-red-600">
+                            {progress.error}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Upload Area */}
-            {uploadFiles.length === 0 && (
+            {!isUploading && uploadFiles.length === 0 && (
               <div
                 className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
                   dragActive
@@ -174,7 +338,7 @@ export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
             )}
 
             {/* Uploaded Files */}
-            {uploadFiles.length > 0 && (
+            {!isUploading && uploadFiles.length > 0 && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium text-gray-900">
@@ -291,23 +455,30 @@ export function ImageUploader({ userId, onClose }: ImageUploaderProps) {
           </div>
 
           {/* Footer */}
-          {uploadFiles.length > 0 && (
+          {hasUploads && (
             <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-200">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium"
+                disabled={isUploading}
+                className={`px-4 py-2 font-medium transition-colors duration-200 ${
+                  isUploading 
+                    ? 'text-gray-400 cursor-not-allowed' 
+                    : 'text-gray-700 hover:text-gray-900'
+                }`}
               >
-                Cancel
+                {isUploading ? 'Uploading...' : 'Cancel'}
               </button>
-              <button
-                type="button"
-                onClick={handleUpload}
-                disabled={uploadImageMutation.isPending}
-                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {uploadImageMutation.isPending ? 'Uploading...' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'Image' : 'Images'}`}
-              </button>
+              {!isUploading && (
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={!canUpload}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {allSuccessful ? 'Upload Complete' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'Image' : 'Images'}`}
+                </button>
+              )}
             </div>
           )}
         </motion.div>
