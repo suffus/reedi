@@ -11,7 +11,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
     const [posts, total] = await Promise.all([
         index_1.prisma.post.findMany({
             where: {
-                isPublished: true,
+                publicationStatus: 'PUBLIC',
                 isPrivate: false
             },
             include: {
@@ -40,6 +40,10 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
                         comments: true,
                         reactions: true
                     }
+                },
+                images: {
+                    include: { image: true },
+                    orderBy: { order: 'asc' }
                 }
             },
             skip: offset,
@@ -48,15 +52,19 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
         }),
         index_1.prisma.post.count({
             where: {
-                isPublished: true,
+                publicationStatus: 'PUBLIC',
                 isPrivate: false
             }
         })
     ]);
+    const postsWithOrderedImages = posts.map(post => ({
+        ...post,
+        images: post.images.map(pi => pi.image)
+    }));
     res.json({
         success: true,
         data: {
-            posts,
+            posts: postsWithOrderedImages,
             pagination: {
                 page: Number(page),
                 limit: Number(limit),
@@ -73,10 +81,11 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
     const { page = 1, limit = 20 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     const [posts, total] = await Promise.all([
         index_1.prisma.post.findMany({
@@ -89,16 +98,20 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
                                     followerId: userId
                                 }
                             }
+                        },
+                        publicationStatus: 'PUBLIC'
+                    },
+                    {
+                        isPrivate: false,
+                        publicationStatus: 'PUBLIC'
+                    },
+                    {
+                        authorId: userId,
+                        publicationStatus: {
+                            in: ['PUBLIC', 'PAUSED']
                         }
-                    },
-                    {
-                        isPrivate: false
-                    },
-                    {
-                        authorId: userId
                     }
-                ],
-                isPublished: true
+                ]
             },
             include: {
                 author: {
@@ -126,6 +139,10 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
                         comments: true,
                         reactions: true
                     }
+                },
+                images: {
+                    include: { image: true },
+                    orderBy: { order: 'asc' }
                 }
             },
             skip: offset,
@@ -142,23 +159,31 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
                                     followerId: userId
                                 }
                             }
+                        },
+                        publicationStatus: 'PUBLIC'
+                    },
+                    {
+                        isPrivate: false,
+                        publicationStatus: 'PUBLIC'
+                    },
+                    {
+                        authorId: userId,
+                        publicationStatus: {
+                            in: ['PUBLIC', 'PAUSED']
                         }
-                    },
-                    {
-                        isPrivate: false
-                    },
-                    {
-                        authorId: userId
                     }
-                ],
-                isPublished: true
+                ]
             }
         })
     ]);
+    const postsWithOrderedImages = posts.map(post => ({
+        ...post,
+        images: post.images.map(pi => pi.image)
+    }));
     res.json({
         success: true,
         data: {
-            posts,
+            posts: postsWithOrderedImages,
             pagination: {
                 page: Number(page),
                 limit: Number(limit),
@@ -172,12 +197,29 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
 }));
 router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
-    const { title, content, isPrivate, hashtags, mentions } = req.body;
+    const { title, content, isPrivate, hashtags, mentions, imageIds } = req.body;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
+    }
+    if (imageIds && imageIds.length > 0) {
+        const userImages = await index_1.prisma.image.findMany({
+            where: {
+                id: { in: imageIds },
+                authorId: userId
+            },
+            select: { id: true }
+        });
+        if (userImages.length !== imageIds.length) {
+            res.status(400).json({
+                success: false,
+                error: 'Some images do not belong to you or do not exist'
+            });
+            return;
+        }
     }
     const post = await index_1.prisma.post.create({
         data: {
@@ -204,9 +246,40 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
             hashtags: true
         }
     });
+    if (imageIds && imageIds.length > 0) {
+        await index_1.prisma.postImage.createMany({
+            data: imageIds.map((imageId, index) => ({
+                postId: post.id,
+                imageId,
+                order: index
+            }))
+        });
+    }
+    const postWithImages = await index_1.prisma.post.findUnique({
+        where: { id: post.id },
+        include: {
+            author: {
+                select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    avatar: true
+                }
+            },
+            hashtags: true,
+            images: {
+                include: { image: true },
+                orderBy: { order: 'asc' }
+            }
+        }
+    });
+    const postWithOrderedImages = {
+        ...postWithImages,
+        images: postWithImages?.images.map(pi => pi.image) || []
+    };
     res.status(201).json({
         success: true,
-        data: { post },
+        data: { post: postWithOrderedImages },
         message: 'Post created successfully'
     });
 }));
@@ -239,51 +312,93 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
                 orderBy: { createdAt: 'asc' }
             },
             reactions: true,
-            images: true,
+            images: {
+                include: { image: true },
+                orderBy: { order: 'asc' }
+            },
             hashtags: true
         }
     });
     if (!post) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'Post not found'
         });
+        return;
+    }
+    if (post.publicationStatus === 'DELETED') {
+        res.status(404).json({
+            success: false,
+            error: 'Post not found'
+        });
+        return;
+    }
+    if (post.publicationStatus === 'PAUSED' && post.authorId !== userId) {
+        res.status(404).json({
+            success: false,
+            error: 'Post not found'
+        });
+        return;
     }
     if (post.isPrivate && post.authorId !== userId) {
-        return res.status(403).json({
+        res.status(403).json({
             success: false,
             error: 'Access denied'
         });
+        return;
     }
+    const postWithOrderedImages = {
+        ...post,
+        images: post.images.map(pi => pi.image)
+    };
     res.json({
         success: true,
-        data: { post }
+        data: { post: postWithOrderedImages }
     });
 }));
 router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
     const { id } = req.params;
-    const { title, content, isPrivate, hashtags } = req.body;
+    const { title, content, isPrivate, hashtags, imageIds } = req.body;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     const post = await index_1.prisma.post.findUnique({
         where: { id }
     });
     if (!post) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'Post not found'
         });
+        return;
     }
     if (post.authorId !== userId) {
-        return res.status(403).json({
+        res.status(403).json({
             success: false,
             error: 'Not authorized to update this post'
         });
+        return;
+    }
+    if (imageIds && imageIds.length > 0) {
+        const userImages = await index_1.prisma.image.findMany({
+            where: {
+                id: { in: imageIds },
+                authorId: userId
+            },
+            select: { id: true }
+        });
+        if (userImages.length !== imageIds.length) {
+            res.status(400).json({
+                success: false,
+                error: 'Some images do not belong to you or do not exist'
+            });
+            return;
+        }
     }
     const updatedPost = await index_1.prisma.post.update({
         where: { id },
@@ -311,9 +426,45 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
             hashtags: true
         }
     });
+    if (imageIds) {
+        await index_1.prisma.postImage.deleteMany({
+            where: { postId: id }
+        });
+        if (imageIds.length > 0) {
+            await index_1.prisma.postImage.createMany({
+                data: imageIds.map((imageId, index) => ({
+                    postId: id,
+                    imageId,
+                    order: index
+                }))
+            });
+        }
+    }
+    const postWithImages = await index_1.prisma.post.findUnique({
+        where: { id },
+        include: {
+            author: {
+                select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    avatar: true
+                }
+            },
+            hashtags: true,
+            images: {
+                include: { image: true },
+                orderBy: { order: 'asc' }
+            }
+        }
+    });
+    const postWithOrderedImages = {
+        ...postWithImages,
+        images: postWithImages?.images.map(pi => pi.image) || []
+    };
     res.json({
         success: true,
-        data: { post: updatedPost },
+        data: { post: postWithOrderedImages },
         message: 'Post updated successfully'
     });
 }));
@@ -321,25 +472,28 @@ router.delete('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(as
     const userId = req.user?.id;
     const { id } = req.params;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     const post = await index_1.prisma.post.findUnique({
         where: { id }
     });
     if (!post) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'Post not found'
         });
+        return;
     }
     if (post.authorId !== userId) {
-        return res.status(403).json({
+        res.status(403).json({
             success: false,
             error: 'Not authorized to delete this post'
         });
+        return;
     }
     await index_1.prisma.post.delete({
         where: { id }
@@ -375,19 +529,21 @@ router.post('/:postId/reactions', auth_1.authMiddleware, (0, errorHandler_1.asyn
     const { postId } = req.params;
     const { type = 'LIKE' } = req.body;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     const post = await index_1.prisma.post.findUnique({
         where: { id: postId }
     });
     if (!post) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'Post not found'
         });
+        return;
     }
     const existingReaction = await index_1.prisma.reaction.findFirst({
         where: {
@@ -410,11 +566,12 @@ router.post('/:postId/reactions', auth_1.authMiddleware, (0, errorHandler_1.asyn
                 }
             }
         });
-        return res.json({
+        res.json({
             success: true,
             data: { reaction: updatedReaction },
             message: 'Reaction updated successfully'
         });
+        return;
     }
     const reaction = await index_1.prisma.reaction.create({
         data: {
@@ -443,10 +600,11 @@ router.delete('/:postId/reactions', auth_1.authMiddleware, (0, errorHandler_1.as
     const userId = req.user?.id;
     const { postId } = req.params;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     const reaction = await index_1.prisma.reaction.findFirst({
         where: {
@@ -455,10 +613,11 @@ router.delete('/:postId/reactions', auth_1.authMiddleware, (0, errorHandler_1.as
         }
     });
     if (!reaction) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'Reaction not found'
         });
+        return;
     }
     await index_1.prisma.reaction.delete({
         where: { id: reaction.id }
@@ -466,6 +625,130 @@ router.delete('/:postId/reactions', auth_1.authMiddleware, (0, errorHandler_1.as
     res.json({
         success: true,
         message: 'Reaction removed successfully'
+    });
+}));
+router.put('/:id/images/reorder', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    const { imageIds } = req.body;
+    if (!userId) {
+        res.status(401).json({
+            success: false,
+            error: 'User not authenticated'
+        });
+        return;
+    }
+    const post = await index_1.prisma.post.findUnique({
+        where: { id },
+        include: {
+            images: {
+                include: { image: true },
+                orderBy: { order: 'asc' }
+            }
+        }
+    });
+    if (!post) {
+        res.status(404).json({
+            success: false,
+            error: 'Post not found'
+        });
+        return;
+    }
+    if (post.authorId !== userId) {
+        res.status(403).json({
+            success: false,
+            error: 'Not authorized to reorder images in this post'
+        });
+        return;
+    }
+    const postImageIds = post.images.map(pi => pi.image.id);
+    const isValidOrder = imageIds.every((imageId) => postImageIds.includes(imageId));
+    const hasAllImages = postImageIds.every(imageId => imageIds.includes(imageId));
+    if (!isValidOrder || !hasAllImages) {
+        res.status(400).json({
+            success: false,
+            error: 'Invalid image order provided'
+        });
+        return;
+    }
+    for (let i = 0; i < imageIds.length; i++) {
+        await index_1.prisma.postImage.updateMany({
+            where: {
+                postId: id,
+                imageId: imageIds[i]
+            },
+            data: {
+                order: i
+            }
+        });
+    }
+    res.json({
+        success: true,
+        message: 'Image order updated successfully'
+    });
+}));
+router.patch('/:id/status', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    const { publicationStatus } = req.body;
+    if (!userId) {
+        res.status(401).json({
+            success: false,
+            error: 'User not authenticated'
+        });
+        return;
+    }
+    const validStatuses = ['PUBLIC', 'PAUSED', 'CONTROLLED', 'DELETED'];
+    if (!validStatuses.includes(publicationStatus)) {
+        res.status(400).json({
+            success: false,
+            error: 'Invalid publication status'
+        });
+        return;
+    }
+    const post = await index_1.prisma.post.findUnique({
+        where: { id }
+    });
+    if (!post) {
+        res.status(404).json({
+            success: false,
+            error: 'Post not found'
+        });
+        return;
+    }
+    if (post.authorId !== userId) {
+        res.status(403).json({
+            success: false,
+            error: 'Not authorized to update this post'
+        });
+        return;
+    }
+    const updatedPost = await index_1.prisma.post.update({
+        where: { id },
+        data: { publicationStatus },
+        include: {
+            author: {
+                select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    avatar: true
+                }
+            },
+            images: {
+                include: { image: true },
+                orderBy: { order: 'asc' }
+            }
+        }
+    });
+    const postWithOrderedImages = {
+        ...updatedPost,
+        images: updatedPost.images.map(pi => pi.image)
+    };
+    res.json({
+        success: true,
+        data: { post: postWithOrderedImages },
+        message: 'Post status updated successfully'
     });
 }));
 exports.default = router;

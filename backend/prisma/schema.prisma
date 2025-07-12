@@ -57,20 +57,20 @@ model User {
 }
 
 model Post {
-  id          String   @id @default(cuid())
-  title       String?
-  content     String
-  isPublished Boolean  @default(true)
-  isPrivate   Boolean  @default(false)
-  authorId    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String            @id @default(cuid())
+  title             String?
+  content           String
+  publicationStatus PublicationStatus @default(PUBLIC)
+  isPrivate         Boolean           @default(false)
+  authorId          String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   // Relations
   author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments  Comment[]
   reactions Reaction[]
-  images    Image[]
+  images    PostImage[]
   hashtags  Hashtag[]
   mentions  Mention[]
   notifications Notification[]
@@ -119,24 +119,26 @@ model Reaction {
 }
 
 model Image {
-  id          String   @id @default(cuid())
-  url         String   // Path to the full-size image file
-  thumbnail   String?  // Path to the thumbnail image file
-  altText     String?
-  caption     String?
-  width       Int?
-  height      Int?
-  size        Int?     // File size in bytes
-  mimeType    String?
-  tags        String[] @default([])  // Array of tag strings
-  postId      String?
-  authorId    String
-  galleryId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  url            String   // Path to the full-size image file
+  thumbnail      String?  // Path to the thumbnail image file
+  s3Key          String?  // S3 key for the original image
+  thumbnailS3Key String?  // S3 key for the thumbnail
+  altText        String?
+  caption        String?
+  width          Int?
+  height         Int?
+  size           Int?     // File size in bytes
+  mimeType       String?
+  tags           String[] @default([])  // Array of tag strings
+  postId         String?
+  authorId       String
+  galleryId      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
-  post     Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  posts     PostImage[]
   author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   gallery  Gallery?  @relation(fields: [galleryId], references: [id], onDelete: SetNull)
   comments Comment[]
@@ -230,6 +232,18 @@ model SearchHistory {
   @@map("search_history")
 }
 
+model PostImage {
+  id      String  @id @default(cuid())
+  post    Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId  String
+  image   Image   @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  imageId String
+  order   Int
+
+  @@unique([postId, imageId])
+  @@map("post_images")
+}
+
 // Enums
 enum ReactionType {
   LIKE
@@ -238,6 +252,13 @@ enum ReactionType {
   WOW
   SAD
   ANGRY
+}
+
+enum PublicationStatus {
+  PUBLIC
+  PAUSED
+  CONTROLLED
+  DELETED
 }
 
 enum NotificationType {

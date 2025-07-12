@@ -1,18 +1,38 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const multer_1 = __importDefault(require("multer"));
 const index_1 = require("@/index");
 const errorHandler_1 = require("@/middleware/errorHandler");
 const auth_1 = require("@/middleware/auth");
 const router = (0, express_1.Router)();
+const storage = multer_1.default.memoryStorage();
+const upload = (0, multer_1.default)({
+    storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024,
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        }
+        else {
+            cb(new Error('Only image files are allowed'));
+        }
+    }
+});
 router.put('/profile', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
     const { name, username, bio, location, website, isPrivate } = req.body;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     if (username) {
         const existingUser = await index_1.prisma.user.findFirst({
@@ -22,10 +42,11 @@ router.put('/profile', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(a
             }
         });
         if (existingUser) {
-            return res.status(409).json({
+            res.status(409).json({
                 success: false,
                 error: 'Username already taken'
             });
+            return;
         }
     }
     const updatedUser = await index_1.prisma.user.update({
@@ -57,6 +78,50 @@ router.put('/profile', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(a
         success: true,
         data: { user: updatedUser },
         message: 'Profile updated successfully'
+    });
+}));
+router.post('/avatar', auth_1.authMiddleware, upload.single('avatar'), (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) {
+        res.status(401).json({
+            success: false,
+            error: 'User not authenticated'
+        });
+        return;
+    }
+    if (!req.file) {
+        res.status(400).json({
+            success: false,
+            error: 'No avatar file provided'
+        });
+        return;
+    }
+    const base64Data = req.file.buffer.toString('base64');
+    const dataUrl = `data:${req.file.mimetype};base64,${base64Data}`;
+    const updatedUser = await index_1.prisma.user.update({
+        where: { id: userId },
+        data: {
+            avatar: dataUrl
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            username: true,
+            avatar: true,
+            bio: true,
+            location: true,
+            website: true,
+            isPrivate: true,
+            isVerified: true,
+            createdAt: true,
+            updatedAt: true
+        }
+    });
+    res.json({
+        success: true,
+        data: { user: updatedUser },
+        message: 'Avatar uploaded successfully'
     });
 }));
 router.get('/:identifier', (0, errorHandler_1.asyncHandler)(async (req, res) => {
@@ -91,10 +156,11 @@ router.get('/:identifier', (0, errorHandler_1.asyncHandler)(async (req, res) => 
         }
     });
     if (!user) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'User not found'
         });
+        return;
     }
     res.json({
         success: true,
@@ -105,16 +171,18 @@ router.post('/:userId/follow', auth_1.authMiddleware, (0, errorHandler_1.asyncHa
     const followerId = req.user?.id;
     const { userId } = req.params;
     if (!followerId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     if (followerId === userId) {
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             error: 'Cannot follow yourself'
         });
+        return;
     }
     const existingFollow = await index_1.prisma.follows.findUnique({
         where: {
@@ -125,10 +193,11 @@ router.post('/:userId/follow', auth_1.authMiddleware, (0, errorHandler_1.asyncHa
         }
     });
     if (existingFollow) {
-        return res.status(409).json({
+        res.status(409).json({
             success: false,
             error: 'Already following this user'
         });
+        return;
     }
     await index_1.prisma.follows.create({
         data: {
@@ -145,10 +214,11 @@ router.delete('/:userId/follow', auth_1.authMiddleware, (0, errorHandler_1.async
     const followerId = req.user?.id;
     const { userId } = req.params;
     if (!followerId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     await index_1.prisma.follows.deleteMany({
         where: {

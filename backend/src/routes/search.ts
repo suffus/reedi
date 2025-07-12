@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { optionalAuthMiddleware } from '@/middleware/auth'
@@ -7,15 +7,16 @@ import { AuthenticatedRequest } from '@/types'
 const router = Router()
 
 // Search endpoint
-router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { q: query, type = 'all', page = 1, limit = 20 } = req.query
   const userId = req.user?.id
 
   if (!query || typeof query !== 'string') {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'Search query is required'
     })
+    return
   }
 
   const offset = (Number(page) - 1) * Number(limit)
@@ -33,7 +34,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
             { title: { contains: searchTerm, mode: 'insensitive' } },
             { content: { contains: searchTerm, mode: 'insensitive' } }
           ],
-          isPublished: true,
+          publicationStatus: 'PUBLIC',
           isPrivate: false
         },
         include: {
@@ -63,7 +64,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
             { title: { contains: searchTerm, mode: 'insensitive' } },
             { content: { contains: searchTerm, mode: 'insensitive' } }
           ],
-          isPublished: true,
+          publicationStatus: 'PUBLIC',
           isPrivate: false
         }
       })
@@ -175,14 +176,15 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
 }))
 
 // Get search suggestions
-router.get('/suggestions', asyncHandler(async (req, res) => {
+router.get('/suggestions', asyncHandler(async (req: Request, res: Response) => {
   const { q: query } = req.query
 
   if (!query || typeof query !== 'string') {
-    return res.json({
+    res.json({
       success: true,
       data: { suggestions: [] }
     })
+    return
   }
 
   const searchTerm = query.toLowerCase()

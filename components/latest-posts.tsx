@@ -46,10 +46,10 @@ export function LatestPosts() {
       {mockPosts.map((post, index) => (
         <motion.article
           key={post.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: index * 0.1 }}
-          className="card hover:shadow-lg transition-all duration-300 cursor-pointer border-primary-100"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: index * 0.05 }}
+          className="card hover:shadow-lg transition-shadow duration-200 cursor-pointer border-primary-100"
         >
           <div className="flex space-x-6">
             <div className="flex-shrink-0">
@@ -73,15 +73,15 @@ export function LatestPosts() {
               
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-6 text-sm text-primary-500">
-                  <button className="flex items-center space-x-2 hover:text-primary-900 transition-colors duration-300">
+                  <button className="flex items-center space-x-2 hover:text-primary-900 transition-colors duration-200">
                     <Heart className="h-5 w-5" />
                     <span>{post.likes}</span>
                   </button>
-                  <button className="flex items-center space-x-2 hover:text-primary-900 transition-colors duration-300">
+                  <button className="flex items-center space-x-2 hover:text-primary-900 transition-colors duration-200">
                     <MessageCircle className="h-5 w-5" />
                     <span>{post.comments}</span>
                   </button>
-                  <button className="flex items-center space-x-2 hover:text-primary-900 transition-colors duration-300">
+                  <button className="flex items-center space-x-2 hover:text-primary-900 transition-colors duration-200">
                     <Share2 className="h-5 w-5" />
                     <span>Share</span>
                   </button>
@@ -99,7 +99,7 @@ export function LatestPosts() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.4 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
         className="text-center pt-6"
       >
         <button className="btn-outline">

@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
@@ -30,7 +30,7 @@ const generateToken = (userId: string): string => {
 }
 
 // Register new user
-router.post('/register', asyncHandler(async (req, res) => {
+router.post('/register', asyncHandler(async (req: Request, res: Response) => {
   const { name, email, username, password } = registerSchema.parse(req.body)
 
   // Check if user already exists
@@ -44,10 +44,11 @@ router.post('/register', asyncHandler(async (req, res) => {
   })
 
   if (existingUser) {
-    return res.status(409).json({
+    res.status(409).json({
       success: false,
       error: 'User with this email or username already exists'
     })
+    return
   }
 
   // Hash password
@@ -91,7 +92,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 }))
 
 // Login user
-router.post('/login', asyncHandler(async (req, res) => {
+router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = loginSchema.parse(req.body)
 
   // Find user
@@ -100,20 +101,22 @@ router.post('/login', asyncHandler(async (req, res) => {
   })
 
   if (!user) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'Invalid email or password'
     })
+    return
   }
 
   // Check password
   const isPasswordValid = await bcrypt.compare(password, user.password)
 
   if (!isPasswordValid) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'Invalid email or password'
     })
+    return
   }
 
   // Generate token
@@ -133,14 +136,15 @@ router.post('/login', asyncHandler(async (req, res) => {
 }))
 
 // Get current user
-router.get('/me', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.get('/me', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user
 
   if (!user) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not found'
     })
+    return
   }
 
   res.json({
@@ -150,15 +154,16 @@ router.get('/me', authMiddleware, asyncHandler(async (req: AuthenticatedRequest,
 }))
 
 // Update user profile
-router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { name, username, bio, location, website, isPrivate } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   // Check if username is already taken (if provided)
@@ -171,10 +176,11 @@ router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedReq
     })
 
     if (existingUser) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         error: 'Username already taken'
       })
+      return
     }
   }
 
@@ -212,29 +218,32 @@ router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedReq
 }))
 
 // Change password
-router.put('/change-password', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.put('/change-password', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { currentPassword, newPassword } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   if (!currentPassword || !newPassword) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'Current password and new password are required'
     })
+    return
   }
 
   if (newPassword.length < 6) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'New password must be at least 6 characters'
     })
+    return
   }
 
   // Get user with password
@@ -243,20 +252,22 @@ router.put('/change-password', authMiddleware, asyncHandler(async (req: Authenti
   })
 
   if (!user) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'User not found'
     })
+    return
   }
 
   // Verify current password
   const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password)
 
   if (!isCurrentPasswordValid) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'Current password is incorrect'
     })
+    return
   }
 
   // Hash new password

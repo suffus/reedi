@@ -85,10 +85,11 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
   const { name, description, isPrivate } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const gallery = await prisma.gallery.create({
@@ -129,10 +130,11 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   })
 
   if (!gallery) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Gallery not found'
     })
+    return
   }
 
   res.json({
@@ -148,10 +150,11 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
   const { name, description, isPrivate } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const gallery = await prisma.gallery.findUnique({
@@ -159,17 +162,19 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
   })
 
   if (!gallery) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Gallery not found'
     })
+    return
   }
 
   if (gallery.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to update this gallery'
     })
+    return
   }
 
   const updatedGallery = await prisma.gallery.update({
@@ -194,10 +199,11 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   const { id } = req.params
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const gallery = await prisma.gallery.findUnique({
@@ -205,17 +211,19 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   })
 
   if (!gallery) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Gallery not found'
     })
+    return
   }
 
   if (gallery.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to delete this gallery'
     })
+    return
   }
 
   await prisma.gallery.delete({

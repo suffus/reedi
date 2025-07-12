@@ -9,10 +9,11 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
     const { q: query, type = 'all', page = 1, limit = 20 } = req.query;
     const userId = req.user?.id;
     if (!query || typeof query !== 'string') {
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             error: 'Search query is required'
         });
+        return;
     }
     const offset = (Number(page) - 1) * Number(limit);
     const searchTerm = query.toLowerCase();
@@ -26,7 +27,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
                         { title: { contains: searchTerm, mode: 'insensitive' } },
                         { content: { contains: searchTerm, mode: 'insensitive' } }
                     ],
-                    isPublished: true,
+                    publicationStatus: 'PUBLIC',
                     isPrivate: false
                 },
                 include: {
@@ -56,7 +57,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
                         { title: { contains: searchTerm, mode: 'insensitive' } },
                         { content: { contains: searchTerm, mode: 'insensitive' } }
                     ],
-                    isPublished: true,
+                    publicationStatus: 'PUBLIC',
                     isPrivate: false
                 }
             })
@@ -159,10 +160,11 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
 router.get('/suggestions', (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const { q: query } = req.query;
     if (!query || typeof query !== 'string') {
-        return res.json({
+        res.json({
             success: true,
             data: { suggestions: [] }
         });
+        return;
     }
     const searchTerm = query.toLowerCase();
     const [users, hashtags] = await Promise.all([

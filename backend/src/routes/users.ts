@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
@@ -24,15 +24,16 @@ const upload = multer({
 })
 
 // Update user profile
-router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { name, username, bio, location, website, isPrivate } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   // Check if username is already taken by another user
@@ -45,10 +46,11 @@ router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedReq
     })
 
     if (existingUser) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         error: 'Username already taken'
       })
+      return
     }
   }
 
@@ -86,21 +88,23 @@ router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedReq
 }))
 
 // Upload avatar
-router.post('/avatar', authMiddleware, upload.single('avatar'), asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/avatar', authMiddleware, upload.single('avatar'), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   if (!req.file) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'No avatar file provided'
     })
+    return
   }
 
   // For now, we'll store the file data as a base64 string
@@ -137,7 +141,7 @@ router.post('/avatar', authMiddleware, upload.single('avatar'), asyncHandler(asy
 }))
 
 // Get user profile by ID or username
-router.get('/:identifier', asyncHandler(async (req, res) => {
+router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
   const { identifier } = req.params
 
   const user = await prisma.user.findFirst({
@@ -171,10 +175,11 @@ router.get('/:identifier', asyncHandler(async (req, res) => {
   })
 
   if (!user) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'User not found'
     })
+    return
   }
 
   res.json({
@@ -184,22 +189,24 @@ router.get('/:identifier', asyncHandler(async (req, res) => {
 }))
 
 // Follow a user
-router.post('/:userId/follow', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/:userId/follow', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const followerId = req.user?.id
   const { userId } = req.params
 
   if (!followerId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   if (followerId === userId) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'Cannot follow yourself'
     })
+    return
   }
 
   // Check if already following
@@ -213,10 +220,11 @@ router.post('/:userId/follow', authMiddleware, asyncHandler(async (req: Authenti
   })
 
   if (existingFollow) {
-    return res.status(409).json({
+    res.status(409).json({
       success: false,
       error: 'Already following this user'
     })
+    return
   }
 
   // Create follow relationship
@@ -234,15 +242,16 @@ router.post('/:userId/follow', authMiddleware, asyncHandler(async (req: Authenti
 }))
 
 // Unfollow a user
-router.delete('/:userId/follow', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.delete('/:userId/follow', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const followerId = req.user?.id
   const { userId } = req.params
 
   if (!followerId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   // Delete follow relationship
@@ -260,7 +269,7 @@ router.delete('/:userId/follow', authMiddleware, asyncHandler(async (req: Authen
 }))
 
 // Get user's followers
-router.get('/:userId/followers', asyncHandler(async (req, res) => {
+router.get('/:userId/followers', asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params
   const { page = 1, limit = 20 } = req.query
 
@@ -306,7 +315,7 @@ router.get('/:userId/followers', asyncHandler(async (req, res) => {
 }))
 
 // Get user's following
-router.get('/:userId/following', asyncHandler(async (req, res) => {
+router.get('/:userId/following', asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params
   const { page = 1, limit = 20 } = req.query
 

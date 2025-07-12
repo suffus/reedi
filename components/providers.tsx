@@ -28,6 +28,7 @@ export function Providers({ children }: ProvidersProps) {
       queries: {
         staleTime: 60 * 1000, // 1 minute
         retry: 1,
+        refetchOnWindowFocus: false, // Disable refetch on window focus for better performance
       },
     },
   }))
@@ -35,7 +36,9 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <ReactQueryDevtools initialIsOpen={false} />
+      {process.env.NODE_ENV === 'development' && (
+        <ReactQueryDevtools initialIsOpen={false} />
+      )}
     </QueryClientProvider>
   )
 } 

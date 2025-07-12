@@ -1,14 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send, Image as ImageIcon, Tag } from 'lucide-react'
-import { usePostsFeed, useCreatePost, usePostReaction, useComments, useCreateComment } from '../../lib/api-hooks'
+import { usePostsFeed, useCreatePost, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostImages } from '../../lib/api-hooks'
+import { ImageSelectorModal } from './image-selector-modal'
+import { ImageDetailModal } from './image-detail-modal'
+import { PostMenu } from './post-menu'
+import { getImageUrl, getImageUrlFromImage } from '../../lib/api'
+import { LazyImage } from '../lazy-image'
 
 interface Post {
   id: string
   content: string
-  images: string[]
+  publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
+  authorId: string
+  images: {
+    id: string
+    url: string
+    thumbnail?: string | null
+    altText?: string | null
+    caption?: string | null
+    width?: number | null
+    height?: number | null
+  }[]
   createdAt: string
   author: {
     id: string
@@ -54,11 +69,20 @@ export function PersonalFeed() {
   const [newPost, setNewPost] = useState('')
   const [newComments, setNewComments] = useState<{ [postId: string]: string }>({})
   const [showComments, setShowComments] = useState<{ [postId: string]: boolean }>({})
+  const [selectedImages, setSelectedImages] = useState<any[]>([])
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false)
+  const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
+  const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false)
+
+  const { data: authData, isLoading: authLoading } = useAuth()
+  const userId = authData?.data?.user?.id
+  const user = authData?.data?.user
 
   const { data: postsData, isLoading } = usePostsFeed()
   const createPostMutation = useCreatePost()
   const postReactionMutation = usePostReaction()
   const createCommentMutation = useCreateComment()
+  const reorderImagesMutation = useReorderPostImages()
 
   const posts = postsData?.data?.posts || []
 
@@ -68,9 +92,11 @@ export function PersonalFeed() {
 
     try {
       await createPostMutation.mutateAsync({
-        content: newPost
+        content: newPost,
+        imageIds: selectedImages.map(img => img.id)
       })
       setNewPost('')
+      setSelectedImages([])
     } catch (error) {
       console.error('Failed to create post:', error)
     }
@@ -121,6 +147,398 @@ export function PersonalFeed() {
     })
   }
 
+  const handleImageClick = async (image: any) => {
+    try {
+      // Fetch complete image data from backend
+      const token = localStorage.getItem('token')
+      if (!token) return
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api'}/images/${image.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch image details')
+      }
+      
+      const data = await response.json()
+      if (data.success) {
+        // Map the backend image data to the format expected by ImageDetailModal
+        const mappedImage = {
+          id: data.data.image.id,
+          s3Key: data.data.image.s3Key || data.data.image.url,
+          thumbnailS3Key: data.data.image.thumbnailS3Key || data.data.image.thumbnail || data.data.image.url,
+          url: data.data.image.s3Key || data.data.image.url, // Keep for backward compatibility
+          thumbnail: data.data.image.thumbnailS3Key || data.data.image.thumbnail || data.data.image.url, // Keep for backward compatibility
+          title: data.data.image.altText || data.data.image.title,
+          description: data.data.image.caption || data.data.image.description,
+          createdAt: data.data.image.createdAt,
+          authorId: data.data.image.authorId,
+          tags: data.data.image.tags || [],
+          metadata: {
+            width: data.data.image.width || 0,
+            height: data.data.image.height || 0,
+            size: data.data.image.size || 0,
+            format: data.data.image.mimeType || 'unknown'
+          }
+        }
+        setSelectedImageForDetail(mappedImage)
+        setIsImageDetailModalOpen(true)
+      }
+    } catch (error) {
+      console.error('Failed to fetch image details:', error)
+      // Fallback to using the post image data if fetch fails
+      // Ensure the fallback image has the correct structure
+      const fallbackImage = {
+        id: image.id,
+        s3Key: image.s3Key || image.url,
+        thumbnailS3Key: image.thumbnailS3Key || image.thumbnail || image.url,
+        url: image.s3Key || image.url,
+        thumbnail: image.thumbnailS3Key || image.thumbnail || image.url,
+        title: image.altText || image.title,
+        description: image.caption || image.description,
+        createdAt: image.createdAt,
+        authorId: image.authorId,
+        tags: image.tags || [],
+        metadata: {
+          width: image.width || 0,
+          height: image.height || 0,
+          size: image.size || 0,
+          format: image.mimeType || 'unknown'
+        }
+      }
+      setSelectedImageForDetail(fallbackImage)
+      setIsImageDetailModalOpen(true)
+    }
+  }
+
+  // Helper component for post image layout
+  function PostImagesDisplay({ 
+    images, 
+    onImageClick, 
+    postId, 
+    isOwner 
+  }: { 
+    images: Post["images"], 
+    onImageClick: (image: any) => void,
+    postId: string,
+    isOwner: boolean
+  }) {
+    const [draggedImage, setDraggedImage] = useState<any>(null)
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+    const [isDragging, setIsDragging] = useState(false)
+    const [isReordering, setIsReordering] = useState(false)
+    const [reorderedImages, setReorderedImages] = useState<Post["images"]>(images)
+    
+    // Update reordered images when images prop changes
+    useEffect(() => {
+      setReorderedImages(images)
+    }, [images])
+    
+    if (!reorderedImages || reorderedImages.length === 0) return null;
+    
+    // Show reorder indicator for post owners
+    const showReorderHint = isOwner && reorderedImages.length > 1;
+    
+    const handleDragStart = (e: React.DragEvent, image: any, index: number) => {
+      if (!isOwner) return
+      setDraggedImage(image)
+      setIsDragging(true)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', index.toString())
+    }
+    
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDragOverIndex(index)
+    }
+    
+    const handleDragLeave = () => {
+      setDragOverIndex(null)
+    }
+    
+    const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+      e.preventDefault()
+      if (draggedImage === null || !isOwner) return
+      
+      const dragIndex = parseInt(e.dataTransfer.getData('text/plain'))
+      if (dragIndex === dropIndex) return
+      
+      const newImages = [...reorderedImages]
+      const [draggedItem] = newImages.splice(dragIndex, 1)
+      newImages.splice(dropIndex, 0, draggedItem)
+      
+      setReorderedImages(newImages)
+      setDraggedImage(null)
+      setDragOverIndex(null)
+      setIsDragging(false)
+      setIsReordering(true)
+      
+      // Persist the new order to the backend
+      try {
+        const imageIds = newImages.map(img => typeof img === 'string' ? img : img.id)
+        await reorderImagesMutation.mutateAsync({ postId, imageIds })
+        // Show success feedback (you could add a toast notification here)
+        console.log('Image order updated successfully')
+      } catch (error) {
+        console.error('Failed to persist image order:', error)
+        // Revert to original order on error
+        setReorderedImages(images)
+        // Show error feedback (you could add a toast notification here)
+        alert('Failed to update image order. Please try again.')
+      } finally {
+        setIsReordering(false)
+      }
+    }
+    
+    const handleDragEnd = () => {
+      setDraggedImage(null)
+      setDragOverIndex(null)
+      setIsDragging(false)
+    }
+    
+    if (reorderedImages.length === 1) {
+      const img = reorderedImages[0];
+                    const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
+      return (
+        <div className="mb-4 relative">
+          {showReorderHint && (
+            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full z-10">
+              {isReordering ? 'Updating...' : 'Drag to reorder'}
+            </div>
+          )}
+          <LazyImage
+            src={imageUrl}
+            alt={typeof img === 'string' ? 'Post image' : (img.caption || img.altText || 'Post image')}
+            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+            style={{
+              height: 'auto',
+              width: '100%',
+              display: 'block'
+            }}
+            onClick={() => onImageClick(img)}
+            draggable={isOwner}
+            onDragStart={(e) => handleDragStart(e, img, 0)}
+            onDragOver={(e) => handleDragOver(e, 0)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, 0)}
+            onDragEnd={handleDragEnd}
+            showProgressiveEffect={true}
+          />
+        </div>
+      );
+    }
+    
+        if (reorderedImages.length === 2 || reorderedImages.length === 3) {
+      return (
+        <div className="mb-4 relative">
+          {showReorderHint && (
+            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full z-10">
+              {isReordering ? 'Updating...' : 'Drag to reorder'}
+            </div>
+          )}
+          <div className={`grid grid-cols-${reorderedImages.length} gap-2`}>
+          {reorderedImages.map((img, idx) => {
+              const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
+                              return (
+                  <div
+                    key={typeof img === 'string' ? idx : img.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, img, idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, idx)}
+                    onDragEnd={handleDragEnd}
+                    className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                  >
+                    <LazyImage
+                      src={imageUrl}
+                      alt={typeof img === 'string' ? `Post image ${idx + 1}` : (img.caption || img.altText || `Post image ${idx + 1}`)}
+                      className={`w-full rounded-lg object-contain max-h-72 transition-opacity ${
+                        isDragging && draggedImage?.id === img.id ? 'opacity-50' : 'opacity-100'
+                      } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                      style={typeof img === 'string' ? undefined : { aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
+                      onClick={() => onImageClick(img)}
+                      showProgressiveEffect={true}
+                    />
+                    {/* Insertion marker */}
+                    {dragOverIndex === idx && draggedImage?.id !== img.id && (
+                      <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
+                    )}
+                  </div>
+                );
+            })}
+          </div>
+        </div>
+      );
+    }
+    
+    // 4+ images: Layout based on main image aspect ratio
+    const [main, ...thumbs] = reorderedImages;
+    const mainImageUrl = typeof main === 'string' ? getImageUrl(main) : getImageUrlFromImage(main, false);
+    
+    // Calculate aspect ratio for main image
+    const mainAspectRatio = typeof main === 'string' ? 1 : (main.width && main.height ? main.width / main.height : 1);
+    const isPortrait = mainAspectRatio < 1;
+    
+    if (isPortrait) {
+      // Portrait layout: Main image scaled to 80% width with true aspect ratio, thumbnails on the right
+      return (
+        <div className="mb-4 flex gap-2 relative">
+          {showReorderHint && (
+            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full z-10">
+              {isReordering ? 'Updating...' : 'Drag to reorder'}
+            </div>
+          )}
+          {/* Main image container - 80% width */}
+          <div className="w-4/5 flex justify-center">
+            <div
+              draggable
+              onDragStart={(e) => handleDragStart(e, main, 0)}
+              onDragOver={(e) => handleDragOver(e, 0)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, 0)}
+              onDragEnd={handleDragEnd}
+              className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+            >
+              <LazyImage
+                src={mainImageUrl}
+                alt={typeof main === 'string' ? 'Main post image' : (main.caption || main.altText || 'Main post image')}
+                className={`rounded-lg object-contain transition-opacity ${
+                  isDragging && draggedImage?.id === main.id ? 'opacity-50' : 'opacity-100'
+                } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                style={{
+                  width: '100%',
+                  maxWidth: '100%',
+                  height: 'auto',
+                  aspectRatio: typeof main === 'string' ? undefined : (main.width && main.height ? `${main.width} / ${main.height}` : undefined)
+                }}
+                onClick={() => onImageClick(main)}
+              />
+              {/* Insertion marker */}
+              {dragOverIndex === 0 && draggedImage?.id !== main.id && (
+                <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
+              )}
+            </div>
+          </div>
+          
+          {/* Thumbnails - 17.5% of post width, vertical stack */}
+          <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
+            {thumbs.map((img, idx) => {
+              const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
+              const actualIndex = idx + 1; // +1 because main image is at index 0
+              return (
+                <div
+                  key={typeof img === 'string' ? idx : img.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, img, actualIndex)}
+                  onDragOver={(e) => handleDragOver(e, actualIndex)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, actualIndex)}
+                  onDragEnd={handleDragEnd}
+                  className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                >
+                  <LazyImage
+                    src={imageUrl}
+                    alt={typeof img === 'string' ? `Thumbnail ${idx + 2}` : (img.caption || img.altText || `Thumbnail ${idx + 2}`)}
+                    className={`rounded-lg object-cover transition-opacity ${
+                      isDragging && draggedImage?.id === img.id ? 'opacity-50' : 'opacity-100'
+                    } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                    style={{
+                      width: '100%',
+                      aspectRatio: '1 / 1'
+                    }}
+                    onClick={() => onImageClick(img)}
+                  />
+                  {/* Insertion marker */}
+                  {dragOverIndex === actualIndex && draggedImage?.id !== img.id && (
+                    <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    } else {
+      // Landscape layout: Main image full width, thumbnails below at 25% height
+      return (
+        <div className="mb-4 relative">
+          {showReorderHint && (
+            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full z-10">
+              {isReordering ? 'Updating...' : 'Drag to reorder'}
+            </div>
+          )}
+          {/* Main image - full width */}
+          <div
+            draggable
+            onDragStart={(e) => handleDragStart(e, main, 0)}
+            onDragOver={(e) => handleDragOver(e, 0)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, 0)}
+            onDragEnd={handleDragEnd}
+            className={`relative mb-2 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          >
+            <LazyImage
+              src={mainImageUrl}
+              alt={typeof main === 'string' ? 'Main post image' : (main.caption || main.altText || 'Main post image')}
+              className={`w-full rounded-lg object-contain transition-opacity ${
+                isDragging && draggedImage?.id === main.id ? 'opacity-50' : 'opacity-100'
+              } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+              style={typeof main === 'string' ? undefined : { aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
+              onClick={() => onImageClick(main)}
+            />
+            {/* Insertion marker */}
+            {dragOverIndex === 0 && draggedImage?.id !== main.id && (
+              <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
+            )}
+          </div>
+          
+          {/* Thumbnails - horizontal row at 17.5% of post width */}
+          <div className="flex gap-2 overflow-x-auto">
+            {thumbs.map((img, idx) => {
+              const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
+              const actualIndex = idx + 1; // +1 because main image is at index 0
+              return (
+                <div
+                  key={typeof img === 'string' ? idx : img.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, img, actualIndex)}
+                  onDragOver={(e) => handleDragOver(e, actualIndex)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, actualIndex)}
+                  onDragEnd={handleDragEnd}
+                  className={`relative flex-shrink-0 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                  style={{ width: '17.5%' }}
+                >
+                  <LazyImage
+                    src={imageUrl}
+                    alt={typeof img === 'string' ? `Thumbnail ${idx + 2}` : (img.caption || img.altText || `Thumbnail ${idx + 2}`)}
+                    className={`w-full rounded-lg object-cover border border-gray-200 transition-opacity ${
+                      isDragging && draggedImage?.id === img.id ? 'opacity-50' : 'opacity-100'
+                    } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                    style={{
+                      aspectRatio: '1 / 1'
+                    }}
+                    onClick={() => onImageClick(img)}
+                  />
+                  {/* Insertion marker */}
+                  {dragOverIndex === actualIndex && draggedImage?.id !== img.id && (
+                    <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -153,11 +571,49 @@ export function PersonalFeed() {
             className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             rows={3}
           />
+          
+          {/* Selected Images Preview */}
+          {selectedImages.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-gray-700">
+                  {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImages([])}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  Clear all
+                </button>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {selectedImages.map((image, index) => (
+                  <div key={image.id} className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden">
+                    <LazyImage
+                      src={getImageUrlFromImage(image, true)}
+                      alt={image.caption || image.altText || 'Selected image'}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== index))}
+                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <div className="flex space-x-2">
               <button
                 type="button"
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                onClick={() => setIsImageModalOpen(true)}
+                aria-label="Add images"
               >
                 <ImageIcon className="h-5 w-5" />
               </button>
@@ -177,6 +633,15 @@ export function PersonalFeed() {
             </button>
           </div>
         </form>
+        {/* Image Selector Modal */}
+        {userId && (
+          <ImageSelectorModal
+            isOpen={isImageModalOpen}
+            onClose={() => setIsImageModalOpen(false)}
+            onImagesSelected={setSelectedImages}
+            userId={userId}
+          />
+        )}
       </div>
 
       {/* Posts Feed */}
@@ -185,7 +650,11 @@ export function PersonalFeed() {
           key={post.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+          className={`rounded-lg shadow-sm border overflow-hidden relative ${
+            post.publicationStatus === 'PAUSED' 
+              ? 'bg-gray-50 border-gray-300' 
+              : 'bg-white border-gray-200'
+          }`}
         >
           {/* Post Header */}
           <div className="p-4 border-b border-gray-100">
@@ -200,15 +669,27 @@ export function PersonalFeed() {
                 </div>
                 <div>
                   <h3 className="font-medium text-gray-900">{post.author.name}</h3>
-                  <p className="text-sm text-gray-500 flex items-center">
-                    <Clock className="h-3 w-3 mr-1" />
-                    {formatDate(post.createdAt)}
-                  </p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-sm text-gray-500 flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {formatDate(post.createdAt)}
+                    </p>
+                    {post.publicationStatus === 'PAUSED' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Paused
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg transition-colors duration-200">
-                <MoreHorizontal className="h-5 w-5" />
-              </button>
+              <PostMenu 
+                post={post} 
+                currentUserId={user?.id || ''} 
+                onClose={() => {
+                  // Refresh posts data when menu actions are completed
+                  // This will be handled by the PostMenu internally
+                }}
+              />
             </div>
           </div>
 
@@ -218,16 +699,12 @@ export function PersonalFeed() {
             
             {/* Post Images */}
             {post.images && post.images.length > 0 && (
-              <div className="grid grid-cols-1 gap-2 mb-4">
-                {post.images.map((image, index) => (
-                  <img
-                    key={index}
-                    src={image}
-                    alt={`Post image ${index + 1}`}
-                    className="w-full rounded-lg object-cover"
-                  />
-                ))}
-              </div>
+              <PostImagesDisplay 
+                images={post.images} 
+                onImageClick={handleImageClick}
+                postId={post.id}
+                isOwner={post.author.id === user?.id}
+              />
             )}
           </div>
 
@@ -290,7 +767,15 @@ export function PersonalFeed() {
                 {/* Add Comment */}
                 <div className="flex space-x-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-accent-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                    <User className="h-4 w-4" />
+                    {authLoading ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : user?.avatar ? (
+                      <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
+                    ) : user?.name ? (
+                      user.name.charAt(0).toUpperCase()
+                    ) : (
+                      <User className="h-4 w-4" />
+                    )}
                   </div>
                   <div className="flex-1 flex space-x-2">
                     <input
@@ -312,6 +797,11 @@ export function PersonalFeed() {
               </div>
             </div>
           )}
+          
+          {/* Paused Post Overlay */}
+          {post.publicationStatus === 'PAUSED' && (
+            <div className="absolute inset-0 bg-black bg-opacity-20 pointer-events-none rounded-lg" />
+          )}
         </motion.div>
       ))}
 
@@ -323,6 +813,24 @@ export function PersonalFeed() {
           <h3 className="text-lg font-medium text-gray-900 mb-2">No posts yet</h3>
           <p className="text-gray-600">Be the first to share something with your family and friends!</p>
         </div>
+      )}
+
+      {/* Image Detail Modal */}
+      {selectedImageForDetail && (
+        <ImageDetailModal
+          image={selectedImageForDetail}
+          onClose={() => {
+            setIsImageDetailModalOpen(false)
+            setSelectedImageForDetail(null)
+          }}
+          onImageUpdate={() => {
+            // Refresh posts data when image is updated
+            // This will be handled by the ImageDetailModal internally
+          }}
+          updateImage={() => {
+            // This will be handled by the ImageDetailModal internally
+          }}
+        />
       )}
     </div>
   )
