@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
-import { API_BASE_URL, getAuthHeaders } from './api'
+import { useState, useEffect, useCallback } from 'react'
+import { API_BASE_URL, getAuthHeaders, getImageUrl } from './api'
 
 // Helper functions to safely access localStorage
 const getToken = () => {
@@ -42,7 +42,7 @@ interface Post {
   id: string
   title: string | null
   content: string
-  isPublished: boolean
+  publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
   isPrivate: boolean
   authorId: string
   createdAt: string
@@ -275,7 +275,7 @@ export const useCreatePost = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (postData: { title?: string; content: string; isPrivate?: boolean; hashtags?: string[] }) => {
+    mutationFn: async (postData: { title?: string; content: string; isPrivate?: boolean; hashtags?: string[]; imageIds?: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
@@ -400,17 +400,32 @@ export const useImageComments = (imageId: string) => {
 
 
 
-// Simple user images hook for the first page
+// Infinite scroll user images hook
 export const useUserImages = (userId: string) => {
   const isClient = useIsClient()
+  const [allImages, setAllImages] = useState<any[]>([])
+  const [hasMore, setHasMore] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalImages, setTotalImages] = useState(0)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [nextPageSize, setNextPageSize] = useState(20) // Default page size
   
-  return useQuery({
-    queryKey: ['images', 'user', userId],
+  // Function to update a specific image in the local state
+  const updateImage = useCallback((imageId: string, updates: Partial<any>) => {
+    setAllImages(prev => 
+      prev.map(img => 
+        img.id === imageId ? { ...img, ...updates } : img
+      )
+    )
+  }, [])
+  
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: ['images', 'user', userId, currentPage],
     queryFn: async () => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/images/user/${userId}?page=1&limit=100`, {
+      const response = await fetch(`${API_BASE_URL}/images/user/${userId}?page=${currentPage}&limit=20`, {
         headers: getAuthHeaders(token)
       })
       
@@ -421,6 +436,75 @@ export const useUserImages = (userId: string) => {
     },
     enabled: isClient && hasToken() && !!userId
   })
+
+  // Update accumulated images when new data arrives
+  useEffect(() => {
+    if (data?.data) {
+      const newImages = data.data.images || []
+      const pagination = data.data.pagination
+      
+      if (currentPage === 1) {
+        // First page - replace all images
+        setAllImages(newImages)
+      } else {
+        // Subsequent pages - append new images, avoiding duplicates
+        setAllImages(prev => {
+          const existingIds = new Set(prev.map((img: any) => img.id))
+          const uniqueNewImages = newImages.filter((img: any) => !existingIds.has(img.id))
+          return [...prev, ...uniqueNewImages]
+        })
+      }
+      
+      setTotalImages(pagination?.total || 0)
+      setHasMore(pagination?.hasNext || false)
+      
+      // Calculate next page size for predictive loading
+      if (pagination?.total && pagination?.hasNext) {
+        const remainingImages = pagination.total - allImages.length - newImages.length
+        const nextSize = Math.min(20, remainingImages) // Max 20 per page
+        setNextPageSize(nextSize)
+      }
+      
+      // Stop loading immediately since we're using lazy loading
+      setIsLoadingMore(false)
+    }
+  }, [data, currentPage, allImages.length])
+
+  const loadMore = useCallback(() => {
+    if (hasMore && !isFetching && !isLoadingMore) {
+      setIsLoadingMore(true)
+      setCurrentPage(prev => prev + 1)
+    }
+  }, [hasMore, isFetching, isLoadingMore, currentPage])
+
+  const reset = useCallback(() => {
+    setAllImages([])
+    setHasMore(true)
+    setCurrentPage(1)
+    setTotalImages(0)
+    setIsLoadingMore(false)
+  }, [])
+
+  return {
+    data: {
+      data: {
+        images: allImages,
+        pagination: {
+          total: totalImages,
+          hasNext: hasMore
+        }
+      }
+    },
+    isLoading: isLoading && currentPage === 1,
+    isFetching,
+    error,
+    loadMore,
+    reset,
+    hasMore,
+    isLoadingMore,
+    nextPageSize,
+    updateImage
+  }
 }
 
 export const useUploadImage = () => {
@@ -476,14 +560,20 @@ export const useUpdateImage = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ imageId, altText, caption }: { imageId: string; altText?: string; caption?: string }) => {
+    mutationFn: async ({ imageId, title, description, tags, onOptimisticUpdate }: { 
+      imageId: string; 
+      title?: string; 
+      description?: string;
+      tags?: string[];
+      onOptimisticUpdate?: (imageId: string, updates: any) => void;
+    }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
       const response = await fetch(`${API_BASE_URL}/images/${imageId}`, {
         method: 'PUT',
         headers: getAuthHeaders(token),
-        body: JSON.stringify({ altText, caption })
+        body: JSON.stringify({ title, description, tags })
       })
       
       const data = await response.json()
@@ -491,43 +581,30 @@ export const useUpdateImage = () => {
       
       return data
     },
-    onMutate: async ({ imageId, altText, caption }) => {
-      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+    onMutate: async ({ imageId, title, description, tags, onOptimisticUpdate }) => {
+      // Apply optimistic update to local state if callback provided
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate(imageId, {
+          altText: title || null,
+          caption: description || null,
+          title: title || null,
+          description: description || null,
+          tags: tags || []
+        })
+      }
+      
+      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['images'] })
       
       // Snapshot the previous value
       const previousImages = queryClient.getQueriesData({ queryKey: ['images'] })
       
-      // Optimistically update all image queries that contain this image
-      queryClient.setQueriesData(
-        { queryKey: ['images'] },
-        (old: any) => {
-          if (!old?.data?.images) return old
-          
-          return {
-            ...old,
-            data: {
-              ...old.data,
-              images: old.data.images.map((img: any) =>
-                img.id === imageId
-                  ? { ...img, altText: altText || null, caption: caption || null }
-                  : img
-              )
-            }
-          }
-        }
-      )
-      
-      // Return a context object with the snapshotted value
-      return { previousImages }
+      return { previousImages, onOptimisticUpdate }
     },
     onError: (err, variables, context) => {
-      // If the mutation fails, use the context returned from onMutate to roll back
-      if (context?.previousImages) {
-        context.previousImages.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data)
-        })
-      }
+      // If the mutation fails, we could rollback the optimistic update
+      // but since we're using local state, we'll just let the error be handled
+      console.error('Failed to update image:', err)
     },
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
@@ -556,6 +633,56 @@ export const useDeleteImage = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['images'] })
+    }
+  })
+}
+
+export const useReorderPostImages = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ postId, imageIds }: { postId: string; imageIds: string[] }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/images/reorder`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ imageIds })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to reorder images')
+      
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+    }
+  })
+}
+
+export const useUpdatePostStatus = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ postId, publicationStatus }: { postId: string; publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED' }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/status`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ publicationStatus })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to update post status')
+      
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
     }
   })
 } 

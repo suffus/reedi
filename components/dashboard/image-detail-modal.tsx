@@ -2,12 +2,15 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon } from 'lucide-react'
 import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
-import { getImageUrl } from '@/lib/api'
+import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
+import { ProgressiveImage } from '../progressive-image'
 
 interface GalleryImage {
   id: string
   url: string
   thumbnail: string
+  s3Key?: string
+  thumbnailS3Key?: string
   title: string | null
   description: string | null
   createdAt: string
@@ -24,8 +27,8 @@ interface GalleryImage {
 // Map backend image data to frontend format
 const mapImageData = (image: any): GalleryImage => ({
   id: image.id,
-  url: image.url,
-  thumbnail: image.thumbnail || image.url, // Use thumbnail if available, fallback to full image
+  url: image.s3Key || image.url, // Use S3 key if available, fallback to old URL
+  thumbnail: image.thumbnailS3Key || image.thumbnail || image.url, // Use S3 key if available, fallback to old thumbnail
   title: image.altText || image.title,
   description: image.caption || image.description,
   createdAt: image.createdAt,
@@ -56,9 +59,10 @@ interface ImageDetailModalProps {
   image: GalleryImage | null
   onClose: () => void
   onImageUpdate?: () => void
+  updateImage?: (imageId: string, updates: Partial<any>) => void
 }
 
-export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailModalProps) {
+export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage }: ImageDetailModalProps) {
   // Return early if no image
   if (!image) {
     return null
@@ -77,8 +81,10 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editTags, setEditTags] = useState('')
   const [localTitle, setLocalTitle] = useState(image?.title || '')
   const [localDescription, setLocalDescription] = useState(image?.description || '')
+  const [localTags, setLocalTags] = useState<string[]>(image?.tags || [])
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -91,7 +97,37 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
   useEffect(() => {
     setLocalTitle(image?.title || '')
     setLocalDescription(image?.description || '')
+    setLocalTags(image?.tags || [])
   }, [image])
+  
+  // Add global mouse event listeners for smooth dragging
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isDragging && zoom > 1 && !isCropMode) {
+        e.preventDefault()
+        setPan({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y
+        })
+      }
+    }
+
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false)
+      }
+    }
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleGlobalMouseMove)
+      document.addEventListener('mouseup', handleGlobalMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove)
+      document.removeEventListener('mouseup', handleGlobalMouseUp)
+    }
+  }, [isDragging, zoom, dragStart, isCropMode])
   
   // Check if current user is the image owner
   const isOwner = authData?.data?.user?.id === image.authorId
@@ -103,9 +139,12 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
     ...image,
     title: localTitle,
     description: localDescription,
-    url: getImageUrl(image.url),
-    thumbnail: getImageUrl(image.thumbnail || image.url), // Use thumbnail if available, fallback to full image
+    tags: localTags,
+    url: getImageUrlFromImage(image, false),
+    thumbnail: getImageUrlFromImage(image, true), // Use thumbnail endpoint
   }
+
+
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -126,6 +165,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
     // Use the local state which reflects the latest updates
     setEditTitle(localTitle || '')
     setEditDescription(localDescription || '')
+    setEditTags(localTags.join(', '))
     setIsEditing(true)
   }
 
@@ -133,20 +173,30 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
     setIsEditing(false)
     setEditTitle('')
     setEditDescription('')
+    setEditTags('')
   }
 
   const handleSaveEdit = async () => {
     try {
+      // Parse tags from comma-separated string
+      const parsedTags = editTags
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0)
+      
       await updateImageMutation.mutateAsync({
         imageId: mappedImage.id,
-        altText: editTitle || undefined,
-        caption: editDescription || undefined
+        title: editTitle || undefined,
+        description: editDescription || undefined,
+        tags: parsedTags,
+        onOptimisticUpdate: updateImage
       })
       setIsEditing(false)
       
       // Update local state to reflect changes immediately
       setLocalTitle(editTitle || '')
       setLocalDescription(editDescription || '')
+      setLocalTags(parsedTags)
       
       // Notify parent component that image was updated
       onImageUpdate?.()
@@ -295,6 +345,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
     }
     
     if (zoom > 1) {
+      e.preventDefault()
       setIsDragging(true)
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
     }
@@ -307,6 +358,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
     }
     
     if (isDragging && zoom > 1) {
+      e.preventDefault()
       setPan({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y
@@ -314,12 +366,34 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
     }
   }
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e?: React.MouseEvent) => {
     if (isCropMode) {
       handleCropMouseUp()
       return
     }
     setIsDragging(false)
+  }
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    const newZoom = Math.max(0.5, Math.min(8, zoom * delta))
+    
+    // Calculate zoom center point
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (rect) {
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
+      
+      // Adjust pan to keep mouse position fixed
+      const scaleChange = newZoom / zoom
+      const newPanX = pan.x - (mouseX * (scaleChange - 1))
+      const newPanY = pan.y - (mouseY * (scaleChange - 1))
+      
+      setZoom(newZoom)
+      setPan({ x: newPanX, y: newPanY })
+    }
   }
 
 
@@ -405,10 +479,11 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onWheel={handleWheel}
               >
-                <img
-                  ref={imageRef}
+                <ProgressiveImage
                   src={mappedImage.url}
+                  thumbnailSrc={mappedImage.thumbnail}
                   alt={mappedImage.title || 'Gallery image'}
                   className="transition-transform duration-200 ease-out"
                   style={{
@@ -419,6 +494,8 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
                     transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                     cursor: isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default')
                   }}
+                  showQualityIndicator={true}
+                  showBlurEffect={true}
                 />
                 
                 {/* Crop Overlay */}
@@ -456,6 +533,13 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
                         placeholder="Image description..."
                         rows={3}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+                      />
+                      <input
+                        type="text"
+                        value={editTags}
+                        onChange={(e) => setEditTags(e.target.value)}
+                        placeholder="Tags (comma separated)..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       />
                       <div className="flex space-x-2">
                         <button
@@ -496,6 +580,19 @@ export function ImageDetailModal({ image, onClose, onImageUpdate }: ImageDetailM
                   <p className="text-sm text-gray-600 mb-3">
                     {localDescription}
                   </p>
+                )}
+                
+                {!isEditing && localTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {localTags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 )}
                 
                 <div className="flex items-center text-xs text-gray-500">

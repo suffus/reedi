@@ -11,11 +11,13 @@ const morgan_1 = __importDefault(require("morgan"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const client_1 = require("@prisma/client");
+const path_1 = __importDefault(require("path"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const users_1 = __importDefault(require("@/routes/users"));
 const posts_1 = __importDefault(require("@/routes/posts"));
 const comments_1 = __importDefault(require("@/routes/comments"));
 const images_1 = __importDefault(require("@/routes/images"));
+const imageServe_1 = __importDefault(require("@/routes/imageServe"));
 const galleries_1 = __importDefault(require("@/routes/galleries"));
 const search_1 = __importDefault(require("@/routes/search"));
 const errorHandler_1 = require("@/middleware/errorHandler");
@@ -26,8 +28,10 @@ const app = (0, express_1.default)();
 const PORT = process.env.PORT || 8088;
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: 'Too many requests from this IP, please try again later.'
+    max: 500,
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
@@ -38,6 +42,17 @@ app.use(limiter);
 app.use((0, morgan_1.default)('combined'));
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
+app.use('/uploads', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+        return;
+    }
+    next();
+}, express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
 app.get('/health', (req, res) => {
     res.json({
         status: 'OK',
@@ -49,6 +64,7 @@ app.use('/api/auth', auth_1.default);
 app.use('/api/users', auth_2.authMiddleware, users_1.default);
 app.use('/api/posts', posts_1.default);
 app.use('/api/comments', comments_1.default);
+app.use('/api/images/serve', imageServe_1.default);
 app.use('/api/images', auth_2.authMiddleware, images_1.default);
 app.use('/api/galleries', auth_2.authMiddleware, galleries_1.default);
 app.use('/api/search', search_1.default);

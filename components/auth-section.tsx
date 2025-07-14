@@ -33,10 +33,12 @@ export function AuthSection() {
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
+    mode: 'onBlur', // Only validate on blur for better performance
   })
 
   const signupForm = useForm<SignupForm>({
     resolver: zodResolver(signupSchema),
+    mode: 'onBlur', // Only validate on blur for better performance
   })
 
   const loginMutation = useLogin()
@@ -77,7 +79,7 @@ export function AuthSection() {
 
   const isLoading = loginMutation.isPending || registerMutation.isPending
   return (
-    <div className="card-elevated max-w-md mx-auto bg-white/95 backdrop-blur-md shadow-2xl border-primary-100">
+    <div className="card-elevated max-w-md mx-auto bg-white/95 shadow-2xl border-primary-100">
       <div className="text-center mb-10">
         <h2 className="text-3xl font-serif font-semibold text-primary-900 mb-4">
           {isLogin ? 'Welcome Back' : 'Join Reedi'}
@@ -91,10 +93,10 @@ export function AuthSection() {
         {isLogin ? (
           <motion.form
             key="login"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onSubmit={loginForm.handleSubmit(onLoginSubmit)}
             className="space-y-6"
           >
@@ -108,7 +110,7 @@ export function AuthSection() {
                   id="login-email"
                   type="email"
                   {...loginForm.register('email')}
-                  className="input-field pl-12 bg-white/90 backdrop-blur-sm"
+                  className="input-field pl-12 bg-white/90"
                   placeholder="Enter your email"
                 />
               </div>
@@ -127,13 +129,13 @@ export function AuthSection() {
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   {...loginForm.register('password')}
-                  className="input-field pl-12 pr-12 bg-white/90 backdrop-blur-sm"
+                  className="input-field pl-12 pr-12 bg-white/90"
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-primary-400 hover:text-primary-600 transition-colors duration-300"
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-primary-400 hover:text-primary-600 transition-colors duration-200"
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -155,10 +157,10 @@ export function AuthSection() {
         ) : (
           <motion.form
             key="signup"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onSubmit={signupForm.handleSubmit(onSignupSubmit)}
             className="space-y-6"
           >
@@ -172,7 +174,7 @@ export function AuthSection() {
                   id="signup-name"
                   type="text"
                   {...signupForm.register('name')}
-                  className="input-field pl-12 bg-white/90 backdrop-blur-sm"
+                  className="input-field pl-12 bg-white/90"
                   placeholder="Enter your full name"
                 />
               </div>
@@ -191,7 +193,7 @@ export function AuthSection() {
                   id="signup-email"
                   type="email"
                   {...signupForm.register('email')}
-                  className="input-field pl-12 bg-white/90 backdrop-blur-sm"
+                  className="input-field pl-12 bg-white/90"
                   placeholder="Enter your email"
                 />
               </div>
@@ -210,13 +212,13 @@ export function AuthSection() {
                   id="signup-password"
                   type={showPassword ? 'text' : 'password'}
                   {...signupForm.register('password')}
-                  className="input-field pl-12 pr-12 bg-white/90 backdrop-blur-sm"
-                  placeholder="Create a password"
+                  className="input-field pl-12 pr-12 bg-white/90"
+                  placeholder="Enter your password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-primary-400 hover:text-primary-600 transition-colors duration-300"
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-primary-400 hover:text-primary-600 transition-colors duration-200"
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -236,13 +238,13 @@ export function AuthSection() {
                   id="signup-confirm-password"
                   type={showConfirmPassword ? 'text' : 'password'}
                   {...signupForm.register('confirmPassword')}
-                  className="input-field pl-12 pr-12 bg-white/90 backdrop-blur-sm"
+                  className="input-field pl-12 pr-12 bg-white/90"
                   placeholder="Confirm your password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-primary-400 hover:text-primary-600 transition-colors duration-300"
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-primary-400 hover:text-primary-600 transition-colors duration-200"
                 >
                   {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -267,7 +269,7 @@ export function AuthSection() {
       <div className="mt-8 text-center">
         <button
           onClick={() => setIsLogin(!isLogin)}
-          className="text-primary-600 hover:text-primary-900 font-medium transition-colors duration-300"
+          className="text-primary-600 hover:text-primary-900 transition-colors duration-200 text-sm"
         >
           {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
         </button>

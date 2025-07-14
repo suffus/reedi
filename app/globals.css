@@ -33,31 +33,53 @@
   p {
     line-height: 1.7;
   }
+
+  /* Performance optimizations */
+  .motion-safe\:animate-fade-in {
+    will-change: opacity;
+  }
+  
+  .motion-safe\:animate-slide-up {
+    will-change: transform, opacity;
+  }
+  
+  .motion-safe\:animate-scale-in {
+    will-change: transform, opacity;
+  }
+
+  /* Performance-optimized chequered pattern using repeating-conic-gradient */
+  .chequered-pattern {
+    background: repeating-conic-gradient(
+      #275735 0deg 90deg,
+      transparent 90deg 180deg
+    ) 0 0 / 60px 60px;
+    will-change: auto; /* Let browser optimize */
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-900 hover:bg-primary-800 text-white font-medium py-3 px-6 rounded-none transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 hover:shadow-lg;
+    @apply bg-primary-900 hover:bg-primary-800 text-white font-medium py-3 px-6 rounded-none transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 hover:shadow-lg;
   }
   
   .btn-secondary {
-    @apply bg-transparent hover:bg-primary-50 text-primary-900 font-medium py-3 px-6 border border-primary-200 rounded-none transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 hover:border-primary-300;
+    @apply bg-transparent hover:bg-primary-50 text-primary-900 font-medium py-3 px-6 border border-primary-200 rounded-none transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 hover:border-primary-300;
   }
 
   .btn-outline {
-    @apply bg-transparent hover:bg-primary-900 text-primary-900 hover:text-white font-medium py-3 px-6 border border-primary-900 rounded-none transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+    @apply bg-transparent hover:bg-primary-900 text-primary-900 hover:text-white font-medium py-3 px-6 border border-primary-900 rounded-none transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
   }
   
   .input-field {
-    @apply w-full px-4 py-3 border border-primary-200 rounded-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-300 bg-white;
+    @apply w-full px-4 py-3 border border-primary-200 rounded-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200 bg-white;
   }
   
   .card {
-    @apply bg-white border border-primary-100 p-8 shadow-sm hover:shadow-md transition-shadow duration-300;
+    @apply bg-white border border-primary-100 p-8 shadow-sm hover:shadow-md transition-shadow duration-200;
   }
 
   .card-elevated {
-    @apply bg-white border border-primary-100 p-8 shadow-lg hover:shadow-xl transition-all duration-300;
+    @apply bg-white border border-primary-100 p-8 shadow-lg hover:shadow-xl transition-shadow duration-200;
   }
   
   .gradient-text {
@@ -97,6 +119,6 @@
   }
 
   .prose-custom a {
-    @apply text-primary-900 underline decoration-primary-300 hover:decoration-primary-900 transition-all duration-300;
+    @apply text-primary-900 underline decoration-primary-300 hover:decoration-primary-900 transition-colors duration-200;
   }
 } 

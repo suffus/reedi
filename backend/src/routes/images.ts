@@ -1,10 +1,11 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
-import { processImage, deleteImageFiles, serveImage } from '@/utils/imageProcessor'
+import { processImage, deleteImageFiles } from '@/utils/imageProcessor'
+import { generatePresignedUrl, getImageFromS3 } from '@/utils/s3Service'
 
 const router = Router()
 
@@ -25,7 +26,7 @@ const upload = multer({
 })
 
 // Get user's images
-router.get('/user/:userId', asyncHandler(async (req, res) => {
+router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
@@ -38,8 +39,8 @@ router.get('/user/:userId', asyncHandler(async (req, res) => {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        url: true,
-        thumbnail: true,
+        s3Key: true,
+        thumbnailS3Key: true,
         altText: true,
         caption: true,
         width: true,
@@ -73,8 +74,54 @@ router.get('/user/:userId', asyncHandler(async (req, res) => {
   })
 }))
 
+// Get a single image by ID
+router.get('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { id } = req.params
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+    return
+  }
+
+  const image = await prisma.image.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      s3Key: true,
+      thumbnailS3Key: true,
+      altText: true,
+      caption: true,
+      width: true,
+      height: true,
+      size: true,
+      mimeType: true,
+      tags: true,
+      createdAt: true,
+      updatedAt: true,
+      authorId: true
+    }
+  })
+
+  if (!image) {
+    res.status(404).json({
+      success: false,
+      error: 'Image not found'
+    })
+    return
+  }
+
+  res.json({
+    success: true,
+    data: { image }
+  })
+}))
+
 // Upload an image (alternative route)
-router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   console.log('Upload request received for user:', req.user?.id)
   console.log('Form data:', req.body)
   console.log('File:', req.file ? { filename: req.file.originalname, size: req.file.size, mimetype: req.file.mimetype } : 'No file')
@@ -82,24 +129,27 @@ router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(asyn
   const userId = req.user?.id
   
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   if (!req.file) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'No image file provided'
     })
+    return
   }
 
   // Process image and generate thumbnail
   const processedImage = await processImage(
     req.file.buffer,
     req.file.originalname,
-    req.file.mimetype
+    req.file.mimetype,
+    userId
   )
 
   // Parse tags from form data
@@ -116,6 +166,8 @@ router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(asyn
     data: {
       url: processedImage.imagePath,
       thumbnail: processedImage.thumbnailPath,
+      s3Key: processedImage.s3Key,
+      thumbnailS3Key: processedImage.thumbnailS3Key,
       altText: req.body.title || req.body.altText || 'Uploaded image',
       caption: req.body.description || req.body.caption || '',
       tags: tags,
@@ -143,15 +195,16 @@ router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(asyn
 }))
 
 // Upload an image (main route)
-router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { url, altText, caption, postId, galleryId } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const image = await prisma.image.create({
@@ -173,16 +226,17 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
 }))
 
 // Update an image
-router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { altText, caption } = req.body
+  const { altText, caption, title, description, tags } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const image = await prisma.image.findUnique({
@@ -190,25 +244,32 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
   })
 
   if (!image) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Image not found'
     })
+    return
   }
 
   if (image.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to update this image'
     })
+    return
   }
+
+  // Support both old (altText/caption) and new (title/description) field names
+  const newAltText = title || altText || null
+  const newCaption = description || caption || null
 
   // Update the image
   const updatedImage = await prisma.image.update({
     where: { id },
     data: {
-      altText: altText || null,
-      caption: caption || null
+      altText: newAltText,
+      caption: newCaption,
+      tags: tags || undefined
     }
   })
 
@@ -220,37 +281,50 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 }))
 
 // Delete an image
-router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const image = await prisma.image.findUnique({
-    where: { id }
+    where: { id },
+    select: {
+      id: true,
+      url: true,
+      thumbnail: true,
+      s3Key: true,
+      thumbnailS3Key: true,
+      authorId: true
+    }
   })
 
   if (!image) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Image not found'
     })
+    return
   }
 
   if (image.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to delete this image'
     })
+    return
   }
 
-  // Delete the image files from disk
-  await deleteImageFiles(image.url, image.thumbnail)
+  // Delete the image files from S3
+  if (image.s3Key) {
+    await deleteImageFiles(image.s3Key, image.thumbnailS3Key || undefined)
+  }
 
   // Delete from database
   await prisma.image.delete({
@@ -262,8 +336,5 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     message: 'Image deleted successfully'
   })
 }))
-
-// Serve static image files
-router.get('/uploads/*', serveImage)
 
 export default router 

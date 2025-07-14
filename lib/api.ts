@@ -108,6 +108,21 @@ export const getImageUrl = (imagePath: string): string => {
   return `${IMAGE_BASE_URL}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`
 }
 
+// Helper function to get image URL from image object or path
+export const getImageUrlFromImage = (image: any, useThumbnail: boolean = false): string => {
+  if (!image) return ''
+  
+  // If image has an ID, use the new backend serving endpoint
+  if (image.id) {
+    const endpoint = useThumbnail ? '/thumbnail' : ''
+    return `${API_BASE_URL}/images/serve/${image.id}${endpoint}`
+  }
+  
+  // Fallback to the old getImageUrl function for backward compatibility
+  const path = useThumbnail ? (image.thumbnail || image.url) : image.url
+  return getImageUrl(path)
+}
+
 // Helper function to handle API responses
 export const handleApiResponse = async (response: Response) => {
   const data = await response.json()

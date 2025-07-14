@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware } from '@/middleware/auth'
@@ -7,7 +7,7 @@ import { AuthenticatedRequest } from '@/types'
 const router = Router()
 
 // Get comments for a post
-router.get('/post/:postId', asyncHandler(async (req, res) => {
+router.get('/post/:postId', asyncHandler(async (req: Request, res: Response) => {
   const { postId } = req.params
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
@@ -75,7 +75,7 @@ router.get('/post/:postId', asyncHandler(async (req, res) => {
 }))
 
 // Get comments for an image
-router.get('/image/:imageId', asyncHandler(async (req, res) => {
+router.get('/image/:imageId', asyncHandler(async (req: Request, res: Response) => {
   const { imageId } = req.params
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
@@ -143,30 +143,33 @@ router.get('/image/:imageId', asyncHandler(async (req, res) => {
 }))
 
 // Create a comment
-router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { content, postId, imageId, parentId } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   // Validate that either postId or imageId is provided, but not both
   if (!postId && !imageId) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'Either postId or imageId is required'
     })
+    return
   }
 
   if (postId && imageId) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'Cannot comment on both post and image simultaneously'
     })
+    return
   }
 
   const comment = await prisma.comment.create({
@@ -197,16 +200,17 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
 }))
 
 // Update a comment
-router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
   const { content } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const comment = await prisma.comment.findUnique({
@@ -214,17 +218,19 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
   })
 
   if (!comment) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Comment not found'
     })
+    return
   }
 
   if (comment.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to update this comment'
     })
+    return
   }
 
   const updatedComment = await prisma.comment.update({
@@ -250,15 +256,16 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 }))
 
 // Delete a comment
-router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const comment = await prisma.comment.findUnique({
@@ -266,17 +273,19 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   })
 
   if (!comment) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Comment not found'
     })
+    return
   }
 
   if (comment.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to delete this comment'
     })
+    return
   }
 
   await prisma.comment.delete({

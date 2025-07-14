@@ -13,6 +13,7 @@ import userRoutes from '@/routes/users'
 import postRoutes from '@/routes/posts'
 import commentRoutes from '@/routes/comments'
 import imageRoutes from '@/routes/images'
+import imageServeRoutes from '@/routes/imageServe'
 import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
 
@@ -51,7 +52,7 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Serve uploads directory as static files
-app.use('/uploads', (req, res, next) => {
+app.use('/uploads', (req: express.Request, res: express.Response, next: express.NextFunction): void => {
   // Add CORS headers for image requests
   res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000')
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -59,7 +60,8 @@ app.use('/uploads', (req, res, next) => {
   res.header('Cross-Origin-Resource-Policy', 'cross-origin')
   
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200)
+    res.sendStatus(200)
+    return
   }
   
   next()
@@ -79,6 +81,11 @@ app.use('/api/auth', authRoutes)
 app.use('/api/users', authMiddleware, userRoutes)
 app.use('/api/posts', postRoutes)
 app.use('/api/comments', commentRoutes)
+
+// Public image serve endpoints (no authentication required)
+app.use('/api/images/serve', imageServeRoutes)
+
+// Protected image routes (authentication required)
 app.use('/api/images', authMiddleware, imageRoutes)
 app.use('/api/galleries', authMiddleware, galleryRoutes)
 app.use('/api/search', searchRoutes)

@@ -36,10 +36,11 @@ router.post('/register', (0, errorHandler_1.asyncHandler)(async (req, res) => {
         }
     });
     if (existingUser) {
-        return res.status(409).json({
+        res.status(409).json({
             success: false,
             error: 'User with this email or username already exists'
         });
+        return;
     }
     const hashedPassword = await bcryptjs_1.default.hash(password, 12);
     const user = await index_1.prisma.user.create({
@@ -80,17 +81,19 @@ router.post('/login', (0, errorHandler_1.asyncHandler)(async (req, res) => {
         where: { email }
     });
     if (!user) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'Invalid email or password'
         });
+        return;
     }
     const isPasswordValid = await bcryptjs_1.default.compare(password, user.password);
     if (!isPasswordValid) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'Invalid email or password'
         });
+        return;
     }
     const token = generateToken(user.id);
     const { password: _, ...userData } = user;
@@ -106,10 +109,11 @@ router.post('/login', (0, errorHandler_1.asyncHandler)(async (req, res) => {
 router.get('/me', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const user = req.user;
     if (!user) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not found'
         });
+        return;
     }
     res.json({
         success: true,
@@ -120,10 +124,11 @@ router.put('/profile', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(a
     const userId = req.user?.id;
     const { name, username, bio, location, website, isPrivate } = req.body;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     if (username) {
         const existingUser = await index_1.prisma.user.findFirst({
@@ -133,10 +138,11 @@ router.put('/profile', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(a
             }
         });
         if (existingUser) {
-            return res.status(409).json({
+            res.status(409).json({
                 success: false,
                 error: 'Username already taken'
             });
+            return;
         }
     }
     const updatedUser = await index_1.prisma.user.update({
@@ -174,38 +180,43 @@ router.put('/change-password', auth_1.authMiddleware, (0, errorHandler_1.asyncHa
     const userId = req.user?.id;
     const { currentPassword, newPassword } = req.body;
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'User not authenticated'
         });
+        return;
     }
     if (!currentPassword || !newPassword) {
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             error: 'Current password and new password are required'
         });
+        return;
     }
     if (newPassword.length < 6) {
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             error: 'New password must be at least 6 characters'
         });
+        return;
     }
     const user = await index_1.prisma.user.findUnique({
         where: { id: userId }
     });
     if (!user) {
-        return res.status(404).json({
+        res.status(404).json({
             success: false,
             error: 'User not found'
         });
+        return;
     }
     const isCurrentPasswordValid = await bcryptjs_1.default.compare(currentPassword, user.password);
     if (!isCurrentPasswordValid) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'Current password is incorrect'
         });
+        return;
     }
     const hashedNewPassword = await bcryptjs_1.default.hash(newPassword, 12);
     await index_1.prisma.user.update({

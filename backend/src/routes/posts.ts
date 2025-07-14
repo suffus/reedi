@@ -14,7 +14,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
       where: {
-        isPublished: true,
+        publicationStatus: 'PUBLIC',
         isPrivate: false
       },
       include: {
@@ -43,6 +43,10 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
             comments: true,
             reactions: true
           }
+        },
+        images: {
+          include: { image: true },
+          orderBy: { order: 'asc' }
         }
       },
       skip: offset,
@@ -51,16 +55,22 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
     }),
     prisma.post.count({
       where: {
-        isPublished: true,
+        publicationStatus: 'PUBLIC',
         isPrivate: false
       }
     })
   ])
 
+  // Map images to array of image objects in order
+  const postsWithOrderedImages = posts.map(post => ({
+    ...post,
+    images: post.images.map(pi => pi.image)
+  }))
+
   res.json({
     success: true,
     data: {
-      posts,
+      posts: postsWithOrderedImages,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -80,13 +90,14 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
   const offset = (Number(page) - 1) * Number(limit)
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
-  // Get posts from followed users, public posts, and user's own posts
+  // Get posts from followed users, public posts, and user's own posts (including paused ones)
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
       where: {
@@ -98,16 +109,20 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
                   followerId: userId
                 }
               }
+            },
+            publicationStatus: 'PUBLIC' // Only public posts from followed users
+          },
+          {
+            isPrivate: false,
+            publicationStatus: 'PUBLIC' // Only public posts that are not private
+          },
+          {
+            authorId: userId, // Include user's own posts (including paused ones)
+            publicationStatus: {
+              in: ['PUBLIC', 'PAUSED'] // Show public and paused posts to the author
             }
-          },
-          {
-            isPrivate: false
-          },
-          {
-            authorId: userId // Include user's own posts
           }
-        ],
-        isPublished: true
+        ]
       },
       include: {
         author: {
@@ -135,6 +150,10 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
             comments: true,
             reactions: true
           }
+        },
+        images: {
+          include: { image: true },
+          orderBy: { order: 'asc' }
         }
       },
       skip: offset,
@@ -151,24 +170,34 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
                   followerId: userId
                 }
               }
+            },
+            publicationStatus: 'PUBLIC' // Only public posts from followed users
+          },
+          {
+            isPrivate: false,
+            publicationStatus: 'PUBLIC' // Only public posts that are not private
+          },
+          {
+            authorId: userId, // Include user's own posts (including paused ones)
+            publicationStatus: {
+              in: ['PUBLIC', 'PAUSED'] // Show public and paused posts to the author
             }
-          },
-          {
-            isPrivate: false
-          },
-          {
-            authorId: userId // Include user's own posts
           }
-        ],
-        isPublished: true
+        ]
       }
     })
   ])
 
+  // Map images to array of image objects in order
+  const postsWithOrderedImages = posts.map(post => ({
+    ...post,
+    images: post.images.map(pi => pi.image)
+  }))
+
   res.json({
     success: true,
     data: {
-      posts,
+      posts: postsWithOrderedImages,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -184,13 +213,33 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
 // Create a new post
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { title, content, isPrivate, hashtags, mentions } = req.body
+  const { title, content, isPrivate, hashtags, mentions, imageIds } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
+  }
+
+  // Validate that all images belong to the user
+  if (imageIds && imageIds.length > 0) {
+    const userImages = await prisma.image.findMany({
+      where: {
+        id: { in: imageIds },
+        authorId: userId
+      },
+      select: { id: true }
+    })
+
+    if (userImages.length !== imageIds.length) {
+      res.status(400).json({
+        success: false,
+        error: 'Some images do not belong to you or do not exist'
+      })
+      return
+    }
   }
 
   const post = await prisma.post.create({
@@ -219,9 +268,46 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     }
   })
 
+  // Create PostImage records with order if images are provided
+  if (imageIds && imageIds.length > 0) {
+    await prisma.postImage.createMany({
+      data: imageIds.map((imageId: string, index: number) => ({
+        postId: post.id,
+        imageId,
+        order: index
+      }))
+    })
+  }
+
+  // Fetch the post with ordered images
+  const postWithImages = await prisma.post.findUnique({
+    where: { id: post.id },
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      },
+      hashtags: true,
+      images: {
+        include: { image: true },
+        orderBy: { order: 'asc' }
+      }
+    }
+  })
+
+  // Map images to array of image objects in order
+  const postWithOrderedImages = {
+    ...postWithImages,
+    images: postWithImages?.images.map(pi => pi.image) || []
+  }
+
   res.status(201).json({
     success: true,
-    data: { post },
+    data: { post: postWithOrderedImages },
     message: 'Post created successfully'
   })
 }))
@@ -257,29 +343,56 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
         orderBy: { createdAt: 'asc' }
       },
       reactions: true,
-      images: true,
+      images: {
+        include: { image: true },
+        orderBy: { order: 'asc' }
+      },
       hashtags: true
     }
   })
 
   if (!post) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Post not found'
     })
+    return
   }
 
-  // Check if user can view private post
+  // Check if user can view the post based on publication status and privacy
+  if (post.publicationStatus === 'DELETED') {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
+  if (post.publicationStatus === 'PAUSED' && post.authorId !== userId) {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
   if (post.isPrivate && post.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Access denied'
     })
+    return
+  }
+
+  // Map images to array of image objects in order
+  const postWithOrderedImages = {
+    ...post,
+    images: post.images.map(pi => pi.image)
   }
 
   res.json({
     success: true,
-    data: { post }
+    data: { post: postWithOrderedImages }
   })
 }))
 
@@ -287,13 +400,14 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { title, content, isPrivate, hashtags } = req.body
+  const { title, content, isPrivate, hashtags, imageIds } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const post = await prisma.post.findUnique({
@@ -301,17 +415,38 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
   })
 
   if (!post) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Post not found'
     })
+    return
   }
 
   if (post.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to update this post'
     })
+    return
+  }
+
+  // Validate that all images belong to the user
+  if (imageIds && imageIds.length > 0) {
+    const userImages = await prisma.image.findMany({
+      where: {
+        id: { in: imageIds },
+        authorId: userId
+      },
+      select: { id: true }
+    })
+
+    if (userImages.length !== imageIds.length) {
+      res.status(400).json({
+        success: false,
+        error: 'Some images do not belong to you or do not exist'
+      })
+      return
+    }
   }
 
   const updatedPost = await prisma.post.update({
@@ -341,9 +476,54 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     }
   })
 
+  // Update PostImage records with new order
+  if (imageIds) {
+    // Delete existing PostImage records
+    await prisma.postImage.deleteMany({
+      where: { postId: id }
+    })
+
+    // Create new PostImage records with order
+    if (imageIds.length > 0) {
+      await prisma.postImage.createMany({
+        data: imageIds.map((imageId: string, index: number) => ({
+          postId: id,
+          imageId,
+          order: index
+        }))
+      })
+    }
+  }
+
+  // Fetch the post with ordered images
+  const postWithImages = await prisma.post.findUnique({
+    where: { id },
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      },
+      hashtags: true,
+      images: {
+        include: { image: true },
+        orderBy: { order: 'asc' }
+      }
+    }
+  })
+
+  // Map images to array of image objects in order
+  const postWithOrderedImages = {
+    ...postWithImages,
+    images: postWithImages?.images.map(pi => pi.image) || []
+  }
+
   res.json({
     success: true,
-    data: { post: updatedPost },
+    data: { post: postWithOrderedImages },
     message: 'Post updated successfully'
   })
 }))
@@ -354,10 +534,11 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   const { id } = req.params
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   const post = await prisma.post.findUnique({
@@ -365,17 +546,19 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   })
 
   if (!post) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Post not found'
     })
+    return
   }
 
   if (post.authorId !== userId) {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Not authorized to delete this post'
     })
+    return
   }
 
   await prisma.post.delete({
@@ -420,10 +603,11 @@ router.post('/:postId/reactions', authMiddleware, asyncHandler(async (req: Authe
   const { type = 'LIKE' } = req.body
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   // Check if post exists
@@ -432,10 +616,11 @@ router.post('/:postId/reactions', authMiddleware, asyncHandler(async (req: Authe
   })
 
   if (!post) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Post not found'
     })
+    return
   }
 
   // Check if user already reacted to this post
@@ -463,11 +648,12 @@ router.post('/:postId/reactions', authMiddleware, asyncHandler(async (req: Authe
       }
     })
 
-    return res.json({
+    res.json({
       success: true,
       data: { reaction: updatedReaction },
       message: 'Reaction updated successfully'
     })
+    return
   }
 
   // Create new reaction
@@ -502,10 +688,11 @@ router.delete('/:postId/reactions', authMiddleware, asyncHandler(async (req: Aut
   const { postId } = req.params
 
   if (!userId) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: 'User not authenticated'
     })
+    return
   }
 
   // Find and delete the user's reaction to this post
@@ -517,10 +704,11 @@ router.delete('/:postId/reactions', authMiddleware, asyncHandler(async (req: Aut
   })
 
   if (!reaction) {
-    return res.status(404).json({
+    res.status(404).json({
       success: false,
       error: 'Reaction not found'
     })
+    return
   }
 
   await prisma.reaction.delete({
@@ -530,6 +718,154 @@ router.delete('/:postId/reactions', authMiddleware, asyncHandler(async (req: Aut
   res.json({
     success: true,
     message: 'Reaction removed successfully'
+  })
+}))
+
+// Reorder images in a post
+router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { id } = req.params
+  const { imageIds } = req.body
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+    return
+  }
+
+  const post = await prisma.post.findUnique({
+    where: { id },
+    include: {
+      images: {
+        include: { image: true },
+        orderBy: { order: 'asc' }
+      }
+    }
+  })
+
+  if (!post) {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
+  if (post.authorId !== userId) {
+    res.status(403).json({
+      success: false,
+      error: 'Not authorized to reorder images in this post'
+    })
+    return
+  }
+
+  // Validate that all provided image IDs belong to this post
+  const postImageIds = post.images.map(pi => pi.image.id)
+  const isValidOrder = imageIds.every((imageId: string) => postImageIds.includes(imageId))
+  const hasAllImages = postImageIds.every(imageId => imageIds.includes(imageId))
+
+  if (!isValidOrder || !hasAllImages) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid image order provided'
+    })
+    return
+  }
+
+  // Update the order of PostImage records
+  for (let i = 0; i < imageIds.length; i++) {
+    await prisma.postImage.updateMany({
+      where: {
+        postId: id,
+        imageId: imageIds[i]
+      },
+      data: {
+        order: i
+      }
+    })
+  }
+
+  res.json({
+    success: true,
+    message: 'Image order updated successfully'
+  })
+}))
+
+// Update post publication status
+router.patch('/:id/status', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { id } = req.params
+  const { publicationStatus } = req.body
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Validate publication status
+  const validStatuses = ['PUBLIC', 'PAUSED', 'CONTROLLED', 'DELETED']
+  if (!validStatuses.includes(publicationStatus)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid publication status'
+    })
+    return
+  }
+
+  const post = await prisma.post.findUnique({
+    where: { id }
+  })
+
+  if (!post) {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
+  if (post.authorId !== userId) {
+    res.status(403).json({
+      success: false,
+      error: 'Not authorized to update this post'
+    })
+    return
+  }
+
+  const updatedPost = await prisma.post.update({
+    where: { id },
+    data: { publicationStatus },
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      },
+      images: {
+        include: { image: true },
+        orderBy: { order: 'asc' }
+      }
+    }
+  })
+
+  // Map images to array of image objects in order
+  const postWithOrderedImages = {
+    ...updatedPost,
+    images: updatedPost.images.map(pi => pi.image)
+  }
+
+  res.json({
+    success: true,
+    data: { post: postWithOrderedImages },
+    message: 'Post status updated successfully'
   })
 }))
 

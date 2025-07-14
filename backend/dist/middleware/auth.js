@@ -11,10 +11,11 @@ const authMiddleware = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
+            res.status(401).json({
                 success: false,
                 error: 'Access token required'
             });
+            return;
         }
         const token = authHeader.substring(7);
         const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
@@ -22,32 +23,36 @@ const authMiddleware = async (req, res, next) => {
             where: { id: decoded.userId }
         });
         if (!user) {
-            return res.status(401).json({
+            res.status(401).json({
                 success: false,
                 error: 'Invalid token'
             });
+            return;
         }
         req.user = user;
         next();
     }
     catch (error) {
         if (error instanceof jsonwebtoken_1.default.JsonWebTokenError) {
-            return res.status(401).json({
+            res.status(401).json({
                 success: false,
                 error: 'Invalid token'
             });
+            return;
         }
         if (error instanceof jsonwebtoken_1.default.TokenExpiredError) {
-            return res.status(401).json({
+            res.status(401).json({
                 success: false,
                 error: 'Token expired'
             });
+            return;
         }
         console.error('Auth middleware error:', error);
-        return res.status(500).json({
+        res.status(500).json({
             success: false,
             error: 'Internal server error'
         });
+        return;
     }
 };
 exports.authMiddleware = authMiddleware;

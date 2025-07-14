@@ -1,110 +1,72 @@
 import sharp from 'sharp'
-import fs from 'fs'
-import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
-
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
-const IMAGES_DIR = path.join(UPLOADS_DIR, 'images')
-const THUMBNAILS_DIR = path.join(UPLOADS_DIR, 'thumbnails')
-
-// Ensure directories exist
-const ensureDirectories = () => {
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true })
-  }
-  if (!fs.existsSync(IMAGES_DIR)) {
-    fs.mkdirSync(IMAGES_DIR, { recursive: true })
-  }
-  if (!fs.existsSync(THUMBNAILS_DIR)) {
-    fs.mkdirSync(THUMBNAILS_DIR, { recursive: true })
-  }
-}
+import { 
+  processImageForS3, 
+  uploadImageWithThumbnail, 
+  deleteImageWithThumbnail,
+  UploadResult,
+  ProcessedImage
+} from './s3Service'
 
 // Generate a unique filename
 const generateFilename = (originalName: string): string => {
-  const ext = path.extname(originalName)
-  const baseName = path.basename(originalName, ext)
+  const ext = originalName.split('.').pop() || 'jpg'
+  const baseName = originalName.replace(/\.[^/.]+$/, '')
   const uniqueId = uuidv4()
-  return `${baseName}_${uniqueId}${ext}`
+  return `${baseName}_${uniqueId}.${ext}`
 }
 
-// Process image and generate thumbnail
+// Process image and upload to S3
 export const processImage = async (
   buffer: Buffer,
   originalName: string,
-  mimeType: string
+  mimeType: string,
+  userId: string
 ): Promise<{
   imagePath: string
   thumbnailPath: string
   width: number
   height: number
   size: number
+  s3Key: string
+  thumbnailS3Key?: string
 }> => {
-  ensureDirectories()
+  // Process image and create thumbnail
+  const processedImage: ProcessedImage = await processImageForS3(
+    buffer,
+    originalName,
+    mimeType
+  )
 
-  const filename = generateFilename(originalName)
-  const imagePath = path.join(IMAGES_DIR, filename)
-  const thumbnailPath = path.join(THUMBNAILS_DIR, `thumb_${filename}`)
-
-  // Get image metadata
-  const metadata = await sharp(buffer).metadata()
-  const width = metadata.width || 0
-  const height = metadata.height || 0
-
-  // Save full-size image
-  await sharp(buffer)
-    .jpeg({ quality: 90 })
-    .toFile(imagePath)
-
-  // Generate thumbnail (300x300, maintaining aspect ratio)
-  await sharp(buffer)
-    .resize(300, 300, {
-      fit: 'inside',
-      withoutEnlargement: true
-    })
-    .jpeg({ quality: 80 })
-    .toFile(thumbnailPath)
-
-  // Get file sizes
-  const imageStats = fs.statSync(imagePath)
-  const thumbnailStats = fs.statSync(thumbnailPath)
+  // Upload to S3
+  const uploadResult: UploadResult = await uploadImageWithThumbnail(
+    processedImage.originalBuffer,
+    processedImage.thumbnailBuffer,
+    originalName,
+    mimeType,
+    userId
+  )
 
   return {
-    imagePath: `/uploads/images/${filename}`,
-    thumbnailPath: `/uploads/thumbnails/thumb_${filename}`,
-    width,
-    height,
-    size: imageStats.size
+    imagePath: uploadResult.key, // Store S3 key, generate URL on-demand
+    thumbnailPath: uploadResult.thumbnailKey || '', // Store S3 key, generate URL on-demand
+    width: processedImage.width,
+    height: processedImage.height,
+    size: processedImage.size,
+    s3Key: uploadResult.key,
+    thumbnailS3Key: uploadResult.thumbnailKey
   }
 }
 
-// Delete image files
-export const deleteImageFiles = async (imagePath: string, thumbnailPath?: string) => {
+// Delete image files from S3
+export const deleteImageFiles = async (s3Key: string, thumbnailS3Key?: string) => {
   try {
-    const fullImagePath = path.join(process.cwd(), imagePath.replace(/^\//, ''))
-    if (fs.existsSync(fullImagePath)) {
-      fs.unlinkSync(fullImagePath)
-    }
-
-    if (thumbnailPath) {
-      const fullThumbnailPath = path.join(process.cwd(), thumbnailPath.replace(/^\//, ''))
-      if (fs.existsSync(fullThumbnailPath)) {
-        fs.unlinkSync(fullThumbnailPath)
-      }
-    }
+    await deleteImageWithThumbnail(s3Key, thumbnailS3Key)
   } catch (error) {
-    console.error('Error deleting image files:', error)
+    console.error('Error deleting image files from S3:', error)
+    throw error
   }
 }
 
-// Serve static files
-export const serveImage = (req: any, res: any) => {
-  const filePath = req.params[0]
-  const fullPath = path.join(process.cwd(), 'uploads', filePath)
-  
-  if (fs.existsSync(fullPath)) {
-    res.sendFile(fullPath)
-  } else {
-    res.status(404).json({ error: 'Image not found' })
-  }
-} 
+// Note: No need for serveImage function as S3 objects are publicly accessible
+// The imagePath returned from processImage is the direct S3 URL 

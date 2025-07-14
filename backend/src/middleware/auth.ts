@@ -9,15 +9,16 @@ export const authMiddleware = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     const authHeader = req.headers.authorization
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Access token required'
       })
+      return
     }
 
     const token = authHeader.substring(7) // Remove 'Bearer ' prefix
@@ -29,34 +30,38 @@ export const authMiddleware = async (
     })
 
     if (!user) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Invalid token'
       })
+      return
     }
 
     req.user = user
     next()
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Invalid token'
       })
+      return
     }
     
     if (error instanceof jwt.TokenExpiredError) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Token expired'
       })
+      return
     }
 
     console.error('Auth middleware error:', error)
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: 'Internal server error'
     })
+    return
   }
 }
 
