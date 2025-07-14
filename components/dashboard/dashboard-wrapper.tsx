@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Camera, Settings, LogOut, Plus, Grid, List } from 'lucide-react'
+import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus } from 'lucide-react'
 import { PersonalFeed } from './personal-feed'
 import { UserGallery } from './user-gallery'
 import { ProfileEditor } from './profile-editor'
 import { ImageUploader } from './image-uploader'
+import FriendRequests from './friend-requests'
+import FriendsList from './friends-list'
 import { useAuth } from '../../lib/api-hooks'
 
 interface UserData {
@@ -25,7 +27,7 @@ interface UserData {
 
 export function DashboardWrapper() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'feed' | 'gallery' | 'profile'>('feed')
+  const [activeTab, setActiveTab] = useState<'feed' | 'gallery' | 'profile' | 'friends' | 'requests'>('feed')
   const [showImageUploader, setShowImageUploader] = useState(false)
   const [isClient, setIsClient] = useState(false)
 
@@ -181,10 +183,10 @@ export function DashboardWrapper() {
 
         {/* Navigation Tabs */}
         <div className="mb-8">
-          <nav className="flex space-x-1 bg-white rounded-lg p-1 shadow-sm border border-gray-200">
+          <nav className="flex space-x-1 bg-white rounded-lg p-1 shadow-sm border border-gray-200 overflow-x-auto">
             <button
               onClick={() => setActiveTab('feed')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
                 activeTab === 'feed'
                   ? 'bg-primary-100 text-primary-700'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -195,7 +197,7 @@ export function DashboardWrapper() {
             </button>
             <button
               onClick={() => setActiveTab('gallery')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
                 activeTab === 'gallery'
                   ? 'bg-primary-100 text-primary-700'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -205,8 +207,30 @@ export function DashboardWrapper() {
               <span>Gallery</span>
             </button>
             <button
+              onClick={() => setActiveTab('friends')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
+                activeTab === 'friends'
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              <span>Friends</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('requests')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
+                activeTab === 'requests'
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>Requests</span>
+            </button>
+            <button
               onClick={() => setActiveTab('profile')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
                 activeTab === 'profile'
                   ? 'bg-primary-100 text-primary-700'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -241,6 +265,30 @@ export function DashboardWrapper() {
               transition={{ duration: 0.2 }}
             >
               <UserGallery userId={user.id} />
+            </motion.div>
+          )}
+
+          {activeTab === 'friends' && (
+            <motion.div
+              key="friends"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <FriendsList />
+            </motion.div>
+          )}
+
+          {activeTab === 'requests' && (
+            <motion.div
+              key="requests"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <FriendRequests />
             </motion.div>
           )}
 

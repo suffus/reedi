@@ -40,6 +40,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
   const [sharedDescription, setSharedDescription] = useState('')
   const [sharedTags, setSharedTags] = useState<string[]>([])
   const [newSharedTag, setNewSharedTag] = useState('')
+  const [imageVisibility, setImageVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addMoreFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -190,6 +191,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
           formData.append('description', uploadFile.description)
           formData.append('tags', JSON.stringify(uploadFile.tags))
           formData.append('userId', userId)
+          formData.append('visibility', imageVisibility)
 
           // Simulate progress updates (since we can't get real progress from the mutation)
           const progressInterval = setInterval(() => {
@@ -441,7 +443,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                     <h4 className="text-sm font-medium text-blue-900 mb-3">
                       Shared Metadata (applies to all images)
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Title
@@ -513,6 +515,47 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                             className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors duration-200"
                           >
                             Add
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-blue-800 mb-1">
+                          Visibility
+                        </label>
+                        <div className="flex space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => setImageVisibility('PUBLIC')}
+                            className={`px-2 py-1 text-xs rounded-none transition-colors ${
+                              imageVisibility === 'PUBLIC'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
+                            }`}
+                          >
+                            Public
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setImageVisibility('FRIENDS_ONLY')}
+                            className={`px-2 py-1 text-xs rounded-none transition-colors ${
+                              imageVisibility === 'FRIENDS_ONLY'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
+                            }`}
+                          >
+                            Friends
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setImageVisibility('PRIVATE')}
+                            className={`px-2 py-1 text-xs rounded-none transition-colors ${
+                              imageVisibility === 'PRIVATE'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
+                            }`}
+                          >
+                            Private
                           </button>
                         </div>
                       </div>
@@ -612,6 +655,47 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                                   className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors duration-200"
                                 >
                                   Add
+                                </button>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Visibility
+                              </label>
+                              <div className="flex space-x-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setImageVisibility('PUBLIC')}
+                                  className={`px-2 py-1 text-xs rounded-none transition-colors ${
+                                    imageVisibility === 'PUBLIC'
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  Public
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setImageVisibility('FRIENDS_ONLY')}
+                                  className={`px-2 py-1 text-xs rounded-none transition-colors ${
+                                    imageVisibility === 'FRIENDS_ONLY'
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  Friends
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setImageVisibility('PRIVATE')}
+                                  className={`px-2 py-1 text-xs rounded-none transition-colors ${
+                                    imageVisibility === 'PRIVATE'
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  Private
                                 </button>
                               </div>
                             </div>
@@ -718,6 +802,47 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                               >
                                 +
                               </button>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Visibility
+                              </label>
+                              <div className="flex space-x-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setImageVisibility('PUBLIC')}
+                                  className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
+                                    imageVisibility === 'PUBLIC'
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  Public
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setImageVisibility('FRIENDS_ONLY')}
+                                  className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
+                                    imageVisibility === 'FRIENDS_ONLY'
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  Friends
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setImageVisibility('PRIVATE')}
+                                  className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
+                                    imageVisibility === 'PRIVATE'
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  Private
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>

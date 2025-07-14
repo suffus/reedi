@@ -57,7 +57,7 @@ export async function processImageForS3(
   // Create thumbnail (max 300x300, maintain aspect ratio)
   const thumbnailBuffer = await sharp(buffer)
     .resize(300, 300, { 
-      fit: 'inside',
+      fit: 'cover',
       withoutEnlargement: true 
     })
     .jpeg({ 

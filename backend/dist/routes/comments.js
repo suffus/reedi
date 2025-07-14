@@ -157,6 +157,69 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         });
         return;
     }
+    if (postId) {
+        const post = await index_1.prisma.post.findUnique({
+            where: { id: postId },
+            include: {
+                author: true
+            }
+        });
+        if (!post) {
+            res.status(404).json({
+                success: false,
+                error: 'Post not found'
+            });
+            return;
+        }
+        const isAuthor = post.authorId === userId;
+        const isFriend = await index_1.prisma.friendRequest.findFirst({
+            where: {
+                OR: [
+                    { senderId: userId, receiverId: post.authorId, status: 'ACCEPTED' },
+                    { senderId: post.authorId, receiverId: userId, status: 'ACCEPTED' }
+                ]
+            }
+        });
+        const isPublicPost = post.visibility === 'PUBLIC';
+        if (!isAuthor && !isFriend && !isPublicPost) {
+            res.status(403).json({
+                success: false,
+                error: 'You can only comment on your own posts, friends\' posts, or public posts'
+            });
+            return;
+        }
+    }
+    if (imageId) {
+        const image = await index_1.prisma.image.findUnique({
+            where: { id: imageId },
+            include: {
+                author: true
+            }
+        });
+        if (!image) {
+            res.status(404).json({
+                success: false,
+                error: 'Image not found'
+            });
+            return;
+        }
+        const isAuthor = image.authorId === userId;
+        const isFriend = await index_1.prisma.friendRequest.findFirst({
+            where: {
+                OR: [
+                    { senderId: userId, receiverId: image.authorId, status: 'ACCEPTED' },
+                    { senderId: image.authorId, receiverId: userId, status: 'ACCEPTED' }
+                ]
+            }
+        });
+        if (!isAuthor && !isFriend) {
+            res.status(403).json({
+                success: false,
+                error: 'You can only comment on your own images or friends\' images'
+            });
+            return;
+        }
+    }
     const comment = await index_1.prisma.comment.create({
         data: {
             content,

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
-import { authMiddleware } from '@/middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 import { processImage, deleteImageFiles } from '@/utils/imageProcessor'
 import { generatePresignedUrl, getImageFromS3 } from '@/utils/s3Service'
@@ -56,6 +56,82 @@ router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => 
     prisma.image.count({
       where: { authorId: userId }
     })
+  ])
+
+  res.json({
+    success: true,
+    data: {
+      images,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+        hasNext: offset + Number(limit) < total,
+        hasPrev: Number(page) > 1
+      }
+    }
+  })
+}))
+
+// Get images for a user's public page, filtered by visibility
+router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { userId } = req.params
+  const viewerId = req.user?.id
+  const { page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  // Determine which images the viewer can see
+  let visibilityFilter: any[] = [
+    { visibility: 'PUBLIC' }
+  ]
+
+  if (viewerId) {
+    if (viewerId === userId) {
+      visibilityFilter = [] // Show all
+    } else {
+      const isFriend = await prisma.friendRequest.findFirst({
+        where: {
+          OR: [
+            { senderId: viewerId, receiverId: userId, status: 'ACCEPTED' },
+            { senderId: userId, receiverId: viewerId, status: 'ACCEPTED' }
+          ]
+        }
+      })
+      if (isFriend) {
+        visibilityFilter.push({ visibility: 'FRIENDS_ONLY' })
+      }
+    }
+  }
+
+  const where: any = {
+    authorId: userId,
+    ...(visibilityFilter.length > 0 ? { OR: visibilityFilter } : {})
+  }
+
+  const [images, total] = await Promise.all([
+    prisma.image.findMany({
+      where,
+      skip: offset,
+      take: Number(limit),
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        s3Key: true,
+        thumbnailS3Key: true,
+        altText: true,
+        caption: true,
+        width: true,
+        height: true,
+        size: true,
+        mimeType: true,
+        tags: true,
+        createdAt: true,
+        updatedAt: true,
+        authorId: true
+      }
+    }),
+    prisma.image.count({ where })
   ])
 
   res.json({

@@ -28,7 +28,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
                         { content: { contains: searchTerm, mode: 'insensitive' } }
                     ],
                     publicationStatus: 'PUBLIC',
-                    isPrivate: false
+                    visibility: 'PUBLIC'
                 },
                 include: {
                     author: {
@@ -58,7 +58,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
                         { content: { contains: searchTerm, mode: 'insensitive' } }
                     ],
                     publicationStatus: 'PUBLIC',
-                    isPrivate: false
+                    visibility: 'PUBLIC'
                 }
             })
         ]);

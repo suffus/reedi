@@ -188,6 +188,51 @@ router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
   })
 }))
 
+// Get public user profile by ID or username (no authentication required)
+router.get('/:identifier/public', asyncHandler(async (req: Request, res: Response) => {
+  const { identifier } = req.params
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: identifier },
+        { username: identifier }
+      ]
+    },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      avatar: true,
+      bio: true,
+      location: true,
+      website: true,
+      isVerified: true,
+      createdAt: true,
+      _count: {
+        select: {
+          posts: true,
+          followers: true,
+          following: true
+        }
+      }
+    }
+  })
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  res.json({
+    success: true,
+    data: { user }
+  })
+}))
+
 // Follow a user
 router.post('/:userId/follow', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const followerId = req.user?.id

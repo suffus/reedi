@@ -14,6 +14,7 @@ interface Post {
   id: string
   content: string
   publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
+  visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   authorId: string
   images: {
     id: string
@@ -73,6 +74,7 @@ export function PersonalFeed() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false)
   const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
   const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false)
+  const [postVisibility, setPostVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
 
   const { data: authData, isLoading: authLoading } = useAuth()
   const userId = authData?.data?.user?.id
@@ -93,10 +95,12 @@ export function PersonalFeed() {
     try {
       await createPostMutation.mutateAsync({
         content: newPost,
+        visibility: postVisibility,
         imageIds: selectedImages.map(img => img.id)
       })
       setNewPost('')
       setSelectedImages([])
+      setPostVisibility('PUBLIC') // Reset to default
     } catch (error) {
       console.error('Failed to create post:', error)
     }
@@ -571,6 +575,46 @@ export function PersonalFeed() {
             className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             rows={3}
           />
+          
+          {/* Visibility Selector */}
+          <div className="flex items-center space-x-4">
+            <label className="text-sm font-medium text-gray-700">Visibility:</label>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={() => setPostVisibility('PUBLIC')}
+                className={`px-3 py-1 text-sm rounded-none transition-colors ${
+                  postVisibility === 'PUBLIC'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setPostVisibility('FRIENDS_ONLY')}
+                className={`px-3 py-1 text-sm rounded-none transition-colors ${
+                  postVisibility === 'FRIENDS_ONLY'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Friends Only
+              </button>
+              <button
+                type="button"
+                onClick={() => setPostVisibility('PRIVATE')}
+                className={`px-3 py-1 text-sm rounded-none transition-colors ${
+                  postVisibility === 'PRIVATE'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Private
+              </button>
+            </div>
+          </div>
           
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (

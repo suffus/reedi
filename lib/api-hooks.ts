@@ -34,7 +34,6 @@ interface User {
   bio: string | null
   location: string | null
   website: string | null
-  isPrivate: boolean
   isVerified: boolean
 }
 
@@ -43,7 +42,7 @@ interface Post {
   title: string | null
   content: string
   publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
-  isPrivate: boolean
+  visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   authorId: string
   createdAt: string
   updatedAt: string
@@ -94,6 +93,7 @@ interface Image {
   postId: string | null
   authorId: string
   galleryId: string | null
+  visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   createdAt: string
   updatedAt: string
 }
@@ -271,11 +271,62 @@ export const usePostsFeed = (page = 1, limit = 20) => {
   })
 }
 
+export const usePublicPostsFeed = (page = 1, limit = 20) => {
+  return useQuery({
+    queryKey: ['posts', 'public', 'feed', page, limit],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/posts/public?page=${page}&limit=${limit}`)
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch public posts')
+      
+      return data
+    }
+  })
+}
+
+export const useUserPosts = (userId: string, page = 1, limit = 20) => {
+  const isClient = useIsClient()
+  
+  return useQuery({
+    queryKey: ['posts', 'user', userId, page, limit],
+    queryFn: async () => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/posts/user/${userId}?page=${page}&limit=${limit}`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch user posts')
+      
+      return data
+    },
+    enabled: isClient && hasToken() && !!userId
+  })
+}
+
+export const usePublicUserPosts = (identifier: string, page = 1, limit = 20) => {
+  return useQuery({
+    queryKey: ['posts', 'user', 'public', identifier, page, limit],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/posts/user/${identifier}/public?page=${page}&limit=${limit}`)
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch public user posts')
+      
+      return data
+    },
+    enabled: !!identifier
+  })
+}
+
 export const useCreatePost = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (postData: { title?: string; content: string; isPrivate?: boolean; hashtags?: string[]; imageIds?: string[] }) => {
+    mutationFn: async (postData: { title?: string; content: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; hashtags?: string[]; imageIds?: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
@@ -398,7 +449,20 @@ export const useImageComments = (imageId: string) => {
   })
 }
 
-
+export const usePublicUserImages = (identifier: string, page = 1, limit = 20) => {
+  return useQuery({
+    queryKey: ['images', 'user', 'public', identifier, page, limit],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/images/user/${identifier}/public?page=${page}&limit=${limit}`)
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch public user images')
+      
+      return data
+    },
+    enabled: !!identifier
+  })
+}
 
 // Infinite scroll user images hook
 export const useUserImages = (userId: string) => {
@@ -678,6 +742,31 @@ export const useUpdatePostStatus = () => {
       
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to update post status')
+      
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+    }
+  })
+}
+
+export const useUpdatePostVisibility = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ postId, visibility }: { postId: string; visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE' }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/visibility`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ visibility })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to update post visibility')
       
       return data
     },

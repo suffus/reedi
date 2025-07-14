@@ -20,6 +20,7 @@ const images_1 = __importDefault(require("@/routes/images"));
 const imageServe_1 = __importDefault(require("@/routes/imageServe"));
 const galleries_1 = __importDefault(require("@/routes/galleries"));
 const search_1 = __importDefault(require("@/routes/search"));
+const friends_1 = __importDefault(require("@/routes/friends"));
 const errorHandler_1 = require("@/middleware/errorHandler");
 const auth_2 = require("@/middleware/auth");
 dotenv_1.default.config();
@@ -68,6 +69,7 @@ app.use('/api/images/serve', imageServe_1.default);
 app.use('/api/images', auth_2.authMiddleware, images_1.default);
 app.use('/api/galleries', auth_2.authMiddleware, galleries_1.default);
 app.use('/api/search', search_1.default);
+app.use('/api/friends', friends_1.default);
 app.use(errorHandler_1.errorHandler);
 app.use('*', (req, res) => {
     res.status(404).json({

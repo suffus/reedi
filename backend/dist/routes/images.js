@@ -70,6 +70,75 @@ router.get('/user/:userId', (0, errorHandler_1.asyncHandler)(async (req, res) =>
         }
     });
 }));
+router.get('/user/:userId/public', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { userId } = req.params;
+    const viewerId = req.user?.id;
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    let visibilityFilter = [
+        { visibility: 'PUBLIC' }
+    ];
+    if (viewerId) {
+        if (viewerId === userId) {
+            visibilityFilter = [];
+        }
+        else {
+            const isFriend = await index_1.prisma.friendRequest.findFirst({
+                where: {
+                    OR: [
+                        { senderId: viewerId, receiverId: userId, status: 'ACCEPTED' },
+                        { senderId: userId, receiverId: viewerId, status: 'ACCEPTED' }
+                    ]
+                }
+            });
+            if (isFriend) {
+                visibilityFilter.push({ visibility: 'FRIENDS_ONLY' });
+            }
+        }
+    }
+    const where = {
+        authorId: userId,
+        ...(visibilityFilter.length > 0 ? { OR: visibilityFilter } : {})
+    };
+    const [images, total] = await Promise.all([
+        index_1.prisma.image.findMany({
+            where,
+            skip: offset,
+            take: Number(limit),
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                s3Key: true,
+                thumbnailS3Key: true,
+                altText: true,
+                caption: true,
+                width: true,
+                height: true,
+                size: true,
+                mimeType: true,
+                tags: true,
+                createdAt: true,
+                updatedAt: true,
+                authorId: true
+            }
+        }),
+        index_1.prisma.image.count({ where })
+    ]);
+    res.json({
+        success: true,
+        data: {
+            images,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                totalPages: Math.ceil(total / Number(limit)),
+                hasNext: offset + Number(limit) < total,
+                hasPrev: Number(page) > 1
+            }
+        }
+    });
+}));
 router.get('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
     const { id } = req.params;

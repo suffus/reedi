@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
+import { optionalAuthMiddleware } from '@/middleware/auth'
+import { AuthenticatedRequest } from '@/types'
 import { getImageFromS3 } from '@/utils/s3Service'
 
 const router = Router()
@@ -9,7 +11,7 @@ const router = Router()
 router.use((req: Request, res: Response, next) => {
   res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000')
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  res.header('Access-Control-Allow-Headers', 'Content-Type')
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   res.header('Cross-Origin-Resource-Policy', 'cross-origin')
   
   if (req.method === 'OPTIONS') {
@@ -20,9 +22,71 @@ router.use((req: Request, res: Response, next) => {
   next()
 })
 
+// Helper function to check if user can view image
+async function canViewImage(imageId: string, viewerId?: string): Promise<boolean> {
+  const image = await prisma.image.findUnique({
+    where: { id: imageId },
+    select: {
+      id: true,
+      visibility: true,
+      authorId: true
+    }
+  })
+
+  if (!image) {
+    return false
+  }
+
+  // Public images can be viewed by anyone
+  if (image.visibility === 'PUBLIC') {
+    return true
+  }
+
+  // Private images can only be viewed by the author
+  if (image.visibility === 'PRIVATE') {
+    return viewerId === image.authorId
+  }
+
+  // Friends only images can be viewed by the author or friends
+  if (image.visibility === 'FRIENDS_ONLY') {
+    if (!viewerId) {
+      return false
+    }
+    
+    if (viewerId === image.authorId) {
+      return true
+    }
+
+    // Check if they are friends
+    const friendship = await prisma.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId: viewerId, receiverId: image.authorId, status: 'ACCEPTED' },
+          { senderId: image.authorId, receiverId: viewerId, status: 'ACCEPTED' }
+        ]
+      }
+    })
+
+    return !!friendship
+  }
+
+  return false
+}
+
 // Serve image directly from backend
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this image
+  const canView = await canViewImage(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
 
   const image = await prisma.image.findUnique({
     where: { id },
@@ -63,8 +127,19 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 }))
 
 // Serve thumbnail directly from backend
-router.get('/:id/thumbnail', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this image
+  const canView = await canViewImage(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
 
   const image = await prisma.image.findUnique({
     where: { id },

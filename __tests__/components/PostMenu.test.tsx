@@ -6,15 +6,18 @@ import { PostMenu } from '../../components/dashboard/post-menu'
 // Mock the API hooks
 jest.mock('../../lib/api-hooks', () => ({
   useUpdatePostStatus: jest.fn(),
+  useUpdatePostVisibility: jest.fn(),
 }))
 
 const mockUseUpdatePostStatus = require('../../lib/api-hooks').useUpdatePostStatus
+const mockUseUpdatePostVisibility = require('../../lib/api-hooks').useUpdatePostVisibility
 
 describe('PostMenu', () => {
   const mockPost = {
     id: 'post1',
     content: 'Test post content',
     publicationStatus: 'PUBLIC' as const,
+    visibility: 'PUBLIC' as const,
     authorId: 'user1',
     images: [],
     createdAt: '2023-01-01T00:00:00Z',
@@ -40,6 +43,10 @@ describe('PostMenu', () => {
 
   beforeEach(() => {
     mockUseUpdatePostStatus.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+    })
+    mockUseUpdatePostVisibility.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     })
@@ -140,8 +147,8 @@ describe('PostMenu', () => {
     const controlVisibilityButton = screen.getByText('Control Visibility')
     await user.click(controlVisibilityButton)
     
-    expect(screen.getByText('Coming Soon')).toBeInTheDocument()
-    expect(screen.getByText('Advanced visibility controls will be available soon!')).toBeInTheDocument()
+    expect(screen.getByText('Control Post Visibility')).toBeInTheDocument()
+    expect(screen.getByText('Choose who can see this post:')).toBeInTheDocument()
   })
 
   it('closes control visibility modal', async () => {
@@ -154,10 +161,35 @@ describe('PostMenu', () => {
     const controlVisibilityButton = screen.getByText('Control Visibility')
     await user.click(controlVisibilityButton)
     
-    const closeButton = screen.getByText('Close')
-    await user.click(closeButton)
+    const cancelButton = screen.getByText('Cancel')
+    await user.click(cancelButton)
     
-    expect(screen.queryByText('Coming Soon')).not.toBeInTheDocument()
+    expect(screen.queryByText('Control Post Visibility')).not.toBeInTheDocument()
+  })
+
+  it('handles visibility change to friends only', async () => {
+    const user = userEvent.setup()
+    const mockMutateAsync = jest.fn()
+    mockUseUpdatePostVisibility.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    })
+    
+    render(<PostMenu {...defaultProps} />)
+    
+    const menuButton = screen.getByRole('button', { name: /menu/i })
+    await user.click(menuButton)
+    
+    const controlVisibilityButton = screen.getByText('Control Visibility')
+    await user.click(controlVisibilityButton)
+    
+    const friendsOnlyButton = screen.getByText('Friends Only')
+    await user.click(friendsOnlyButton)
+    
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      postId: 'post1',
+      visibility: 'FRIENDS_ONLY',
+    })
   })
 
   it('shows delete confirmation modal', async () => {

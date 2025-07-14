@@ -35,7 +35,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
             { content: { contains: searchTerm, mode: 'insensitive' } }
           ],
           publicationStatus: 'PUBLIC',
-          isPrivate: false
+          visibility: 'PUBLIC'
         },
         include: {
           author: {
@@ -65,7 +65,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
             { content: { contains: searchTerm, mode: 'insensitive' } }
           ],
           publicationStatus: 'PUBLIC',
-          isPrivate: false
+          visibility: 'PUBLIC'
         }
       })
     ])
