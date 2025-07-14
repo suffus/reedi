@@ -27,19 +27,30 @@ const BUCKET_NAME = process.env.IDRIVE_BUCKET_NAME;
 async function processImageForS3(buffer, originalName, mimeType) {
     const originalImage = (0, sharp_1.default)(buffer);
     const originalMetadata = await originalImage.metadata();
+    const progressiveBuffer = await (0, sharp_1.default)(buffer)
+        .jpeg({
+        quality: 85,
+        progressive: true,
+        mozjpeg: true
+    })
+        .toBuffer();
     const thumbnailBuffer = await (0, sharp_1.default)(buffer)
         .resize(300, 300, {
-        fit: 'inside',
+        fit: 'cover',
         withoutEnlargement: true
     })
-        .jpeg({ quality: 80 })
+        .jpeg({
+        quality: 80,
+        progressive: true,
+        mozjpeg: true
+    })
         .toBuffer();
     return {
-        originalBuffer: buffer,
+        originalBuffer: progressiveBuffer,
         thumbnailBuffer,
         width: originalMetadata.width || 0,
         height: originalMetadata.height || 0,
-        size: buffer.length,
+        size: progressiveBuffer.length,
     };
 }
 async function uploadImageToS3(buffer, key, mimeType, metadata) {

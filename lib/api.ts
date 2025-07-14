@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
   // Users
   USERS: {
     PROFILE: (identifier: string) => `${API_BASE_URL}/users/${identifier}`,
+    PUBLIC_PROFILE: (identifier: string) => `${API_BASE_URL}/users/${identifier}/public`,
     FOLLOW: (userId: string) => `${API_BASE_URL}/users/${userId}/follow`,
     FOLLOWERS: (userId: string) => `${API_BASE_URL}/users/${userId}/followers`,
     FOLLOWING: (userId: string) => `${API_BASE_URL}/users/${userId}/following`,
@@ -27,6 +28,10 @@ export const API_ENDPOINTS = {
   // Posts
   POSTS: {
     LIST: `${API_BASE_URL}/posts`,
+    FEED: `${API_BASE_URL}/posts/feed`,
+    PUBLIC_FEED: `${API_BASE_URL}/posts/public`,
+    USER_POSTS: (userId: string) => `${API_BASE_URL}/posts/user/${userId}`,
+    PUBLIC_USER_POSTS: (identifier: string) => `${API_BASE_URL}/posts/user/${identifier}/public`,
     CREATE: `${API_BASE_URL}/posts`,
     DETAIL: (id: string) => `${API_BASE_URL}/posts/${id}`,
     UPDATE: (id: string) => `${API_BASE_URL}/posts/${id}`,
@@ -44,6 +49,7 @@ export const API_ENDPOINTS = {
   // Images
   IMAGES: {
     USER: (userId: string) => `${API_BASE_URL}/images/user/${userId}`,
+    PUBLIC_USER: (identifier: string) => `${API_BASE_URL}/images/user/${identifier}/public`,
     UPLOAD: `${API_BASE_URL}/images`,
     DELETE: (id: string) => `${API_BASE_URL}/images/${id}`,
   },
@@ -51,6 +57,7 @@ export const API_ENDPOINTS = {
   // Galleries
   GALLERIES: {
     USER: (userId: string) => `${API_BASE_URL}/galleries/user/${userId}`,
+    PUBLIC_USER: (identifier: string) => `${API_BASE_URL}/galleries/user/${identifier}/public`,
     CREATE: `${API_BASE_URL}/galleries`,
     DETAIL: (id: string) => `${API_BASE_URL}/galleries/${id}`,
     UPDATE: (id: string) => `${API_BASE_URL}/galleries/${id}`,

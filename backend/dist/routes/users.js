@@ -167,6 +167,46 @@ router.get('/:identifier', (0, errorHandler_1.asyncHandler)(async (req, res) => 
         data: { user }
     });
 }));
+router.get('/:identifier/public', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { identifier } = req.params;
+    const user = await index_1.prisma.user.findFirst({
+        where: {
+            OR: [
+                { id: identifier },
+                { username: identifier }
+            ]
+        },
+        select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true,
+            bio: true,
+            location: true,
+            website: true,
+            isVerified: true,
+            createdAt: true,
+            _count: {
+                select: {
+                    posts: true,
+                    followers: true,
+                    following: true
+                }
+            }
+        }
+    });
+    if (!user) {
+        res.status(404).json({
+            success: false,
+            error: 'User not found'
+        });
+        return;
+    }
+    res.json({
+        success: true,
+        data: { user }
+    });
+}));
 router.post('/:userId/follow', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const followerId = req.user?.id;
     const { userId } = req.params;

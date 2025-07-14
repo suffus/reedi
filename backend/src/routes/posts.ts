@@ -15,7 +15,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
     prisma.post.findMany({
       where: {
         publicationStatus: 'PUBLIC',
-        isPrivate: false
+        visibility: 'PUBLIC'
       },
       include: {
         author: {
@@ -56,7 +56,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
     prisma.post.count({
       where: {
         publicationStatus: 'PUBLIC',
-        isPrivate: false
+        visibility: 'PUBLIC'
       }
     })
   ])
@@ -97,7 +97,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
     return
   }
 
-  // Get posts from followed users, public posts, and user's own posts (including paused ones)
+  // Get posts from followed users, friends, public posts, and user's own posts (including paused ones)
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
       where: {
@@ -110,17 +110,47 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
                 }
               }
             },
-            publicationStatus: 'PUBLIC' // Only public posts from followed users
+            publicationStatus: 'PUBLIC',
+            visibility: {
+              in: ['PUBLIC', 'FRIENDS_ONLY'] // Followers can see public and friends-only posts
+            }
           },
           {
-            isPrivate: false,
-            publicationStatus: 'PUBLIC' // Only public posts that are not private
+            author: {
+              OR: [
+                {
+                  friendRequestsSent: {
+                    some: {
+                      receiverId: userId,
+                      status: 'ACCEPTED'
+                    }
+                  }
+                },
+                {
+                  friendRequestsReceived: {
+                    some: {
+                      senderId: userId,
+                      status: 'ACCEPTED'
+                    }
+                  }
+                }
+              ]
+            },
+            publicationStatus: 'PUBLIC',
+            visibility: {
+              in: ['PUBLIC', 'FRIENDS_ONLY'] // Friends can see public and friends-only posts
+            }
+          },
+          {
+            visibility: 'PUBLIC', // Only public posts that are not private
+            publicationStatus: 'PUBLIC'
           },
           {
             authorId: userId, // Include user's own posts (including paused ones)
             publicationStatus: {
               in: ['PUBLIC', 'PAUSED'] // Show public and paused posts to the author
             }
+            // User can see all their own posts regardless of visibility
           }
         ]
       },
@@ -171,17 +201,47 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
                 }
               }
             },
-            publicationStatus: 'PUBLIC' // Only public posts from followed users
+            publicationStatus: 'PUBLIC',
+            visibility: {
+              in: ['PUBLIC', 'FRIENDS_ONLY'] // Followers can see public and friends-only posts
+            }
           },
           {
-            isPrivate: false,
-            publicationStatus: 'PUBLIC' // Only public posts that are not private
+            author: {
+              OR: [
+                {
+                  friendRequestsSent: {
+                    some: {
+                      receiverId: userId,
+                      status: 'ACCEPTED'
+                    }
+                  }
+                },
+                {
+                  friendRequestsReceived: {
+                    some: {
+                      senderId: userId,
+                      status: 'ACCEPTED'
+                    }
+                  }
+                }
+              ]
+            },
+            publicationStatus: 'PUBLIC',
+            visibility: {
+              in: ['PUBLIC', 'FRIENDS_ONLY'] // Friends can see public and friends-only posts
+            }
+          },
+          {
+            visibility: 'PUBLIC', // Only public posts that are not private
+            publicationStatus: 'PUBLIC'
           },
           {
             authorId: userId, // Include user's own posts (including paused ones)
             publicationStatus: {
               in: ['PUBLIC', 'PAUSED'] // Show public and paused posts to the author
             }
+            // User can see all their own posts regardless of visibility
           }
         ]
       }
@@ -213,7 +273,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
 // Create a new post
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { title, content, isPrivate, hashtags, mentions, imageIds } = req.body
+  const { title, content, visibility, hashtags, mentions, imageIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -246,7 +306,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     data: {
       title,
       content,
-      isPrivate: isPrivate || false,
+      visibility: visibility || 'PUBLIC',
       authorId: userId,
       hashtags: {
         connectOrCreate: hashtags?.map((tag: string) => ({
@@ -325,8 +385,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
           id: true,
           name: true,
           username: true,
-          avatar: true,
-          isPrivate: true
+          avatar: true
         }
       },
       comments: {
@@ -376,7 +435,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  if (post.isPrivate && post.authorId !== userId) {
+  if (post.visibility !== 'PUBLIC' && post.authorId !== userId) {
     res.status(403).json({
       success: false,
       error: 'Access denied'
@@ -400,7 +459,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { title, content, isPrivate, hashtags, imageIds } = req.body
+  const { title, content, visibility, hashtags, imageIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -454,7 +513,7 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     data: {
       title,
       content,
-      isPrivate,
+      visibility,
       hashtags: {
         set: [],
         connectOrCreate: hashtags?.map((tag: string) => ({
@@ -792,6 +851,7 @@ router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: Authe
     message: 'Image order updated successfully'
   })
 }))
+  
 
 // Update post publication status
 router.patch('/:id/status', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -866,6 +926,276 @@ router.patch('/:id/status', authMiddleware, asyncHandler(async (req: Authenticat
     success: true,
     data: { post: postWithOrderedImages },
     message: 'Post status updated successfully'
+  })
+}))
+
+
+
+// Update post visibility
+router.patch('/:id/visibility', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { id } = req.params
+  const { visibility } = req.body
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Validate visibility
+  const validVisibilities = ['PUBLIC', 'FRIENDS_ONLY', 'PRIVATE']
+  if (!validVisibilities.includes(visibility)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid visibility setting'
+    })
+    return
+  }
+
+  const post = await prisma.post.findUnique({
+    where: { id }
+  })
+
+  if (!post) {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
+  if (post.authorId !== userId) {
+    res.status(403).json({
+      success: false,
+      error: 'Not authorized to update this post'
+    })
+    return
+  }
+
+  const updatedPost = await prisma.post.update({
+    where: { id },
+    data: { visibility },
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      },
+      images: {
+        include: { image: true },
+        orderBy: { order: 'asc' }
+      }
+    }
+  })
+
+  // Map images to array of image objects in order
+  const postWithOrderedImages = {
+    ...updatedPost,
+    images: updatedPost.images.map(pi => pi.image)
+  }
+
+  res.json({
+    success: true,
+    data: { post: postWithOrderedImages },
+    message: 'Post visibility updated successfully'
+  })
+}))
+
+// Get posts for a user's public page, filtered by visibility
+router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { userId } = req.params
+  const viewerId = req.user?.id
+  const { page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  console.log('Public posts request:', { userId, viewerId, page, limit })
+
+  // Determine which posts the viewer can see
+  let visibilityFilter: any[] = [
+    { visibility: 'PUBLIC' }
+  ]
+
+  if (viewerId) {
+    if (viewerId === userId) {
+      visibilityFilter = [] // No filter, show all
+    } else {
+      const isFriend = await prisma.friendRequest.findFirst({
+        where: {
+          OR: [
+            { senderId: viewerId, receiverId: userId, status: 'ACCEPTED' },
+            { senderId: userId, receiverId: viewerId, status: 'ACCEPTED' }
+          ]
+        }
+      })
+      if (isFriend) {
+        visibilityFilter.push({ visibility: 'FRIENDS_ONLY' })
+      }
+    }
+  }
+
+  // First, find the user by username or ID
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: userId },
+        { username: userId }
+      ]
+    },
+    select: { id: true, username: true }
+  })
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  console.log('Found user:', user)
+
+  const where: any = {
+    authorId: user.id,
+    publicationStatus: 'PUBLIC',
+    ...(visibilityFilter.length > 0 ? { OR: visibilityFilter } : {})
+  }
+
+  console.log('Query where clause:', where)
+
+  const [posts, total] = await Promise.all([
+    prisma.post.findMany({
+      where,
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        },
+        reactions: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            comments: true,
+            reactions: true
+          }
+        },
+        images: {
+          include: { image: true },
+          orderBy: { order: 'asc' }
+        }
+      },
+      skip: offset,
+      take: Number(limit),
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.post.count({ where })
+  ])
+
+  console.log('Found posts:', posts.length, 'Total:', total)
+
+  const postsWithOrderedImages = posts.map(post => ({
+    ...post,
+    images: (post.images || []).map((pi: any) => pi.image)
+  }))
+
+  res.json({
+    success: true,
+    data: {
+      posts: postsWithOrderedImages,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+        hasNext: offset + Number(limit) < total,
+        hasPrev: Number(page) > 1
+      }
+    }
+  })
+}))
+
+// Get public posts feed
+router.get('/public', asyncHandler(async (req: Request, res: Response) => {
+  const { page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  const [posts, total] = await Promise.all([
+    prisma.post.findMany({
+      where: {
+        publicationStatus: 'PUBLIC',
+        visibility: 'PUBLIC'
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        },
+        images: {
+          include: {
+            image: true
+          }
+        },
+        hashtags: true,
+        _count: {
+          select: {
+            comments: true,
+            reactions: true
+          }
+        }
+      },
+      skip: offset,
+      take: Number(limit),
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.post.count({
+      where: {
+        publicationStatus: 'PUBLIC',
+        visibility: 'PUBLIC'
+      }
+    })
+  ])
+
+  const formattedPosts = posts.map(post => ({
+    ...post,
+    images: post.images.map(pi => pi.image)
+  }))
+
+  res.json({
+    success: true,
+    data: {
+      posts: formattedPosts,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+        hasNext: offset + Number(limit) < total,
+        hasPrev: Number(page) > 1
+      }
+    }
   })
 }))
 

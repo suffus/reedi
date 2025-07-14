@@ -172,6 +172,86 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     return
   }
 
+  // Check if user can comment on the post/image
+  if (postId) {
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      include: {
+        author: true
+      }
+    })
+
+    if (!post) {
+      res.status(404).json({
+        success: false,
+        error: 'Post not found'
+      })
+      return
+    }
+
+    // Allow commenting if:
+    // 1. User is the post author
+    // 2. User is a friend of the post author
+    // 3. Post is public and not private
+    const isAuthor = post.authorId === userId
+    const isFriend = await prisma.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId: userId, receiverId: post.authorId, status: 'ACCEPTED' },
+          { senderId: post.authorId, receiverId: userId, status: 'ACCEPTED' }
+        ]
+      }
+    })
+    const isPublicPost = post.visibility === 'PUBLIC'
+
+    if (!isAuthor && !isFriend && !isPublicPost) {
+      res.status(403).json({
+        success: false,
+        error: 'You can only comment on your own posts, friends\' posts, or public posts'
+      })
+      return
+    }
+  }
+
+  if (imageId) {
+    const image = await prisma.image.findUnique({
+      where: { id: imageId },
+      include: {
+        author: true
+      }
+    })
+
+    if (!image) {
+      res.status(404).json({
+        success: false,
+        error: 'Image not found'
+      })
+      return
+    }
+
+    // Allow commenting if:
+    // 1. User is the image author
+    // 2. User is a friend of the image author
+    // 3. Image is public (no privacy check for images currently)
+    const isAuthor = image.authorId === userId
+    const isFriend = await prisma.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId: userId, receiverId: image.authorId, status: 'ACCEPTED' },
+          { senderId: image.authorId, receiverId: userId, status: 'ACCEPTED' }
+        ]
+      }
+    })
+
+    if (!isAuthor && !isFriend) {
+      res.status(403).json({
+        success: false,
+        error: 'You can only comment on your own images or friends\' images'
+      })
+      return
+    }
+  }
+
   const comment = await prisma.comment.create({
     data: {
       content,

@@ -16,6 +16,7 @@ import imageRoutes from '@/routes/images'
 import imageServeRoutes from '@/routes/imageServe'
 import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
+import friendRoutes from '@/routes/friends'
 
 // Import middleware
 import { errorHandler } from '@/middleware/errorHandler'
@@ -89,6 +90,7 @@ app.use('/api/images/serve', imageServeRoutes)
 app.use('/api/images', authMiddleware, imageRoutes)
 app.use('/api/galleries', authMiddleware, galleryRoutes)
 app.use('/api/search', searchRoutes)
+app.use('/api/friends', friendRoutes)
 
 // Error handling middleware
 app.use(errorHandler)

@@ -12,7 +12,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
         index_1.prisma.post.findMany({
             where: {
                 publicationStatus: 'PUBLIC',
-                isPrivate: false
+                visibility: 'PUBLIC'
             },
             include: {
                 author: {
@@ -53,7 +53,7 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
         index_1.prisma.post.count({
             where: {
                 publicationStatus: 'PUBLIC',
-                isPrivate: false
+                visibility: 'PUBLIC'
             }
         })
     ]);
@@ -99,10 +99,39 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
                                 }
                             }
                         },
-                        publicationStatus: 'PUBLIC'
+                        publicationStatus: 'PUBLIC',
+                        visibility: {
+                            in: ['PUBLIC', 'FRIENDS_ONLY']
+                        }
                     },
                     {
-                        isPrivate: false,
+                        author: {
+                            OR: [
+                                {
+                                    friendRequestsSent: {
+                                        some: {
+                                            receiverId: userId,
+                                            status: 'ACCEPTED'
+                                        }
+                                    }
+                                },
+                                {
+                                    friendRequestsReceived: {
+                                        some: {
+                                            senderId: userId,
+                                            status: 'ACCEPTED'
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        publicationStatus: 'PUBLIC',
+                        visibility: {
+                            in: ['PUBLIC', 'FRIENDS_ONLY']
+                        }
+                    },
+                    {
+                        visibility: 'PUBLIC',
                         publicationStatus: 'PUBLIC'
                     },
                     {
@@ -160,10 +189,39 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
                                 }
                             }
                         },
-                        publicationStatus: 'PUBLIC'
+                        publicationStatus: 'PUBLIC',
+                        visibility: {
+                            in: ['PUBLIC', 'FRIENDS_ONLY']
+                        }
                     },
                     {
-                        isPrivate: false,
+                        author: {
+                            OR: [
+                                {
+                                    friendRequestsSent: {
+                                        some: {
+                                            receiverId: userId,
+                                            status: 'ACCEPTED'
+                                        }
+                                    }
+                                },
+                                {
+                                    friendRequestsReceived: {
+                                        some: {
+                                            senderId: userId,
+                                            status: 'ACCEPTED'
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        publicationStatus: 'PUBLIC',
+                        visibility: {
+                            in: ['PUBLIC', 'FRIENDS_ONLY']
+                        }
+                    },
+                    {
+                        visibility: 'PUBLIC',
                         publicationStatus: 'PUBLIC'
                     },
                     {
@@ -197,7 +255,7 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
 }));
 router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
-    const { title, content, isPrivate, hashtags, mentions, imageIds } = req.body;
+    const { title, content, visibility, hashtags, mentions, imageIds } = req.body;
     if (!userId) {
         res.status(401).json({
             success: false,
@@ -225,7 +283,7 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         data: {
             title,
             content,
-            isPrivate: isPrivate || false,
+            visibility: visibility || 'PUBLIC',
             authorId: userId,
             hashtags: {
                 connectOrCreate: hashtags?.map((tag) => ({
@@ -294,8 +352,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
                     id: true,
                     name: true,
                     username: true,
-                    avatar: true,
-                    isPrivate: true
+                    avatar: true
                 }
             },
             comments: {
@@ -340,7 +397,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
         });
         return;
     }
-    if (post.isPrivate && post.authorId !== userId) {
+    if (post.visibility !== 'PUBLIC' && post.authorId !== userId) {
         res.status(403).json({
             success: false,
             error: 'Access denied'
@@ -359,7 +416,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
 router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
     const { id } = req.params;
-    const { title, content, isPrivate, hashtags, imageIds } = req.body;
+    const { title, content, visibility, hashtags, imageIds } = req.body;
     if (!userId) {
         res.status(401).json({
             success: false,
@@ -405,7 +462,7 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
         data: {
             title,
             content,
-            isPrivate,
+            visibility,
             hashtags: {
                 set: [],
                 connectOrCreate: hashtags?.map((tag) => ({
@@ -749,6 +806,242 @@ router.patch('/:id/status', auth_1.authMiddleware, (0, errorHandler_1.asyncHandl
         success: true,
         data: { post: postWithOrderedImages },
         message: 'Post status updated successfully'
+    });
+}));
+router.patch('/:id/visibility', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    const { visibility } = req.body;
+    if (!userId) {
+        res.status(401).json({
+            success: false,
+            error: 'User not authenticated'
+        });
+        return;
+    }
+    const validVisibilities = ['PUBLIC', 'FRIENDS_ONLY', 'PRIVATE'];
+    if (!validVisibilities.includes(visibility)) {
+        res.status(400).json({
+            success: false,
+            error: 'Invalid visibility setting'
+        });
+        return;
+    }
+    const post = await index_1.prisma.post.findUnique({
+        where: { id }
+    });
+    if (!post) {
+        res.status(404).json({
+            success: false,
+            error: 'Post not found'
+        });
+        return;
+    }
+    if (post.authorId !== userId) {
+        res.status(403).json({
+            success: false,
+            error: 'Not authorized to update this post'
+        });
+        return;
+    }
+    const updatedPost = await index_1.prisma.post.update({
+        where: { id },
+        data: { visibility },
+        include: {
+            author: {
+                select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    avatar: true
+                }
+            },
+            images: {
+                include: { image: true },
+                orderBy: { order: 'asc' }
+            }
+        }
+    });
+    const postWithOrderedImages = {
+        ...updatedPost,
+        images: updatedPost.images.map(pi => pi.image)
+    };
+    res.json({
+        success: true,
+        data: { post: postWithOrderedImages },
+        message: 'Post visibility updated successfully'
+    });
+}));
+router.get('/user/:userId/public', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { userId } = req.params;
+    const viewerId = req.user?.id;
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    console.log('Public posts request:', { userId, viewerId, page, limit });
+    let visibilityFilter = [
+        { visibility: 'PUBLIC' }
+    ];
+    if (viewerId) {
+        if (viewerId === userId) {
+            visibilityFilter = [];
+        }
+        else {
+            const isFriend = await index_1.prisma.friendRequest.findFirst({
+                where: {
+                    OR: [
+                        { senderId: viewerId, receiverId: userId, status: 'ACCEPTED' },
+                        { senderId: userId, receiverId: viewerId, status: 'ACCEPTED' }
+                    ]
+                }
+            });
+            if (isFriend) {
+                visibilityFilter.push({ visibility: 'FRIENDS_ONLY' });
+            }
+        }
+    }
+    const user = await index_1.prisma.user.findFirst({
+        where: {
+            OR: [
+                { id: userId },
+                { username: userId }
+            ]
+        },
+        select: { id: true, username: true }
+    });
+    if (!user) {
+        res.status(404).json({
+            success: false,
+            error: 'User not found'
+        });
+        return;
+    }
+    console.log('Found user:', user);
+    const where = {
+        authorId: user.id,
+        publicationStatus: 'PUBLIC',
+        ...(visibilityFilter.length > 0 ? { OR: visibilityFilter } : {})
+    };
+    console.log('Query where clause:', where);
+    const [posts, total] = await Promise.all([
+        index_1.prisma.post.findMany({
+            where,
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        avatar: true
+                    }
+                },
+                reactions: {
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                name: true,
+                                username: true,
+                                avatar: true
+                            }
+                        }
+                    }
+                },
+                _count: {
+                    select: {
+                        comments: true,
+                        reactions: true
+                    }
+                },
+                images: {
+                    include: { image: true },
+                    orderBy: { order: 'asc' }
+                }
+            },
+            skip: offset,
+            take: Number(limit),
+            orderBy: { createdAt: 'desc' }
+        }),
+        index_1.prisma.post.count({ where })
+    ]);
+    console.log('Found posts:', posts.length, 'Total:', total);
+    const postsWithOrderedImages = posts.map(post => ({
+        ...post,
+        images: (post.images || []).map((pi) => pi.image)
+    }));
+    res.json({
+        success: true,
+        data: {
+            posts: postsWithOrderedImages,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                totalPages: Math.ceil(total / Number(limit)),
+                hasNext: offset + Number(limit) < total,
+                hasPrev: Number(page) > 1
+            }
+        }
+    });
+}));
+router.get('/public', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const [posts, total] = await Promise.all([
+        index_1.prisma.post.findMany({
+            where: {
+                publicationStatus: 'PUBLIC',
+                visibility: 'PUBLIC'
+            },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        avatar: true
+                    }
+                },
+                images: {
+                    include: {
+                        image: true
+                    }
+                },
+                hashtags: true,
+                _count: {
+                    select: {
+                        comments: true,
+                        reactions: true
+                    }
+                }
+            },
+            skip: offset,
+            take: Number(limit),
+            orderBy: { createdAt: 'desc' }
+        }),
+        index_1.prisma.post.count({
+            where: {
+                publicationStatus: 'PUBLIC',
+                visibility: 'PUBLIC'
+            }
+        })
+    ]);
+    const formattedPosts = posts.map(post => ({
+        ...post,
+        images: post.images.map(pi => pi.image)
+    }));
+    res.json({
+        success: true,
+        data: {
+            posts: formattedPosts,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                totalPages: Math.ceil(total / Number(limit)),
+                hasNext: offset + Number(limit) < total,
+                hasPrev: Number(page) > 1
+            }
+        }
     });
 }));
 exports.default = router;

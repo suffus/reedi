@@ -1,0 +1,556 @@
+openapi: 3.0.3
+info:
+  title: Reedi Social Media API
+  version: 1.0.0
+  description: |
+    REST API for the Reedi social media platform. Inspired by neemlondon.com, supports posts, images, comments, friends, galleries, and more.
+    
+    All endpoints are prefixed with `/api`.
+servers:
+  - url: http://localhost:8088/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        username: { type: string, nullable: true }
+        avatar: { type: string, nullable: true }
+        bio: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        isPrivate: { type: boolean }
+        isVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Post:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string, nullable: true }
+        content: { type: string }
+        publicationStatus: { type: string, enum: [PUBLIC, PAUSED, CONTROLLED, DELETED] }
+        visibility: { type: string, enum: [PUBLIC, FRIENDS_ONLY, PRIVATE] }
+        authorId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        author:
+          $ref: '#/components/schemas/User'
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/Image'
+        hashtags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hashtag'
+    Image:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string }
+        thumbnail: { type: string, nullable: true }
+        s3Key: { type: string, nullable: true }
+        thumbnailS3Key: { type: string, nullable: true }
+        altText: { type: string, nullable: true }
+        caption: { type: string, nullable: true }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        size: { type: integer, nullable: true }
+        mimeType: { type: string, nullable: true }
+        tags:
+          type: array
+          items: { type: string }
+        visibility: { type: string, enum: [PUBLIC, FRIENDS_ONLY, PRIVATE] }
+        authorId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Comment:
+      type: object
+      properties:
+        id: { type: string }
+        content: { type: string }
+        postId: { type: string, nullable: true }
+        imageId: { type: string, nullable: true }
+        authorId: { type: string }
+        parentId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        author:
+          $ref: '#/components/schemas/User'
+    Gallery:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        isPrivate: { type: boolean }
+        authorId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    FriendRequest:
+      type: object
+      properties:
+        id: { type: string }
+        senderId: { type: string }
+        receiverId: { type: string }
+        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        sender:
+          $ref: '#/components/schemas/User'
+        receiver:
+          $ref: '#/components/schemas/User'
+    Hashtag:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Posts
+  - name: Comments
+  - name: Images
+  - name: Galleries
+  - name: Friends
+  - name: Search
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                name: { type: string }
+      responses:
+        '201':
+          description: User registered
+        '409':
+          description: Email already exists
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and get JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: JWT token
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current user
+  /users/{identifier}:
+    get:
+      tags: [Users]
+      summary: Get user profile by ID or username
+      parameters:
+        - in: path
+          name: identifier
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User profile
+    put:
+      tags: [Users]
+      summary: Update user profile
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: identifier
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: Updated user
+  /users/{identifier}/public:
+    get:
+      tags: [Users]
+      summary: Get public user profile by ID or username
+      parameters:
+        - in: path
+          name: identifier
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Public user profile
+  /posts:
+    get:
+      tags: [Posts]
+      summary: Get public posts feed
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        '200':
+          description: List of posts
+    post:
+      tags: [Posts]
+      summary: Create a new post
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Post'
+      responses:
+        '201':
+          description: Post created
+  /posts/{id}:
+    get:
+      tags: [Posts]
+      summary: Get a post by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Post details
+    put:
+      tags: [Posts]
+      summary: Update a post
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Post'
+      responses:
+        '200':
+          description: Updated post
+    delete:
+      tags: [Posts]
+      summary: Delete a post
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Post deleted
+  /comments:
+    post:
+      tags: [Comments]
+      summary: Create a comment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Comment'
+      responses:
+        '201':
+          description: Comment created
+  /comments/{id}:
+    put:
+      tags: [Comments]
+      summary: Update a comment
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Comment'
+      responses:
+        '200':
+          description: Updated comment
+    delete:
+      tags: [Comments]
+      summary: Delete a comment
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Comment deleted
+  /images:
+    post:
+      tags: [Images]
+      summary: Upload an image
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                altText:
+                  type: string
+                caption:
+                  type: string
+                tags:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201':
+          description: Image uploaded
+  /images/{id}:
+    put:
+      tags: [Images]
+      summary: Update an image
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Image'
+      responses:
+        '200':
+          description: Updated image
+    delete:
+      tags: [Images]
+      summary: Delete an image
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Image deleted
+  /galleries:
+    post:
+      tags: [Galleries]
+      summary: Create a gallery
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Gallery'
+      responses:
+        '201':
+          description: Gallery created
+  /galleries/{id}:
+    put:
+      tags: [Galleries]
+      summary: Update a gallery
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Gallery'
+      responses:
+        '200':
+          description: Updated gallery
+    delete:
+      tags: [Galleries]
+      summary: Delete a gallery
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Gallery deleted
+  /friends/request/{userId}:
+    post:
+      tags: [Friends]
+      summary: Send a friend request
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      responses:
+        '201':
+          description: Friend request sent
+  /friends/accept/{requestId}:
+    put:
+      tags: [Friends]
+      summary: Accept a friend request
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Friend request accepted
+  /friends/reject/{requestId}:
+    put:
+      tags: [Friends]
+      summary: Reject a friend request
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Friend request rejected
+  /friends/cancel/{requestId}:
+    delete:
+      tags: [Friends]
+      summary: Cancel a sent friend request
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Friend request cancelled
+  /friends/requests/received:
+    get:
+      tags: [Friends]
+      summary: Get received friend requests
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of received requests
+  /friends/requests/sent:
+    get:
+      tags: [Friends]
+      summary: Get sent friend requests
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of sent requests
+  /friends/{userId}/friends:
+    get:
+      tags: [Friends]
+      summary: Get a user's friends
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of friends
+  /search:
+    get:
+      tags: [Search]
+      summary: Search users, posts, images, etc.
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+        - in: query
+          name: type
+          schema: { type: string, enum: [all, users, posts, images, galleries] }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Search results 
