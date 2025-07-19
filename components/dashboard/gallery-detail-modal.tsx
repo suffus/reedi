@@ -853,7 +853,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
             alert('Failed to add images to gallery. Please try again.')
           }
         }}
-        userId="me"
+        userId={authData?.data?.user?.id || "me"}
       />
     </AnimatePresence>
   )
