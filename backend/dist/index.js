@@ -24,12 +24,19 @@ const friends_1 = __importDefault(require("@/routes/friends"));
 const errorHandler_1 = require("@/middleware/errorHandler");
 const auth_2 = require("@/middleware/auth");
 dotenv_1.default.config();
-exports.prisma = new client_1.PrismaClient();
+exports.prisma = new client_1.PrismaClient({
+    datasources: {
+        db: {
+            url: process.env.DATABASE_URL
+        }
+    },
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 8088;
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000,
-    max: 500,
+    max: 50000,
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -77,6 +84,20 @@ app.use('*', (req, res) => {
         path: req.originalUrl
     });
 });
+let requestCount = 0;
+let errorCount = 0;
+setInterval(async () => {
+    try {
+        await exports.prisma.$queryRaw `SELECT 1`;
+        if (Date.now() % 300000 < 1000) {
+            console.log(`📊 Database Health: ${requestCount} requests, ${errorCount} errors`);
+        }
+    }
+    catch (error) {
+        errorCount++;
+        console.error('❌ Database health check failed:', error);
+    }
+}, 30000);
 async function startServer() {
     try {
         await exports.prisma.$connect();

@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove static export to allow dynamic routes
-  // output: 'export',
+  // Enable standalone output for Docker
+  output: 'standalone',
   trailingSlash: true,
   images: {
     unoptimized: true

@@ -302,61 +302,68 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     }
   }
 
-  const post = await prisma.post.create({
-    data: {
-      title,
-      content,
-      visibility: visibility || 'PUBLIC',
-      authorId: userId,
-      hashtags: {
-        connectOrCreate: hashtags?.map((tag: string) => ({
-          where: { name: tag.toLowerCase() },
-          create: { name: tag.toLowerCase() }
-        })) || []
-      }
-    },
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          avatar: true
+  // Use transaction to ensure atomicity and proper connection management
+  const postWithImages = await prisma.$transaction(async (tx) => {
+    // Create the post
+    const post = await tx.post.create({
+      data: {
+        title,
+        content,
+        visibility: visibility || 'PUBLIC',
+        authorId: userId,
+        hashtags: {
+          connectOrCreate: hashtags?.map((tag: string) => ({
+            where: { name: tag.toLowerCase() },
+            create: { name: tag.toLowerCase() }
+          })) || []
         }
       },
-      hashtags: true
-    }
-  })
-
-  // Create PostImage records with order if images are provided
-  if (imageIds && imageIds.length > 0) {
-    await prisma.postImage.createMany({
-      data: imageIds.map((imageId: string, index: number) => ({
-        postId: post.id,
-        imageId,
-        order: index
-      }))
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        },
+        hashtags: true
+      }
     })
-  }
 
-  // Fetch the post with ordered images
-  const postWithImages = await prisma.post.findUnique({
-    where: { id: post.id },
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          avatar: true
-        }
-      },
-      hashtags: true,
-      images: {
-        include: { image: true },
-        orderBy: { order: 'asc' }
-      }
+    // Create PostImage records with order if images are provided
+    if (imageIds && imageIds.length > 0) {
+      await tx.postImage.createMany({
+        data: imageIds.map((imageId: string, index: number) => ({
+          postId: post.id,
+          imageId,
+          order: index
+        }))
+      })
     }
+
+    // Fetch the complete post with ordered images
+    return await tx.post.findUnique({
+      where: { id: post.id },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        },
+        hashtags: true,
+        images: {
+          include: { image: true },
+          orderBy: { order: 'asc' }
+        }
+      }
+    })
+  }, {
+    maxWait: 5000, // 5 seconds max wait for transaction
+    timeout: 10000, // 10 seconds timeout
   })
 
   // Map images to array of image objects in order

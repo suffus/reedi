@@ -208,21 +208,26 @@ router.post('/upload', auth_1.authMiddleware, upload.single('image'), (0, errorH
             console.warn('Failed to parse tags:', error);
         }
     }
-    const image = await index_1.prisma.image.create({
-        data: {
-            url: processedImage.imagePath,
-            thumbnail: processedImage.thumbnailPath,
-            s3Key: processedImage.s3Key,
-            thumbnailS3Key: processedImage.thumbnailS3Key,
-            altText: req.body.title || req.body.altText || 'Uploaded image',
-            caption: req.body.description || req.body.caption || '',
-            tags: tags,
-            width: processedImage.width,
-            height: processedImage.height,
-            size: processedImage.size,
-            mimeType: req.file.mimetype,
-            authorId: userId
-        }
+    const image = await index_1.prisma.$transaction(async (tx) => {
+        return await tx.image.create({
+            data: {
+                url: processedImage.imagePath,
+                thumbnail: processedImage.thumbnailPath,
+                s3Key: processedImage.s3Key,
+                thumbnailS3Key: processedImage.thumbnailS3Key,
+                altText: req.body.title || req.body.altText || 'Uploaded image',
+                caption: req.body.description || req.body.caption || '',
+                tags: tags,
+                width: processedImage.width,
+                height: processedImage.height,
+                size: processedImage.size,
+                mimeType: req.file.mimetype,
+                authorId: userId
+            }
+        });
+    }, {
+        maxWait: 5000,
+        timeout: 10000,
     });
     console.log('Image created successfully:', {
         id: image.id,

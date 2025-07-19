@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -5,34 +8,56 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Optimize connection pool settings for high concurrency
+  relationMode = "prisma"
 }
 
 model User {
-  id                     String          @id @default(cuid())
-  email                  String          @unique
-  name                   String
-  username               String?         @unique
-  password               String
-  avatar                 String?
-  bio                    String?
-  location               String?
-  website                String?
-  isPrivate              Boolean         @default(false)
-  isVerified             Boolean         @default(false)
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
-  comments               Comment[]
-  followers              Follows[]       @relation("UserFollowers")
-  following              Follows[]       @relation("UserFollowing")
-  friendRequestsReceived FriendRequest[] @relation("UserFriendRequestsReceived")
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  username  String?  @unique
+  password  String
+  avatar    String?
+  bio       String?
+  location  String?
+  website   String?
+  isPrivate Boolean  @default(false)
+  isVerified Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Posts
+  posts Post[]
+
+  // Comments
+  comments Comment[]
+
+  // Reactions
+  reactions Reaction[]
+
+  // Images
+  images Image[]
+
+  // Galleries
+  galleries Gallery[]
+
+  // Followers/Following (self-referencing many-to-many)
+  followers Follows[] @relation("UserFollowers")
+  following Follows[] @relation("UserFollowing")
+
+  // Friend requests
   friendRequestsSent     FriendRequest[] @relation("UserFriendRequestsSent")
-  galleries              Gallery[]
-  images                 Image[]
-  mentions               Mention[]
-  notifications          Notification[]
-  posts                  Post[]
-  reactions              Reaction[]
-  searchHistory          SearchHistory[]
+  friendRequestsReceived FriendRequest[] @relation("UserFriendRequestsReceived")
+
+  // Notifications
+  notifications Notification[]
+
+  // Search history
+  searchHistory SearchHistory[]
+  
+  // Mentions
+  mentions Mention[]
 
   @@map("users")
 }
@@ -41,52 +66,58 @@ model Post {
   id                String            @id @default(cuid())
   title             String?
   content           String
+  publicationStatus PublicationStatus @default(PUBLIC)
+  visibility        Visibility        @default(PUBLIC)
   authorId          String
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
-  publicationStatus PublicationStatus @default(PUBLIC)
-  visibility        Visibility        @default(PUBLIC)
-  comments          Comment[]
-  mentions          Mention[]
-  notifications     Notification[]
-  images            PostImage[]
-  author            User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  reactions         Reaction[]
-  hashtags          Hashtag[]         @relation("HashtagToPost")
+
+  // Relations
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  reactions Reaction[]
+  images    PostImage[]
+  hashtags  Hashtag[]
+  mentions  Mention[]
+  notifications Notification[]
 
   @@map("posts")
 }
 
 model Comment {
-  id            String         @id @default(cuid())
-  content       String
-  postId        String?
-  authorId      String
-  parentId      String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  imageId       String?
-  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  image         Image?         @relation(fields: [imageId], references: [id], onDelete: Cascade)
-  parent        Comment?       @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies       Comment[]      @relation("CommentReplies")
-  post          Post?          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  content   String
+  postId    String?
+  imageId   String?
+  authorId  String
+  parentId  String?  // For nested comments
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  post     Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  image    Image?    @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replies  Comment[] @relation("CommentReplies")
+  reactions Reaction[]
   notifications Notification[]
-  reactions     Reaction[]
 
   @@map("comments")
 }
 
 model Reaction {
-  id        String       @id @default(cuid())
+  id        String   @id @default(cuid())
   type      ReactionType
   postId    String?
   commentId String?
   authorId  String
-  createdAt DateTime     @default(now())
-  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comment   Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  post      Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  // Relations
+  post     Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment  Comment? @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@unique([postId, authorId])
   @@unique([commentId, authorId])
@@ -94,28 +125,32 @@ model Reaction {
 }
 
 model Image {
-  id             String      @id @default(cuid())
-  url            String
+  id             String     @id @default(cuid())
+  url            String     // Path to the full-size image file
+  thumbnail      String?    // Path to the thumbnail image file
+  s3Key          String?    // S3 key for the original image
+  thumbnailS3Key String?    // S3 key for the thumbnail
   altText        String?
   caption        String?
   width          Int?
   height         Int?
-  size           Int?
+  size           Int?       // File size in bytes
   mimeType       String?
+  tags           String[]   @default([])  // Array of tag strings
+  visibility     Visibility @default(PUBLIC)
   postId         String?
   authorId       String
   galleryId      String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  tags           String[]    @default([])
-  thumbnail      String?
-  s3Key          String?
-  thumbnailS3Key String?
-  visibility     Visibility  @default(PUBLIC)
-  comments       Comment[]
-  author         User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  gallery        Gallery?    @relation(fields: [galleryId], references: [id])
-  posts          PostImage[]
+  order          Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  // Relations
+  posts     PostImage[]
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  gallery  Gallery?  @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+  coverForGallery Gallery? @relation("GalleryCover")
+  comments Comment[]
 
   @@map("images")
 }
@@ -124,12 +159,16 @@ model Gallery {
   id          String   @id @default(cuid())
   name        String
   description String?
-  isPrivate   Boolean  @default(false)
+  visibility  Visibility @default(PUBLIC)
+  coverImageId String?  @unique
   authorId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  images      Image[]
+
+  // Relations
+  author     User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  images     Image[]
+  coverImage Image?  @relation("GalleryCover", fields: [coverImageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("galleries")
 }
@@ -138,7 +177,9 @@ model Hashtag {
   id        String   @id @default(cuid())
   name      String   @unique
   createdAt DateTime @default(now())
-  posts     Post[]   @relation("HashtagToPost")
+
+  // Relations
+  posts Post[]
 
   @@map("hashtags")
 }
@@ -148,8 +189,10 @@ model Mention {
   postId    String
   userId    String
   createdAt DateTime @default(now())
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
   @@map("mentions")
@@ -160,22 +203,26 @@ model Follows {
   followerId  String
   followingId String
   createdAt   DateTime @default(now())
-  follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
-  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  // Relations
+  follower  User @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@unique([followerId, followingId])
   @@map("follows")
 }
 
 model FriendRequest {
-  id         String              @id @default(cuid())
-  senderId   String
-  receiverId String
-  status     FriendRequestStatus @default(PENDING)
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
-  receiver   User                @relation("UserFriendRequestsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
-  sender     User                @relation("UserFriendRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  id          String           @id @default(cuid())
+  senderId    String
+  receiverId  String
+  status      FriendRequestStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // Relations
+  sender   User @relation("UserFriendRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("UserFriendRequestsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, receiverId])
   @@map("friend_requests")
@@ -191,9 +238,11 @@ model Notification {
   postId    String?
   commentId String?
   createdAt DateTime         @default(now())
-  comment   Comment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  post      Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("notifications")
 }
@@ -203,23 +252,28 @@ model SearchHistory {
   query     String
   userId    String
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("search_history")
 }
 
 model PostImage {
-  id      String @id @default(cuid())
-  postId  String
+  id     String @id @default(cuid())
+  postId String
   imageId String
-  order   Int
-  image   Image  @relation(fields: [imageId], references: [id], onDelete: Cascade)
-  post    Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  order  Int    @default(0)
+
+  // Relations
+  post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  image Image @relation(fields: [imageId], references: [id], onDelete: Cascade)
 
   @@unique([postId, imageId])
   @@map("post_images")
 }
 
+// Enums
 enum ReactionType {
   LIKE
   LOVE
@@ -243,12 +297,10 @@ enum Visibility {
 }
 
 enum NotificationType {
-  NEW_FOLLOWER
-  NEW_COMMENT
-  NEW_REACTION
+  LIKE
+  COMMENT
+  FOLLOW
   MENTION
-  POST_LIKE
-  COMMENT_LIKE
   FRIEND_REQUEST
   FRIEND_REQUEST_ACCEPTED
 }
@@ -257,4 +309,5 @@ enum FriendRequestStatus {
   PENDING
   ACCEPTED
   REJECTED
-}
+  CANCELLED
+} 

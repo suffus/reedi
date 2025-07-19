@@ -2,7 +2,16 @@
 CREATE TYPE "ReactionType" AS ENUM ('LIKE', 'LOVE', 'HAHA', 'WOW', 'SAD', 'ANGRY');
 
 -- CreateEnum
-CREATE TYPE "NotificationType" AS ENUM ('NEW_FOLLOWER', 'NEW_COMMENT', 'NEW_REACTION', 'MENTION', 'POST_LIKE', 'COMMENT_LIKE');
+CREATE TYPE "PublicationStatus" AS ENUM ('DRAFT', 'PUBLISHED', 'ARCHIVED');
+
+-- CreateEnum
+CREATE TYPE "Visibility" AS ENUM ('PUBLIC', 'FRIENDS_ONLY', 'PRIVATE');
+
+-- CreateEnum
+CREATE TYPE "NotificationType" AS ENUM ('LIKE', 'COMMENT', 'FOLLOW', 'MENTION', 'FRIEND_REQUEST', 'FRIEND_REQUEST_ACCEPTED');
+
+-- CreateEnum
+CREATE TYPE "FriendRequestStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -28,8 +37,8 @@ CREATE TABLE "posts" (
     "id" TEXT NOT NULL,
     "title" TEXT,
     "content" TEXT NOT NULL,
-    "isPublished" BOOLEAN NOT NULL DEFAULT true,
-    "isPrivate" BOOLEAN NOT NULL DEFAULT false,
+    "publicationStatus" "PublicationStatus" NOT NULL DEFAULT 'PUBLISHED',
+    "visibility" "Visibility" NOT NULL DEFAULT 'PUBLIC',
     "authorId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -41,7 +50,8 @@ CREATE TABLE "posts" (
 CREATE TABLE "comments" (
     "id" TEXT NOT NULL,
     "content" TEXT NOT NULL,
-    "postId" TEXT NOT NULL,
+    "postId" TEXT,
+    "imageId" TEXT,
     "authorId" TEXT NOT NULL,
     "parentId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -66,12 +76,17 @@ CREATE TABLE "reactions" (
 CREATE TABLE "images" (
     "id" TEXT NOT NULL,
     "url" TEXT NOT NULL,
+    "thumbnail" TEXT,
+    "s3Key" TEXT,
+    "thumbnailS3Key" TEXT,
     "altText" TEXT,
     "caption" TEXT,
     "width" INTEGER,
     "height" INTEGER,
     "size" INTEGER,
     "mimeType" TEXT,
+    "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "visibility" "Visibility" NOT NULL DEFAULT 'PUBLIC',
     "postId" TEXT,
     "authorId" TEXT NOT NULL,
     "galleryId" TEXT,
@@ -86,7 +101,8 @@ CREATE TABLE "galleries" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
-    "isPrivate" BOOLEAN NOT NULL DEFAULT false,
+    "visibility" "Visibility" NOT NULL DEFAULT 'PUBLIC',
+    "coverImageId" TEXT,
     "authorId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -124,6 +140,18 @@ CREATE TABLE "follows" (
 );
 
 -- CreateTable
+CREATE TABLE "friend_requests" (
+    "id" TEXT NOT NULL,
+    "senderId" TEXT NOT NULL,
+    "receiverId" TEXT NOT NULL,
+    "status" "FriendRequestStatus" NOT NULL DEFAULT 'PENDING',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "friend_requests_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "notifications" (
     "id" TEXT NOT NULL,
     "type" "NotificationType" NOT NULL,
@@ -149,6 +177,15 @@ CREATE TABLE "search_history" (
 );
 
 -- CreateTable
+CREATE TABLE "post_images" (
+    "id" TEXT NOT NULL,
+    "postId" TEXT NOT NULL,
+    "imageId" TEXT NOT NULL,
+
+    CONSTRAINT "post_images_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "_HashtagToPost" (
     "A" TEXT NOT NULL,
     "B" TEXT NOT NULL
@@ -167,6 +204,9 @@ CREATE UNIQUE INDEX "reactions_postId_authorId_key" ON "reactions"("postId", "au
 CREATE UNIQUE INDEX "reactions_commentId_authorId_key" ON "reactions"("commentId", "authorId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "galleries_coverImageId_key" ON "galleries"("coverImageId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "hashtags_name_key" ON "hashtags"("name");
 
 -- CreateIndex
@@ -176,70 +216,13 @@ CREATE UNIQUE INDEX "mentions_postId_userId_key" ON "mentions"("postId", "userId
 CREATE UNIQUE INDEX "follows_followerId_followingId_key" ON "follows"("followerId", "followingId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "friend_requests_senderId_receiverId_key" ON "friend_requests"("senderId", "receiverId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "post_images_postId_imageId_key" ON "post_images"("postId", "imageId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "_HashtagToPost_AB_unique" ON "_HashtagToPost"("A", "B");
 
 -- CreateIndex
 CREATE INDEX "_HashtagToPost_B_index" ON "_HashtagToPost"("B");
-
--- AddForeignKey
-ALTER TABLE "posts" ADD CONSTRAINT "posts_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "comments" ADD CONSTRAINT "comments_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "comments" ADD CONSTRAINT "comments_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "comments" ADD CONSTRAINT "comments_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "comments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "reactions" ADD CONSTRAINT "reactions_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "reactions" ADD CONSTRAINT "reactions_commentId_fkey" FOREIGN KEY ("commentId") REFERENCES "comments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "reactions" ADD CONSTRAINT "reactions_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "images" ADD CONSTRAINT "images_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "images" ADD CONSTRAINT "images_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "images" ADD CONSTRAINT "images_galleryId_fkey" FOREIGN KEY ("galleryId") REFERENCES "galleries"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "galleries" ADD CONSTRAINT "galleries_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "mentions" ADD CONSTRAINT "mentions_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "mentions" ADD CONSTRAINT "mentions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "follows" ADD CONSTRAINT "follows_followerId_fkey" FOREIGN KEY ("followerId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "follows" ADD CONSTRAINT "follows_followingId_fkey" FOREIGN KEY ("followingId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "notifications" ADD CONSTRAINT "notifications_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "notifications" ADD CONSTRAINT "notifications_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "notifications" ADD CONSTRAINT "notifications_commentId_fkey" FOREIGN KEY ("commentId") REFERENCES "comments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "search_history" ADD CONSTRAINT "search_history_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_HashtagToPost" ADD CONSTRAINT "_HashtagToPost_A_fkey" FOREIGN KEY ("A") REFERENCES "hashtags"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_HashtagToPost" ADD CONSTRAINT "_HashtagToPost_B_fkey" FOREIGN KEY ("B") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;

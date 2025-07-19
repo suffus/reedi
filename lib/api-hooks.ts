@@ -761,7 +761,10 @@ export const useUpdatePostVisibility = () => {
       
       const response = await fetch(`${API_BASE_URL}/posts/${postId}/visibility`, {
         method: 'PATCH',
-        headers: getAuthHeaders(token),
+        headers: {
+          ...getAuthHeaders(token),
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ visibility })
       })
       
@@ -772,6 +775,301 @@ export const useUpdatePostVisibility = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['userPosts'] })
+    }
+  })
+}
+
+// Search images by tags across all users
+export const useSearchImagesByTags = (tags: string[], page = 1, limit = 20) => {
+  const isClient = useIsClient()
+  
+  return useQuery({
+    queryKey: ['searchImagesByTags', tags, page, limit],
+    queryFn: async () => {
+      const token = getToken()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      
+      const tagsParam = tags.join(',')
+      const response = await fetch(`${API_BASE_URL}/search/images/tags?tags=${encodeURIComponent(tagsParam)}&page=${page}&limit=${limit}`, {
+        headers
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to search images by tags')
+      }
+      
+      return response.json()
+    },
+    enabled: isClient && tags.length > 0,
+    staleTime: 5 * 60 * 1000 // 5 minutes
+  })
+}
+
+// Gallery Hooks
+export const useUserGalleries = (userId: string, page = 1, limit = 20) => {
+  const isClient = useIsClient()
+  
+  return useQuery({
+    queryKey: ['galleries', 'user', userId, page, limit],
+    queryFn: async () => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/user/${userId}?page=${page}&limit=${limit}`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch user galleries')
+      
+      return data
+    },
+    enabled: isClient && hasToken() && !!userId
+  })
+}
+
+export const useMyGalleries = (page = 1, limit = 20) => {
+  const isClient = useIsClient()
+  
+  return useQuery({
+    queryKey: ['galleries', 'my', page, limit],
+    queryFn: async () => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/my?page=${page}&limit=${limit}`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch my galleries')
+      
+      return data
+    },
+    enabled: isClient && hasToken()
+  })
+}
+
+export const useGallery = (galleryId: string) => {
+  const isClient = useIsClient()
+  
+  return useQuery({
+    queryKey: ['gallery', galleryId],
+    queryFn: async () => {
+      const token = getToken()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}`, {
+        headers
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch gallery')
+      
+      return data
+    },
+    enabled: isClient && !!galleryId
+  })
+}
+
+export const useCreateGallery = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (galleryData: { name: string; description?: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE' }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(galleryData)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to create gallery')
+      
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+    }
+  })
+}
+
+export const useUpdateGallery = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ galleryId, ...galleryData }: { 
+      galleryId: string; 
+      name?: string; 
+      description?: string; 
+      visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE' 
+    }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(galleryData)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to update gallery')
+      
+      return data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
+    }
+  })
+}
+
+export const useDeleteGallery = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (galleryId: string) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to delete gallery')
+      
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+    }
+  })
+}
+
+export const useAddImagesToGallery = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ galleryId, imageIds }: { galleryId: string; imageIds: string[] }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/images`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ imageIds })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to add images to gallery')
+      
+      return data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
+      queryClient.invalidateQueries({ queryKey: ['images'] })
+    }
+  })
+}
+
+export const useRemoveImagesFromGallery = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ galleryId, imageIds }: { galleryId: string; imageIds: string[] }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/images`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ imageIds })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to remove images from gallery')
+      
+      return data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
+      queryClient.invalidateQueries({ queryKey: ['images'] })
+    }
+  })
+}
+
+export const useSetGalleryCover = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ galleryId, imageId }: { galleryId: string; imageId?: string }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/cover`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ imageId })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to set gallery cover')
+      
+      return data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
+    }
+  })
+}
+
+export const useReorderGalleryImages = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ galleryId, imageIds }: { galleryId: string; imageIds: string[] }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      console.log('Making reorder API call to:', `${API_BASE_URL}/galleries/${galleryId}/images/reorder`)
+      console.log('With imageIds:', imageIds)
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/images/reorder`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ imageIds })
+      })
+      
+      console.log('Response status:', response.status)
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
+      
+      const data = await response.json()
+      console.log('Response data:', data)
+      
+      if (!response.ok) throw new Error(data.error || 'Failed to reorder gallery images')
+      
+      return data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
     }
   })
 } 

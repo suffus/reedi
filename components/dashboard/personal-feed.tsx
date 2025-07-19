@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send, Image as ImageIcon, Tag } from 'lucide-react'
-import { usePostsFeed, useCreatePost, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostImages } from '../../lib/api-hooks'
-import { ImageSelectorModal } from './image-selector-modal'
+import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send } from 'lucide-react'
+import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostImages } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 import { PostMenu } from './post-menu'
+import { PostAuthorForm } from './post-author-form'
 import { getImageUrl, getImageUrlFromImage } from '../../lib/api'
 import { LazyImage } from '../lazy-image'
 
@@ -67,44 +67,23 @@ interface Comment {
 }
 
 export function PersonalFeed() {
-  const [newPost, setNewPost] = useState('')
   const [newComments, setNewComments] = useState<{ [postId: string]: string }>({})
   const [showComments, setShowComments] = useState<{ [postId: string]: boolean }>({})
-  const [selectedImages, setSelectedImages] = useState<any[]>([])
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false)
   const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
   const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false)
-  const [postVisibility, setPostVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
+  const [currentPostImages, setCurrentPostImages] = useState<any[]>([])
+  const [currentPostId, setCurrentPostId] = useState<string | null>(null)
 
   const { data: authData, isLoading: authLoading } = useAuth()
   const userId = authData?.data?.user?.id
   const user = authData?.data?.user
 
   const { data: postsData, isLoading } = usePostsFeed()
-  const createPostMutation = useCreatePost()
   const postReactionMutation = usePostReaction()
   const createCommentMutation = useCreateComment()
   const reorderImagesMutation = useReorderPostImages()
 
   const posts = postsData?.data?.posts || []
-
-  const handleSubmitPost = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newPost.trim()) return
-
-    try {
-      await createPostMutation.mutateAsync({
-        content: newPost,
-        visibility: postVisibility,
-        imageIds: selectedImages.map(img => img.id)
-      })
-      setNewPost('')
-      setSelectedImages([])
-      setPostVisibility('PUBLIC') // Reset to default
-    } catch (error) {
-      console.error('Failed to create post:', error)
-    }
-  }
 
   const handleReaction = async (postId: string, type: string) => {
     try {
@@ -151,7 +130,7 @@ export function PersonalFeed() {
     })
   }
 
-  const handleImageClick = async (image: any) => {
+  const handleImageClick = async (image: any, postId?: string, postImages?: any[]) => {
     try {
       // Fetch complete image data from backend
       const token = localStorage.getItem('token')
@@ -189,6 +168,30 @@ export function PersonalFeed() {
             format: data.data.image.mimeType || 'unknown'
           }
         }
+        
+        // Set post context for navigation
+        if (postId && postImages) {
+          setCurrentPostId(postId)
+          setCurrentPostImages(postImages.map(img => ({
+            id: img.id,
+            s3Key: img.s3Key || img.url,
+            thumbnailS3Key: img.thumbnailS3Key || img.thumbnail || img.url,
+            url: img.s3Key || img.url,
+            thumbnail: img.thumbnailS3Key || img.thumbnail || img.url,
+            title: img.altText || img.title,
+            description: img.caption || img.description,
+            createdAt: img.createdAt,
+            authorId: img.authorId,
+            tags: img.tags || [],
+            metadata: {
+              width: img.width || 0,
+              height: img.height || 0,
+              size: img.size || 0,
+              format: img.mimeType || 'unknown'
+            }
+          })))
+        }
+        
         setSelectedImageForDetail(mappedImage)
         setIsImageDetailModalOpen(true)
       }
@@ -214,6 +217,30 @@ export function PersonalFeed() {
           format: image.mimeType || 'unknown'
         }
       }
+      
+      // Set post context for navigation
+      if (postId && postImages) {
+        setCurrentPostId(postId)
+        setCurrentPostImages(postImages.map(img => ({
+          id: img.id,
+          s3Key: img.s3Key || img.url,
+          thumbnailS3Key: img.thumbnailS3Key || img.thumbnail || img.url,
+          url: img.s3Key || img.url,
+          thumbnail: img.thumbnailS3Key || img.thumbnail || img.url,
+          title: img.altText || img.title,
+          description: img.caption || img.description,
+          createdAt: img.createdAt,
+          authorId: img.authorId,
+          tags: img.tags || [],
+          metadata: {
+            width: img.width || 0,
+            height: img.height || 0,
+            size: img.size || 0,
+            format: img.mimeType || 'unknown'
+          }
+        })))
+      }
+      
       setSelectedImageForDetail(fallbackImage)
       setIsImageDetailModalOpen(true)
     }
@@ -566,127 +593,13 @@ export function PersonalFeed() {
   return (
     <div className="space-y-6">
       {/* Create Post */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <form onSubmit={handleSubmitPost} className="space-y-4">
-          <textarea
-            value={newPost}
-            onChange={(e) => setNewPost(e.target.value)}
-            placeholder="What's on your mind?"
-            className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            rows={3}
-          />
-          
-          {/* Visibility Selector */}
-          <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Visibility:</label>
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                onClick={() => setPostVisibility('PUBLIC')}
-                className={`px-3 py-1 text-sm rounded-none transition-colors ${
-                  postVisibility === 'PUBLIC'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Public
-              </button>
-              <button
-                type="button"
-                onClick={() => setPostVisibility('FRIENDS_ONLY')}
-                className={`px-3 py-1 text-sm rounded-none transition-colors ${
-                  postVisibility === 'FRIENDS_ONLY'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Friends Only
-              </button>
-              <button
-                type="button"
-                onClick={() => setPostVisibility('PRIVATE')}
-                className={`px-3 py-1 text-sm rounded-none transition-colors ${
-                  postVisibility === 'PRIVATE'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Private
-              </button>
-            </div>
-          </div>
-          
-          {/* Selected Images Preview */}
-          {selectedImages.length > 0 && (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-medium text-gray-700">
-                  {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setSelectedImages([])}
-                  className="text-sm text-red-600 hover:text-red-800"
-                >
-                  Clear all
-                </button>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {selectedImages.map((image, index) => (
-                  <div key={image.id} className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden">
-                    <LazyImage
-                      src={getImageUrlFromImage(image, true)}
-                      alt={image.caption || image.altText || 'Selected image'}
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== index))}
-                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="flex justify-between items-center">
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                onClick={() => setIsImageModalOpen(true)}
-                aria-label="Add images"
-              >
-                <ImageIcon className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-              >
-                <Tag className="h-5 w-5" />
-              </button>
-            </div>
-            <button
-              type="submit"
-              disabled={!newPost.trim() || createPostMutation.isPending}
-              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {createPostMutation.isPending ? 'Posting...' : 'Post'}
-            </button>
-          </div>
-        </form>
-        {/* Image Selector Modal */}
-        {userId && (
-          <ImageSelectorModal
-            isOpen={isImageModalOpen}
-            onClose={() => setIsImageModalOpen(false)}
-            onImagesSelected={setSelectedImages}
-            userId={userId}
-          />
-        )}
-      </div>
+      <PostAuthorForm 
+        userId={userId} 
+        onPostCreated={() => {
+          // The posts feed will automatically refetch due to React Query invalidation
+          // in the useCreatePost hook's onSuccess callback
+        }}
+      />
 
       {/* Posts Feed */}
       {posts.map((post: Post) => (
@@ -745,7 +658,7 @@ export function PersonalFeed() {
             {post.images && post.images.length > 0 && (
               <PostImagesDisplay 
                 images={post.images} 
-                onImageClick={handleImageClick}
+                onImageClick={(image) => handleImageClick(image, post.id, post.images)}
                 postId={post.id}
                 isOwner={post.author.id === user?.id}
               />
@@ -866,6 +779,8 @@ export function PersonalFeed() {
           onClose={() => {
             setIsImageDetailModalOpen(false)
             setSelectedImageForDetail(null)
+            setCurrentPostId(null)
+            setCurrentPostImages([])
           }}
           onImageUpdate={() => {
             // Refresh posts data when image is updated
@@ -874,6 +789,8 @@ export function PersonalFeed() {
           updateImage={() => {
             // This will be handled by the ImageDetailModal internally
           }}
+          allImages={currentPostImages}
+          onNavigate={(image: any) => setSelectedImageForDetail(image)}
         />
       )}
     </div>

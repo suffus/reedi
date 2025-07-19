@@ -220,11 +220,11 @@ router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(asyn
     return
   }
 
-  // Process image and generate thumbnail
+  // Process image and generate thumbnail first
   const processedImage = await processImage(
-    req.file.buffer,
-    req.file.originalname,
-    req.file.mimetype,
+    req.file!.buffer,
+    req.file!.originalname,
+    req.file!.mimetype,
     userId
   )
 
@@ -238,21 +238,28 @@ router.post('/upload', authMiddleware, upload.single('image'), asyncHandler(asyn
     }
   }
 
-  const image = await prisma.image.create({
-    data: {
-      url: processedImage.imagePath,
-      thumbnail: processedImage.thumbnailPath,
-      s3Key: processedImage.s3Key,
-      thumbnailS3Key: processedImage.thumbnailS3Key,
-      altText: req.body.title || req.body.altText || 'Uploaded image',
-      caption: req.body.description || req.body.caption || '',
-      tags: tags,
-      width: processedImage.width,
-      height: processedImage.height,
-      size: processedImage.size,
-      mimeType: req.file.mimetype,
-      authorId: userId
-    }
+  // Use transaction to ensure atomicity and proper connection management
+  const image = await prisma.$transaction(async (tx) => {
+    // Create image record within transaction
+    return await tx.image.create({
+      data: {
+        url: processedImage.imagePath,
+        thumbnail: processedImage.thumbnailPath,
+        s3Key: processedImage.s3Key,
+        thumbnailS3Key: processedImage.thumbnailS3Key,
+        altText: req.body.title || req.body.altText || 'Uploaded image',
+        caption: req.body.description || req.body.caption || '',
+        tags: tags,
+        width: processedImage.width,
+        height: processedImage.height,
+        size: processedImage.size,
+        mimeType: req.file!.mimetype,
+        authorId: userId
+      }
+    })
+  }, {
+    maxWait: 5000, // 5 seconds max wait for transaction
+    timeout: 10000, // 10 seconds timeout
   })
 
   console.log('Image created successfully:', { 

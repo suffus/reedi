@@ -1,0 +1,31 @@
+# Multi-stage build for nginx with static files
+FROM node:18-alpine AS builder
+
+# Install dependencies
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production
+
+# Build Next.js application
+COPY . .
+RUN npm run build
+
+# Create out directory and copy static files
+RUN mkdir -p out/_next/static
+RUN cp -r .next/static out/_next/static
+RUN cp -r public/* out/ 2>/dev/null || true
+
+# Nginx stage
+FROM nginx:alpine
+
+# Copy static files from builder stage
+COPY --from=builder /app/out/ /usr/share/nginx/html/
+
+# Copy custom nginx configuration
+COPY nginx-production.conf /etc/nginx/nginx.conf
+
+# Expose port 80
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"] 
