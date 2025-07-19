@@ -103,7 +103,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
 
   // Create ghost placeholders for predictive loading
   // Show ghosts when we have more images to load, not just when currently loading
-  const ghostPlaceholders = hasMore && nextPageSize > 0 ? Array.from({ length: nextPageSize }, (_, i) => ({
+  const ghostPlaceholders = hasMore && nextPageSize > 0 ? Array.from({ length: 1 }, (_, i) => ({
     id: `ghost-${i}`,
     isGhost: true,
     index: i
@@ -112,33 +112,12 @@ export function UserGallery({ userId }: UserGalleryProps) {
   // Combine real images with ghost placeholders
   const displayImages = [...images, ...ghostPlaceholders]
   
-  console.log('Gallery state:', {
-    imagesCount: images.length,
-    totalImages,
-    hasMore,
-    nextPageSize,
-    ghostCount: ghostPlaceholders.length,
-    displayCount: displayImages.length,
-    isLoadingMore,
-    isFetching,
-    shouldShowGhosts: isLoadingMore && hasMore && nextPageSize > 0
-  })
-
   // Intersection Observer for infinite scroll - trigger when any ghost placeholder is visible
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
     const hasVisibleGhost = entries.some(entry => 
       entry.isIntersecting && 
       entry.target.getAttribute('data-ghost') === 'true'
     )
-    
-    console.log('Observer triggered:', {
-      entriesCount: entries.length,
-      hasVisibleGhost,
-      hasMore,
-      isFetching,
-      isLoadingMore,
-      ghostElements: document.querySelectorAll('[data-ghost="true"]').length
-    })
     
     // Trigger loading when any ghost is visible and we're not already loading
     if (hasVisibleGhost && hasMore && !isFetching && !isLoadingMore) {
@@ -215,6 +194,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
             </div>
           ))}
         </div>
+        <div className="text-gray-500 text-sm"><b>Loading...</b></div>
       </div>
     )
   }
