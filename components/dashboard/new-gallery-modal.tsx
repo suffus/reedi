@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Image as ImageIcon, Check, Eye, Trash2 } from 'lucide-react'
+import { X, Plus } from 'lucide-react'
 import { useCreateGallery, useAddImagesToGallery, useUserImages } from '../../lib/api-hooks'
-import { getImageUrlFromImage } from '../../lib/api'
-import { LazyImage } from '../lazy-image'
+import { ImageBrowser } from '../image-browser'
+import { useImageSelection } from '../../lib/hooks/use-image-selection'
 
 interface NewGalleryModalProps {
   isOpen: boolean
@@ -18,9 +18,15 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
   const [galleryName, setGalleryName] = useState('')
   const [galleryDescription, setGalleryDescription] = useState('')
   const [galleryVisibility, setGalleryVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
-  const [selectedImages, setSelectedImages] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+
+  // Use the reusable image selection hook
+  const {
+    selectedImages,
+    toggleImage,
+    clearSelection
+  } = useImageSelection([], { allowMultiple: true })
 
   const createGalleryMutation = useCreateGallery()
   const addImagesToGalleryMutation = useAddImagesToGallery()
@@ -35,24 +41,6 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
   } = useUserImages(userId)
   
   const galleryImages = galleryData?.data?.images || []
-
-  // Filter images based on search query
-  const filteredImages = galleryImages.filter((image: any) =>
-    image.caption?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    image.altText?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    image.tags?.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
-
-  const handleImageToggle = (image: any) => {
-    setSelectedImages(prev => {
-      const isSelected = prev.some(img => img.id === image.id)
-      if (isSelected) {
-        return prev.filter(img => img.id !== image.id)
-      } else {
-        return [...prev, image]
-      }
-    })
-  }
 
   const handleCreateGallery = async () => {
     if (!galleryName.trim()) {
@@ -80,7 +68,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
       setGalleryName('')
       setGalleryDescription('')
       setGalleryVisibility('PUBLIC')
-      setSelectedImages([])
+      clearSelection()
       setSearchQuery('')
       onClose()
       onGalleryCreated?.()
@@ -88,18 +76,6 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
       console.error('Failed to create gallery:', error)
       alert('Failed to create gallery. Please try again.')
     }
-  }
-
-  const isImageSelected = (imageId: string) => {
-    return selectedImages.some(img => img.id === imageId)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
   }
 
   if (!isOpen) return null
@@ -221,136 +197,28 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                       {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
                     </p>
                   </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`p-2 rounded-lg transition-colors duration-200 ${
-                        viewMode === 'grid'
-                          ? 'bg-primary-100 text-primary-700'
-                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <div className="grid grid-cols-2 gap-1 w-4 h-4">
-                        <div className="bg-current rounded-sm"></div>
-                        <div className="bg-current rounded-sm"></div>
-                        <div className="bg-current rounded-sm"></div>
-                        <div className="bg-current rounded-sm"></div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`p-2 rounded-lg transition-colors duration-200 ${
-                        viewMode === 'list'
-                          ? 'bg-primary-100 text-primary-700'
-                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <div className="space-y-1 w-4 h-4">
-                        <div className="bg-current rounded-sm h-1"></div>
-                        <div className="bg-current rounded-sm h-1"></div>
-                        <div className="bg-current rounded-sm h-1"></div>
-                      </div>
-                    </button>
-                  </div>
                 </div>
 
-                {/* Search */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search images..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  />
-                  <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                </div>
-
-                {/* Images Grid/List */}
-                {viewMode === 'grid' ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {filteredImages.map((image) => (
-                      <div
-                        key={image.id}
-                        className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden cursor-pointer transition-all duration-200 ${
-                          isImageSelected(image.id) ? 'ring-2 ring-primary-500' : 'hover:ring-2 hover:ring-gray-300'
-                        }`}
-                        onClick={() => handleImageToggle(image)}
-                      >
-                        <LazyImage
-                          src={getImageUrlFromImage(image, true)}
-                          alt={image.altText || 'Gallery image'}
-                          className="w-full h-full object-cover"
-                        />
-                        {isImageSelected(image.id) && (
-                          <div className="absolute top-2 right-2 w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {filteredImages.map((image) => (
-                      <div
-                        key={image.id}
-                        className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                          isImageSelected(image.id) ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50 hover:bg-gray-100'
-                        }`}
-                        onClick={() => handleImageToggle(image)}
-                      >
-                        <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                          <LazyImage
-                            src={getImageUrlFromImage(image, true)}
-                            alt={image.altText || 'Gallery image'}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-gray-900 truncate">
-                            {image.altText || image.caption || 'Untitled'}
-                          </h4>
-                          {image.caption && (
-                            <p className="text-sm text-gray-600 truncate">{image.caption}</p>
-                          )}
-                          <p className="text-xs text-gray-500">{formatDate(image.createdAt)}</p>
-                        </div>
-                        
-                        {isImageSelected(image.id) && (
-                          <div className="w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Load More */}
-                {hasMore && (
-                  <div className="flex justify-center pt-4">
-                    <button
-                      onClick={loadMore}
-                      disabled={isLoadingMore}
-                      className="btn-secondary flex items-center space-x-2 px-6 py-2"
-                    >
-                      {isLoadingMore ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          <span>Loading...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-4 w-4" />
-                          <span>Load More</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
+                {/* Use our reusable ImageBrowser component */}
+                <ImageBrowser
+                  images={galleryImages}
+                  hasMore={hasMore}
+                  isLoading={galleryLoading}
+                  onLoadMore={loadMore}
+                  selectedImages={selectedImages}
+                  onImageSelect={toggleImage}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  showSearch={true}
+                  showSelection={true}
+                  showAuthor={false}
+                  showTags={true}
+                  showViewModeToggle={true}
+                  searchPlaceholder="Search your images..."
+                  emptyMessage="No images in your collection"
+                />
               </div>
             </div>
 
