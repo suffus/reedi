@@ -32,8 +32,15 @@ export function ProgressiveImage({
   const [currentSrc, setCurrentSrc] = useState(src) // Always start with full-size image
   const [progressiveStage, setProgressiveStage] = useState(0)
   const [hasError, setHasError] = useState(false)
-  const imgRef = useRef<HTMLImageElement>(null)
   const loadingTimeoutRef = useRef<NodeJS.Timeout>()
+  if(src != currentSrc) {  /// we have changed the main image most likely
+    console.log("src changed", src, currentSrc)
+    setIsLoaded(false)
+    setIsLoading(false)
+    setProgressiveStage(5)
+    setHasError(false)
+    setCurrentSrc(src)
+  }
 
   // Progressive loading stages
   const stages = [
@@ -125,13 +132,12 @@ export function ProgressiveImage({
 
       {/* Main image */}
       <img
-        ref={imgRef}
         src={currentSrc}
         alt={alt}
         className={className}
         style={{
           ...style,
-          opacity: isLoaded ? 1 : 0.9,
+          opacity: isLoaded ? 1 : 0.5,
           // Don't override transform if it's already set (for zoom functionality)
           transform: style?.transform || (isLoaded ? 'scale(1)' : 'scale(0.99)'),
           transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',

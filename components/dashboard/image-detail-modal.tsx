@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon } from 'lucide-react'
+import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { ProgressiveImage } from '../progressive-image'
@@ -60,9 +60,12 @@ interface ImageDetailModalProps {
   onClose: () => void
   onImageUpdate?: () => void
   updateImage?: (imageId: string, updates: Partial<any>) => void
+  // Navigation props
+  allImages?: GalleryImage[]
+  onNavigate?: (image: GalleryImage) => void
 }
 
-export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage }: ImageDetailModalProps) {
+export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, allImages, onNavigate }: ImageDetailModalProps) {
   // Return early if no image
   if (!image) {
     return null
@@ -85,7 +88,6 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage }:
   const [localTitle, setLocalTitle] = useState(image?.title || '')
   const [localDescription, setLocalDescription] = useState(image?.description || '')
   const [localTags, setLocalTags] = useState<string[]>(image?.tags || [])
-  const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
   const { data: commentsData, isLoading: commentsLoading } = useImageComments(image.id)
@@ -93,11 +95,51 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage }:
   const updateImageMutation = useUpdateImage()
   const { data: authData } = useAuth()
   
+  // Check if current user is the image owner
+  const isOwner = authData?.data?.user?.id === image.authorId
+
+  // Navigation logic
+  const canNavigate = allImages && allImages.length > 1 && onNavigate
+  const currentIndex = canNavigate ? allImages.findIndex(img => img.id === image.id) : -1
+  const hasNext = canNavigate && currentIndex !== -1 && currentIndex < allImages.length - 1
+  const hasPrev = canNavigate && currentIndex !== -1 && currentIndex > 0
+
+  const handleNext = useCallback(() => {
+    if (!canNavigate || !hasNext) return
+    const nextIndex = currentIndex + 1
+    onNavigate(allImages[nextIndex])
+  }, [canNavigate, hasNext, currentIndex, onNavigate, allImages])
+
+  const handlePrev = useCallback(() => {
+    if (!canNavigate || !hasPrev) return
+    const prevIndex = currentIndex - 1
+    onNavigate(allImages[prevIndex])
+  }, [canNavigate, hasPrev, currentIndex, onNavigate, allImages])
+
+  const handleFirst = useCallback(() => {
+    if (!canNavigate) return
+    onNavigate(allImages[0])
+  }, [canNavigate, onNavigate, allImages])
+
+  const handleLast = useCallback(() => {
+    if (!canNavigate) return
+    onNavigate(allImages[allImages.length - 1])
+  }, [canNavigate, onNavigate, allImages])
+  
   // Update local state when image prop changes
   useEffect(() => {
     setLocalTitle(image?.title || '')
     setLocalDescription(image?.description || '')
     setLocalTags(image?.tags || [])
+    
+    // Reset view state when image changes (for navigation)
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setActiveCrop(null)
+    setIsDragging(false)
+    setIsCropping(false)
+    setIsCropMode(false)
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
   }, [image])
   
   // Add global mouse event listeners for smooth dragging
@@ -128,9 +170,39 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage }:
       document.removeEventListener('mouseup', handleGlobalMouseUp)
     }
   }, [isDragging, zoom, dragStart, isCropMode])
+
+  // Add keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!canNavigate) return
+      
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault()
+          handleNext()
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          handlePrev()
+          break
+        case 'Home':
+          e.preventDefault()
+          handleFirst()
+          break
+        case 'End':
+          e.preventDefault()
+          handleLast()
+          break
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [canNavigate, handleNext, handlePrev, handleFirst, handleLast])
   
-  // Check if current user is the image owner
-  const isOwner = authData?.data?.user?.id === image.authorId
+
   
 
 
@@ -430,6 +502,40 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage }:
               >
                 <X className="h-5 w-5" />
               </button>
+
+              {/* Navigation Buttons */}
+              {canNavigate && (
+                <>
+                  {/* Previous Button */}
+                  <button
+                    onClick={handlePrev}
+                    className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
+                      !hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                    }`}
+                    disabled={!hasPrev}
+                    title="Previous image (←)"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+
+                  {/* Next Button */}
+                  <button
+                    onClick={handleNext}
+                    className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
+                      !hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                    }`}
+                    disabled={!hasNext}
+                    title="Next image (→)"
+                  >
+                    <ChevronRight className="h-6 w-6" />
+                  </button>
+
+                  {/* Image Counter */}
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full">
+                    {currentIndex + 1} / {allImages.length}
+                  </div>
+                </>
+              )}
               {/* Zoom Controls */}
               <div className="absolute top-4 right-4 z-20 flex flex-col space-y-2">
                 <button

@@ -5,6 +5,107 @@ const index_1 = require("@/index");
 const errorHandler_1 = require("@/middleware/errorHandler");
 const auth_1 = require("@/middleware/auth");
 const router = (0, express_1.Router)();
+router.get('/images/tags', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { tags, page = 1, limit = 20 } = req.query;
+    const userId = req.user?.id;
+    if (!tags || typeof tags !== 'string') {
+        res.status(400).json({
+            success: false,
+            error: 'Tags parameter is required'
+        });
+        return;
+    }
+    const offset = (Number(page) - 1) * Number(limit);
+    const tagArray = tags.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+    if (tagArray.length === 0) {
+        res.status(400).json({
+            success: false,
+            error: 'At least one valid tag is required'
+        });
+        return;
+    }
+    let visibilityFilter = [
+        { visibility: 'PUBLIC' }
+    ];
+    if (userId) {
+        const friendRelationships = await index_1.prisma.friendRequest.findMany({
+            where: {
+                OR: [
+                    { senderId: userId, status: 'ACCEPTED' },
+                    { receiverId: userId, status: 'ACCEPTED' }
+                ]
+            },
+            select: {
+                senderId: true,
+                receiverId: true
+            }
+        });
+        const friendIds = friendRelationships.map(rel => rel.senderId === userId ? rel.receiverId : rel.senderId);
+        if (friendIds.length > 0) {
+            visibilityFilter.push({
+                AND: [
+                    { visibility: 'FRIENDS_ONLY' },
+                    { authorId: { in: friendIds } }
+                ]
+            });
+        }
+        visibilityFilter.push({ authorId: userId });
+    }
+    const tagWhereClause = tagArray.length === 1
+        ? { tags: { has: tagArray[0] } }
+        : { AND: tagArray.map(tag => ({ tags: { has: tag } })) };
+    const where = {
+        ...tagWhereClause,
+        OR: visibilityFilter
+    };
+    const [images, total] = await Promise.all([
+        index_1.prisma.image.findMany({
+            where,
+            skip: offset,
+            take: Number(limit),
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                s3Key: true,
+                thumbnailS3Key: true,
+                altText: true,
+                caption: true,
+                width: true,
+                height: true,
+                size: true,
+                mimeType: true,
+                tags: true,
+                createdAt: true,
+                updatedAt: true,
+                authorId: true,
+                author: {
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        avatar: true
+                    }
+                }
+            }
+        }),
+        index_1.prisma.image.count({ where })
+    ]);
+    res.json({
+        success: true,
+        data: {
+            images,
+            tags: tagArray,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                totalPages: Math.ceil(total / Number(limit)),
+                hasNext: offset + Number(limit) < total,
+                hasPrev: Number(page) > 1
+            }
+        }
+    });
+}));
 router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const { q: query, type = 'all', page = 1, limit = 20 } = req.query;
     const userId = req.user?.id;

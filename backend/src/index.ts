@@ -25,8 +25,16 @@ import { authMiddleware } from '@/middleware/auth'
 // Load environment variables
 dotenv.config()
 
-// Initialize Prisma client
-export const prisma = new PrismaClient()
+// Initialize Prisma client with optimized connection pool
+export const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  },
+  // Optimize connection pool for high concurrency
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+})
 
 // Create Express app
 const app = express()
@@ -35,7 +43,7 @@ const PORT = process.env.PORT || 8088
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // limit each IP to 500 requests per windowMs (increased for debugging)
+  max: 50000, // limit each IP to 50000 requests per windowMs (increased for debugging)
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -102,6 +110,26 @@ app.use('*', (req, res) => {
     path: req.originalUrl 
   })
 })
+
+// Connection pool monitoring
+let requestCount = 0
+let errorCount = 0
+
+// Monitor database health
+setInterval(async () => {
+  try {
+    // Simple health check query
+    await prisma.$queryRaw`SELECT 1`
+    
+    // Log health status every 5 minutes
+    if (Date.now() % 300000 < 1000) { // Every 5 minutes
+      console.log(`📊 Database Health: ${requestCount} requests, ${errorCount} errors`)
+    }
+  } catch (error) {
+    errorCount++
+    console.error('❌ Database health check failed:', error)
+  }
+}, 30000) // Check every 30 seconds
 
 // Start server
 async function startServer() {

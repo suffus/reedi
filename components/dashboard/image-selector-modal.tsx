@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Upload, Image as ImageIcon, Check, Search, Grid3X3, List } from 'lucide-react'
+import { X, Upload, Image as ImageIcon, Check, Search, Grid3X3, List, Globe } from 'lucide-react'
 import { ImageUploader } from './image-uploader'
-import { useUserImages } from '../../lib/api-hooks'
+import { useUserImages, useSearchImagesByTags } from '../../lib/api-hooks'
 import { getImageUrl, getImageUrlFromImage } from '../../lib/api'
 import { LazyImage } from '../lazy-image'
 
@@ -16,6 +16,12 @@ interface Image {
   caption: string | null
   tags: string[]
   createdAt: string
+  author?: {
+    id: string
+    name: string
+    username: string
+    avatar: string | null
+  }
 }
 
 interface ImageSelectorModalProps {
@@ -34,76 +40,96 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
   const [tagQuery, setTagQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [uploadedImages, setUploadedImages] = useState<Image[]>([])
+  const [searchPage, setSearchPage] = useState(1)
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+
+  // Refs for infinite scroll
+  const galleryEndRef = useRef<HTMLDivElement>(null)
+  const searchEndRef = useRef<HTMLDivElement>(null)
 
   const { 
     data: galleryData, 
     isLoading: galleryLoading, 
     loadMore, 
     hasMore, 
-    isLoadingMore 
+    isLoadingMore,
+    reset
   } = useUserImages(userId)
   const galleryImages = galleryData?.data?.images || []
+
+  // Parse tag query into array
+  const tagArray = tagQuery.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
   
+  // Search images by tags across all users
+  const {
+    data: searchData,
+    isLoading: searchLoading,
+    refetch: refetchSearch
+  } = useSearchImagesByTags(tagArray, searchPage, 20)
+  
+  const searchImages = searchData?.data?.images || []
+  const searchHasMore = searchData?.data?.pagination?.hasNext || false
+
   // Determine default tab based on whether user has images in gallery
   const defaultTab: TabType = galleryImages.length > 0 ? 'gallery' : 'upload'
   const [activeTab, setActiveTab] = useState<TabType>(defaultTab)
-  
-  // Note: Removed automatic tab switching to allow users to manually choose upload or gallery
+
+  // Reset gallery when search query changes
+  useEffect(() => {
+    if (searchQuery || tagQuery) {
+      // Don't reset immediately, let the user finish typing
+      const timeoutId = setTimeout(() => {
+        reset()
+        setSearchPage(1)
+        setShowGlobalSearch(false)
+      }, 500)
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [searchQuery, tagQuery, reset])
+
+  // Check if we should show global search when tag query changes
+  useEffect(() => {
+    if (tagArray.length > 0) {
+      // Filter local images by tags
+      const localMatches = galleryImages.filter((image: any) =>
+        tagArray.some(tag => image.tags?.some((imageTag: string) => 
+          imageTag.toLowerCase() === tag.toLowerCase()
+        ))
+      )
+      
+      // If we have less than 5 local matches, show global search
+      if (localMatches.length < 5) {
+        setShowGlobalSearch(true)
+      } else {
+        setShowGlobalSearch(false)
+      }
+    } else {
+      setShowGlobalSearch(false)
+    }
+  }, [tagArray, galleryImages])
 
   // Filter images based on search query and tag
-  const filteredImages = galleryImages.filter((image: any) =>
-    (
+  const filteredImages = galleryImages.filter((image: any) => {
+    // If no search query and no tag query, show all images
+    if (!searchQuery.trim() && !tagQuery.trim()) {
+      return true
+    }
+    
+    // Check search query
+    const matchesSearch = !searchQuery.trim() || (
       image.caption?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       image.altText?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       image.tags?.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-    ) &&
-    (
-      !tagQuery.trim() || image.tags?.some((tag: string) => tag.toLowerCase() === tagQuery.toLowerCase())
     )
-  )
-
-  // Infinite scroll refs
-  const observerRef = useRef<IntersectionObserver | null>(null)
-  const lastImageRef = useRef<HTMLDivElement | null>(null)
-
-  // Infinite scroll effect
-  useEffect(() => {
-    console.log('Infinite scroll effect triggered:', {
-      hasMore,
-      isLoadingMore,
-      galleryImagesLength: galleryImages.length,
-      filteredImagesLength: filteredImages.length
-    })
     
-    if (!hasMore || isLoadingMore) return
+    // Check tag query
+    const matchesTag = !tagQuery.trim() || image.tags?.some((tag: string) => 
+      tag.toLowerCase() === tagQuery.toLowerCase()
+    )
     
-    if (observerRef.current) observerRef.current.disconnect()
-    
-    observerRef.current = new window.IntersectionObserver(entries => {
-      console.log('Intersection observer triggered:', {
-        isIntersecting: entries[0].isIntersecting,
-        hasMore,
-        isLoadingMore
-      })
-      if (entries[0].isIntersecting) {
-        console.log('Loading more images...')
-        loadMore()
-      }
-    }, {
-      rootMargin: '100px' // Start loading 100px before the element is visible
-    })
-    
-    if (lastImageRef.current) {
-      console.log('Observing last image ref')
-      observerRef.current.observe(lastImageRef.current)
-    } else {
-      console.log('No last image ref found')
-    }
-    
-    return () => {
-      observerRef.current?.disconnect()
-    }
-  }, [galleryImages.length, hasMore, isLoadingMore, loadMore])
+    return matchesSearch && matchesTag
+  })
 
   const handleImageToggle = (image: Image) => {
     setSelectedImages(prev => {
@@ -132,6 +158,56 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
   const isImageSelected = (imageId: string) => {
     return selectedImages.some(img => img.id === imageId)
   }
+
+  const handleLoadMoreSearch = () => {
+    setSearchPage(prev => prev + 1)
+  }
+
+  // Infinite scroll callbacks
+  const handleGalleryScroll = useCallback(() => {
+    if (hasMore && !isLoadingMore && !galleryLoading) {
+      loadMore()
+    }
+  }, [hasMore, isLoadingMore, galleryLoading, loadMore])
+
+  const handleSearchScroll = useCallback(() => {
+    if (searchHasMore && !searchLoading) {
+      setSearchPage(prev => prev + 1)
+    }
+  }, [searchHasMore, searchLoading])
+
+  // Set up intersection observers for infinite scroll
+  useEffect(() => {
+    const galleryObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleGalleryScroll()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const searchObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleSearchScroll()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    if (galleryEndRef.current) {
+      galleryObserver.observe(galleryEndRef.current)
+    }
+    if (searchEndRef.current) {
+      searchObserver.observe(searchEndRef.current)
+    }
+
+    return () => {
+      galleryObserver.disconnect()
+      searchObserver.disconnect()
+    }
+  }, [handleGalleryScroll, handleSearchScroll])
 
   if (!isOpen) return null
 
@@ -211,7 +287,7 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
                     <div className="relative max-w-xs">
                       <input
                         type="text"
-                        placeholder="Tag..."
+                        placeholder="Tag (comma separated)..."
                         value={tagQuery}
                         onChange={e => setTagQuery(e.target.value)}
                         className="w-full pl-3 pr-8 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
@@ -250,6 +326,18 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
                     </button>
                   </div>
                 </div>
+
+                {/* Global Search Notice */}
+                {showGlobalSearch && tagArray.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center space-x-2">
+                      <Globe className="h-4 w-4 text-blue-600" />
+                      <p className="text-sm text-blue-800">
+                        Searching for images with tags: <span className="font-medium">{tagArray.join(', ')}</span> across all users
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Selected Images Preview with Drag & Drop */}
                 {selectedImages.length > 0 && (
@@ -314,7 +402,7 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
                       <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />
                     ))}
                   </div>
-                ) : filteredImages.length === 0 ? (
+                ) : filteredImages.length === 0 && !showGlobalSearch ? (
                   <div className="text-center py-12">
                     <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -325,113 +413,263 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
                     </p>
                   </div>
                 ) : viewMode === 'grid' ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {filteredImages.map((image, idx) => {
-                      // Find the index of this image in the original galleryImages array
-                      const originalIndex = galleryImages.findIndex((galleryImg: any) => galleryImg.id === image.id)
-                      const isLastInGallery = originalIndex === galleryImages.length - 1
-                      
-                      if (isLastInGallery) {
-                        console.log('Last image in gallery found (grid):', {
-                          imageId: image.id,
-                          originalIndex,
-                          galleryImagesLength: galleryImages.length
-                        })
-                      }
-                      
-                      return (
-                        <div
-                          key={image.id}
-                          ref={isLastInGallery ? lastImageRef : undefined}
-                          className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden cursor-pointer transition-all duration-200 ${
-                            isImageSelected(image.id) ? 'ring-2 ring-primary-500' : 'hover:ring-2 hover:ring-gray-300'
-                          }`}
-                          onClick={() => handleImageToggle(image)}
-                        >
-                        <LazyImage
-                          src={getImageUrlFromImage(image, true)}
-                          alt={image.altText || 'Gallery image'}
-                          className="w-full h-full object-cover"
-                        />
-                        {isImageSelected(image.id) && (
-                          <div className="absolute top-2 right-2 w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center">
-                            <Check className="h-4 w-4 text-white" />
+                  <>
+                    {/* Show local images first */}
+                    {filteredImages.length > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">Your Images</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {filteredImages.map((image) => (
+                            <div
+                              key={image.id}
+                              className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden cursor-pointer transition-all duration-200 ${
+                                isImageSelected(image.id) ? 'ring-2 ring-primary-500' : 'hover:ring-2 hover:ring-gray-300'
+                              }`}
+                              onClick={() => handleImageToggle(image)}
+                            >
+                            <LazyImage
+                              src={getImageUrlFromImage(image, true)}
+                              alt={image.altText || 'Gallery image'}
+                              className="w-full h-full object-cover"
+                            />
+                            {isImageSelected(image.id) && (
+                              <div className="absolute top-2 right-2 w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center">
+                                <Check className="h-4 w-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        </div>
+                        
+                        {/* Infinite scroll trigger for local gallery */}
+                        {hasMore && (
+                          <div ref={galleryEndRef} className="flex justify-center pt-4">
+                            {isLoadingMore && (
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                                <span>Loading more images...</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )
-                    })}
-                    {isLoadingMore && (
-                      <div className="col-span-full flex justify-center py-4">
-                        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                      </div>
                     )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredImages.map((image, idx) => {
-                      // Find the index of this image in the original galleryImages array
-                      const originalIndex = galleryImages.findIndex((galleryImg: any) => galleryImg.id === image.id)
-                      const isLastInGallery = originalIndex === galleryImages.length - 1
-                      
-                      if (isLastInGallery) {
-                        console.log('Last image in gallery found (list):', {
-                          imageId: image.id,
-                          originalIndex,
-                          galleryImagesLength: galleryImages.length
-                        })
-                      }
-                      
-                      return (
-                        <div
-                          key={image.id}
-                          ref={isLastInGallery ? lastImageRef : undefined}
-                          className={`flex items-center space-x-4 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                            isImageSelected(image.id) ? 'bg-primary-50 border border-primary-200' : 'hover:bg-gray-50'
-                          }`}
-                          onClick={() => handleImageToggle(image)}
-                        >
-                        <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                          <LazyImage
-                            src={getImageUrlFromImage(image, true)}
-                            alt={image.altText || 'Gallery image'}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
-                            {image.caption || image.altText || 'Untitled'}
-                          </p>
-                          {image.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {image.tags?.slice(0, 3).map((tag: string, index: number) => (
-                                <span
-                                  key={index}
-                                  className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                              {image.tags.length > 3 && (
-                                <span className="text-xs text-gray-500">+{image.tags.length - 3} more</span>
+
+                    {/* Show global search results */}
+                    {showGlobalSearch && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                          <Globe className="h-4 w-4 mr-2" />
+                          Images from All Users
+                        </h3>
+                        {searchLoading ? (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {[...Array(8)].map((_, i) => (
+                              <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />
+                            ))}
+                          </div>
+                        ) : searchImages.length === 0 ? (
+                          <div className="text-center py-8">
+                            <p className="text-gray-600">No images found with these tags</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {searchImages.map((image: Image) => (
+                              <div
+                                key={image.id}
+                                className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden cursor-pointer transition-all duration-200 ${
+                                  isImageSelected(image.id) ? 'ring-2 ring-primary-500' : 'hover:ring-2 hover:ring-gray-300'
+                                }`}
+                                onClick={() => handleImageToggle(image)}
+                              >
+                              <LazyImage
+                                src={getImageUrlFromImage(image, true)}
+                                alt={image.altText || 'Search result image'}
+                                className="w-full h-full object-cover"
+                              />
+                              {isImageSelected(image.id) && (
+                                <div className="absolute top-2 right-2 w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center">
+                                  <Check className="h-4 w-4 text-white" />
+                                </div>
+                              )}
+                              {/* Show author info */}
+                              {image.author && (
+                                <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                                  {image.author.name}
+                                </div>
                               )}
                             </div>
-                          )}
-                        </div>
-                        {isImageSelected(image.id) && (
-                          <div className="w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <Check className="h-4 w-4 text-white" />
+                          ))}
+                          </div>
+                        )}
+                        
+                        {/* Infinite scroll trigger for global search */}
+                        {searchHasMore && (
+                          <div ref={searchEndRef} className="flex justify-center pt-4">
+                            {searchLoading && (
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                                <span>Loading more images...</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )
-                    })}
-                    {isLoadingMore && (
-                      <div className="flex justify-center py-4">
-                        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* List view - similar structure but with list layout */}
+                    {/* Show local images first */}
+                    {filteredImages.length > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">Your Images</h3>
+                        <div className="space-y-3">
+                          {filteredImages.map((image: Image) => (
+                            <div
+                              key={image.id}
+                              className={`flex items-center space-x-4 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                                isImageSelected(image.id) ? 'bg-primary-50 border border-primary-200' : 'hover:bg-gray-50'
+                              }`}
+                              onClick={() => handleImageToggle(image)}
+                            >
+                            <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                              <LazyImage
+                                src={getImageUrlFromImage(image, true)}
+                                alt={image.altText || 'Gallery image'}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900 truncate">
+                                {image.caption || image.altText || 'Untitled'}
+                              </p>
+                              {image.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {image.tags?.slice(0, 3).map((tag: string, index: number) => (
+                                    <span
+                                      key={index}
+                                      className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  {image.tags.length > 3 && (
+                                    <span className="text-xs text-gray-500">+{image.tags.length - 3} more</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {isImageSelected(image.id) && (
+                              <div className="w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                <Check className="h-4 w-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        </div>
+                        
+                        {/* Infinite scroll trigger for local gallery */}
+                        {hasMore && (
+                          <div ref={galleryEndRef} className="flex justify-center pt-4">
+                            {isLoadingMore && (
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                                <span>Loading more images...</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
+
+                    {/* Show global search results */}
+                    {showGlobalSearch && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                          <Globe className="h-4 w-4 mr-2" />
+                          Images from All Users
+                        </h3>
+                        {searchLoading ? (
+                          <div className="space-y-3">
+                            {[...Array(4)].map((_, i) => (
+                              <div key={i} className="flex items-center space-x-4 p-3 rounded-lg">
+                                <div className="w-16 h-16 bg-gray-200 rounded-lg animate-pulse" />
+                                <div className="flex-1">
+                                  <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                                  <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : searchImages.length === 0 ? (
+                          <div className="text-center py-8">
+                            <p className="text-gray-600">No images found with these tags</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {searchImages.map((image: Image) => (
+                              <div
+                                key={image.id}
+                                className={`flex items-center space-x-4 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                                  isImageSelected(image.id) ? 'bg-primary-50 border border-primary-200' : 'hover:bg-gray-50'
+                                }`}
+                                onClick={() => handleImageToggle(image)}
+                              >
+                              <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                                <LazyImage
+                                  src={getImageUrlFromImage(image, true)}
+                                  alt={image.altText || 'Search result image'}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 truncate">
+                                  {image.caption || image.altText || 'Untitled'}
+                                </p>
+                                {image.author && (
+                                  <p className="text-sm text-gray-600">by {image.author.name}</p>
+                                )}
+                                {image.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {image.tags?.slice(0, 3).map((tag: string, index: number) => (
+                                      <span
+                                        key={index}
+                                        className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))}
+                                    {image.tags.length > 3 && (
+                                      <span className="text-xs text-gray-500">+{image.tags.length - 3} more</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {isImageSelected(image.id) && (
+                                <div className="w-6 h-6 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <Check className="h-4 w-4 text-white" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          </div>
+                        )}
+                        
+                        {/* Infinite scroll trigger for global search */}
+                        {searchHasMore && (
+                          <div ref={searchEndRef} className="flex justify-center pt-4">
+                            {searchLoading && (
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                                <span>Loading more images...</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

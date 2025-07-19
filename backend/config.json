@@ -1,0 +1,12 @@
+{
+    "s3Bucket": {
+        "name": "reedi-live",
+        "region": "oregon",
+        "accessKeyId": "SdhWpZtdfwhnWjJmbbBr",
+        "endpoint": "q1t7.or4.idrivee2-69.com",
+        "secretAccessKey": "W2GA1lmQ7TRZpPMAAoz2OVY4aGFM4lzNz1n926Rr"
+    },
+    "database": {
+        "url": "postgresql://postgres:1234567890@localhost:5432/reedi-live"
+    }   
+}

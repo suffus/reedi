@@ -279,57 +279,62 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
             return;
         }
     }
-    const post = await index_1.prisma.post.create({
-        data: {
-            title,
-            content,
-            visibility: visibility || 'PUBLIC',
-            authorId: userId,
-            hashtags: {
-                connectOrCreate: hashtags?.map((tag) => ({
-                    where: { name: tag.toLowerCase() },
-                    create: { name: tag.toLowerCase() }
-                })) || []
-            }
-        },
-        include: {
-            author: {
-                select: {
-                    id: true,
-                    name: true,
-                    username: true,
-                    avatar: true
+    const postWithImages = await index_1.prisma.$transaction(async (tx) => {
+        const post = await tx.post.create({
+            data: {
+                title,
+                content,
+                visibility: visibility || 'PUBLIC',
+                authorId: userId,
+                hashtags: {
+                    connectOrCreate: hashtags?.map((tag) => ({
+                        where: { name: tag.toLowerCase() },
+                        create: { name: tag.toLowerCase() }
+                    })) || []
                 }
             },
-            hashtags: true
-        }
-    });
-    if (imageIds && imageIds.length > 0) {
-        await index_1.prisma.postImage.createMany({
-            data: imageIds.map((imageId, index) => ({
-                postId: post.id,
-                imageId,
-                order: index
-            }))
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        avatar: true
+                    }
+                },
+                hashtags: true
+            }
         });
-    }
-    const postWithImages = await index_1.prisma.post.findUnique({
-        where: { id: post.id },
-        include: {
-            author: {
-                select: {
-                    id: true,
-                    name: true,
-                    username: true,
-                    avatar: true
-                }
-            },
-            hashtags: true,
-            images: {
-                include: { image: true },
-                orderBy: { order: 'asc' }
-            }
+        if (imageIds && imageIds.length > 0) {
+            await tx.postImage.createMany({
+                data: imageIds.map((imageId, index) => ({
+                    postId: post.id,
+                    imageId,
+                    order: index
+                }))
+            });
         }
+        return await tx.post.findUnique({
+            where: { id: post.id },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        avatar: true
+                    }
+                },
+                hashtags: true,
+                images: {
+                    include: { image: true },
+                    orderBy: { order: 'asc' }
+                }
+            }
+        });
+    }, {
+        maxWait: 5000,
+        timeout: 10000,
     });
     const postWithOrderedImages = {
         ...postWithImages,

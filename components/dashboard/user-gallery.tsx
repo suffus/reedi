@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Download, Trash2, Eye, Calendar, X, Loader2 } from 'lucide-react'
-import { useUserImages, useDeleteImage } from '../../lib/api-hooks'
+import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen } from 'lucide-react'
+import { useUserImages, useDeleteImage, useMyGalleries, useGallery } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
+import { NewGalleryModal } from './new-gallery-modal'
+import { GalleryDetailModal } from './gallery-detail-modal'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { LazyImage } from '../lazy-image'
 
@@ -52,6 +54,10 @@ interface UserGalleryProps {
 export function UserGallery({ userId }: UserGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [isNewGalleryModalOpen, setIsNewGalleryModalOpen] = useState(false)
+  const [activeView, setActiveView] = useState<'images' | 'galleries'>('images')
+  const [selectedGallery, setSelectedGallery] = useState<any>(null)
+  const [isGalleryDetailModalOpen, setIsGalleryDetailModalOpen] = useState(false)
 
   const { 
     data, 
@@ -65,7 +71,19 @@ export function UserGallery({ userId }: UserGalleryProps) {
     updateImage
   } = useUserImages(userId)
 
+  const { data: galleriesData, isLoading: galleriesLoading } = useMyGalleries()
+  const galleries = galleriesData?.data?.galleries || []
+
+  const { data: selectedGalleryData, isLoading: selectedGalleryLoading } = useGallery(
+    selectedGallery?.id || ''
+  )
+
   const deleteImageMutation = useDeleteImage()
+
+  const handleGalleryClick = (gallery: any) => {
+    setSelectedGallery(gallery)
+    setIsGalleryDetailModalOpen(true)
+  }
 
   // Map the raw images to our frontend format and use backend serve endpoints
   const images = (data?.data?.images || []).map((image: any) => {
@@ -208,50 +226,103 @@ export function UserGallery({ userId }: UserGalleryProps) {
         <div>
           <h2 className="text-2xl font-serif font-bold text-gray-900">Your Gallery</h2>
           <p className="text-gray-600 mt-1">
-            {totalImages} {(totalImages === 1 ? 'image' : 'images')} in your collection
-            {images.length > 0 && images.length < totalImages && (
-              <span className="text-gray-500">
-                {' '}(showing {images.length} of {totalImages})
-              </span>
+            {activeView === 'images' ? (
+              <>
+                {totalImages} {(totalImages === 1 ? 'image' : 'images')} in your collection
+                {images.length > 0 && images.length < totalImages && (
+                  <span className="text-gray-500">
+                    {' '}(showing {images.length} of {totalImages})
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                {galleries.length} {(galleries.length === 1 ? 'gallery' : 'galleries')} created
+              </>
             )}
           </p>
         </div>
         
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`p-2 rounded-lg transition-colors duration-200 ${
-              viewMode === 'grid'
-                ? 'bg-primary-100 text-primary-700'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <div className="grid grid-cols-2 gap-1 w-4 h-4">
-              <div className="bg-current rounded-sm"></div>
-              <div className="bg-current rounded-sm"></div>
-              <div className="bg-current rounded-sm"></div>
-              <div className="bg-current rounded-sm"></div>
-            </div>
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`p-2 rounded-lg transition-colors duration-200 ${
-              viewMode === 'list'
-                ? 'bg-primary-100 text-primary-700'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <div className="space-y-1 w-4 h-4">
-              <div className="bg-current rounded-sm h-1"></div>
-              <div className="bg-current rounded-sm h-1"></div>
-              <div className="bg-current rounded-sm h-1"></div>
-            </div>
-          </button>
+          {/* View Toggle */}
+          <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setActiveView('images')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors duration-200 ${
+                activeView === 'images'
+                  ? 'bg-white text-primary-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Camera className="h-4 w-4 inline mr-1" />
+              Images
+            </button>
+            <button
+              onClick={() => setActiveView('galleries')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors duration-200 ${
+                activeView === 'galleries'
+                  ? 'bg-white text-primary-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <FolderOpen className="h-4 w-4 inline mr-1" />
+              Galleries
+            </button>
+          </div>
+
+          {/* New Gallery Button */}
+          {activeView === 'galleries' && (
+            <button
+              onClick={() => setIsNewGalleryModalOpen(true)}
+              className="btn-primary flex items-center space-x-2 px-4 py-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Gallery</span>
+            </button>
+          )}
+
+          {/* View Mode Toggle (only for images) */}
+          {activeView === 'images' && (
+            <>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-lg transition-colors duration-200 ${
+                  viewMode === 'grid'
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="grid grid-cols-2 gap-1 w-4 h-4">
+                  <div className="bg-current rounded-sm"></div>
+                  <div className="bg-current rounded-sm"></div>
+                  <div className="bg-current rounded-sm"></div>
+                  <div className="bg-current rounded-sm"></div>
+                </div>
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-lg transition-colors duration-200 ${
+                  viewMode === 'list'
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="space-y-1 w-4 h-4">
+                  <div className="bg-current rounded-sm h-1"></div>
+                  <div className="bg-current rounded-sm h-1"></div>
+                  <div className="bg-current rounded-sm h-1"></div>
+                </div>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Images Grid/List */}
-      {viewMode === 'grid' ? (
+      {/* Content */}
+      {activeView === 'images' ? (
+        <>
+          {/* Images Grid/List */}
+          {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {(displayImages ?? []).map((image: any, index: number) => {
             // Handle ghost placeholders
@@ -469,8 +540,6 @@ export function UserGallery({ userId }: UserGalleryProps) {
         </div>
       )}
 
-
-
       {/* Manual Load More Button (fallback) - only show if intersection observer fails */}
       {hasMore && !isLoadingMore && ghostPlaceholders.length === 0 && (
         <div className="flex justify-center pt-6">
@@ -503,6 +572,102 @@ export function UserGallery({ userId }: UserGalleryProps) {
           </div>
         </div>
       )}
+        </>
+      ) : (
+        <>
+          {/* Galleries View */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {galleries.map((gallery: any) => (
+              <motion.div
+                key={gallery.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow duration-200 cursor-pointer"
+                onClick={() => {
+                  setSelectedGallery(gallery)
+                  setIsGalleryDetailModalOpen(true)
+                }}
+              >
+                <div className="relative aspect-video overflow-hidden">
+                  {gallery.coverImage ? (
+                    <LazyImage
+                      src={getImageUrlFromImage(gallery.coverImage, true)}
+                      alt={gallery.coverImage.altText || 'Gallery cover'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                      <FolderOpen className="h-12 w-12 text-gray-400" />
+                    </div>
+                  )}
+                  
+                  {/* Overlay */}
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <button 
+                        className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setSelectedGallery(gallery)
+                          setIsGalleryDetailModalOpen(true)
+                        }}
+                      >
+                        <Eye className="h-4 w-4 text-gray-700" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-4">
+                  <h3 className="font-medium text-gray-900 mb-1 truncate">
+                    {gallery.name}
+                  </h3>
+                  {gallery.description && (
+                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                      {gallery.description}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span className="flex items-center">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {formatDate(gallery.createdAt)}
+                    </span>
+                    <span>{gallery._count.images} images</span>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Empty State for Galleries */}
+          {galleries.length === 0 && !galleriesLoading && (
+            <div className="text-center py-12">
+              <div className="text-gray-400 mb-4">
+                <FolderOpen className="h-12 w-12 mx-auto" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No galleries yet</h3>
+              <p className="text-gray-600 mb-4">Create your first gallery to organize your images!</p>
+              <button
+                onClick={() => setIsNewGalleryModalOpen(true)}
+                className="btn-primary flex items-center space-x-2 mx-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create Gallery</span>
+              </button>
+            </div>
+          )}
+
+          {/* Loading State for Galleries */}
+          {galleriesLoading && (
+            <div className="text-center py-12">
+              <div className="flex items-center justify-center space-x-2 text-gray-600">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Loading galleries...</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Image Detail Modal */}
       <ImageDetailModal
@@ -512,6 +677,31 @@ export function UserGallery({ userId }: UserGalleryProps) {
           // The optimistic update will handle this automatically
         }}
         updateImage={updateImage}
+        allImages={images}
+        onNavigate={(image: any) => setSelectedImage(image)}
+      />
+
+      {/* New Gallery Modal */}
+      <NewGalleryModal
+        isOpen={isNewGalleryModalOpen}
+        onClose={() => setIsNewGalleryModalOpen(false)}
+        userId={userId}
+        onGalleryCreated={() => {
+          // The query will automatically refetch
+        }}
+      />
+
+      {/* Gallery Detail Modal */}
+      <GalleryDetailModal
+        isOpen={isGalleryDetailModalOpen}
+        onClose={() => {
+          setIsGalleryDetailModalOpen(false)
+          setSelectedGallery(null)
+        }}
+        galleryId={selectedGallery?.id || ''}
+        onGalleryDeleted={() => {
+          // The query will automatically refetch
+        }}
       />
     </div>
   )
