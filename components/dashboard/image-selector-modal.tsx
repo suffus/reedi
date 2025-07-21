@@ -29,11 +29,12 @@ interface ImageSelectorModalProps {
   onClose: () => void
   onImagesSelected: (images: Image[]) => void
   userId: string
+  existingGalleryImages?: Image[] // Renamed to avoid conflict
 }
 
 type TabType = 'upload' | 'gallery'
 
-export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }: ImageSelectorModalProps) {
+export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId, existingGalleryImages = [] }: ImageSelectorModalProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [tagQuery, setTagQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -137,7 +138,7 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Add Images to Post</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Add Images to Gallery</h2>
             <button
               onClick={onClose}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
@@ -257,6 +258,7 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
                       showViewModeToggle={true}
                       searchPlaceholder="Search your images..."
                       emptyMessage="No images in your gallery"
+                      existingGalleryImages={existingGalleryImages}
                     />
                   </div>
                 )}
@@ -283,6 +285,7 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
                       showTags={true}
                       showViewModeToggle={false}
                       emptyMessage="No images found with these tags"
+                      existingGalleryImages={existingGalleryImages}
                     />
                   </div>
                 )}
@@ -316,7 +319,7 @@ export function ImageSelectorModal({ isOpen, onClose, onImagesSelected, userId }
               disabled={selectedImages.length === 0}
               className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Add {selectedImages.length} Image{selectedImages.length !== 1 ? 's' : ''} to XX Post
+              Add {selectedImages.length} Image{selectedImages.length !== 1 ? 's' : ''} to Gallery
             </button>
           </div>
         </motion.div>

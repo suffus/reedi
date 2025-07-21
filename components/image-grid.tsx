@@ -33,6 +33,7 @@ interface ImageGridProps {
   onViewModeChange?: (mode: 'grid' | 'list') => void
   showViewModeToggle?: boolean
   className?: string
+  existingGalleryImages?: Image[] // Add this prop to know which images are already in the gallery
 }
 
 export function ImageGrid({
@@ -46,10 +47,15 @@ export function ImageGrid({
   showTags = true,
   onViewModeChange,
   showViewModeToggle = false,
-  className = ''
+  className = '',
+  existingGalleryImages = []
 }: ImageGridProps) {
   const isImageSelected = (imageId: string) => {
     return selectedImages.some(img => img.id === imageId)
+  }
+
+  const isImageInGallery = (imageId: string) => {
+    return existingGalleryImages.some(img => img.id === imageId)
   }
 
   const handleImageClick = (image: Image) => {
@@ -116,8 +122,17 @@ export function ImageGrid({
               <LazyImage
                 src={getImageUrlFromImage(image, true)}
                 alt={image.altText || 'Image'}
-                className="w-full h-full object-cover"
+                className={`w-full h-full object-cover ${isImageInGallery(image.id) ? 'filter brightness-50' : ''}`}
               />
+              
+              {/* Gallery Indicator */}
+              {isImageInGallery(image.id) && (
+                <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                  <div className="bg-white bg-opacity-90 text-gray-800 text-xs px-2 py-1 rounded-full font-medium">
+                    Already in Gallery
+                  </div>
+                </div>
+              )}
               
               {/* Selection Indicator */}
               {isSelectable && isImageSelected(image.id) && (
@@ -167,12 +182,19 @@ export function ImageGrid({
               }`}
               onClick={() => handleImageClick(image)}
             >
-              <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+              <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 relative">
                 <LazyImage
                   src={getImageUrlFromImage(image, true)}
                   alt={image.altText || 'Image'}
-                  className="w-full h-full object-cover"
+                  className={`w-full h-full object-cover ${isImageInGallery(image.id) ? 'filter brightness-50' : ''}`}
                 />
+                {isImageInGallery(image.id) && (
+                  <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                    <div className="bg-white bg-opacity-90 text-gray-800 text-xs px-1 py-0.5 rounded text-center">
+                      In Gallery
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="flex-1 min-w-0">

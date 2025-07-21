@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Image as ImageIcon, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List } from 'lucide-react'
 import { useUploadImage } from '../../lib/api-hooks'
+import { TagInput } from '../tag-input'
 
 interface ImageUploaderProps {
   userId: string
@@ -126,18 +127,8 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     ))
   }
 
-  const addTag = (index: number, tag: string) => {
-    if (tag.trim() && !uploadFiles[index].tags.includes(tag.trim())) {
-      updateFile(index, {
-        tags: [...uploadFiles[index].tags, tag.trim()]
-      })
-    }
-  }
-
-  const removeTag = (index: number, tagToRemove: string) => {
-    updateFile(index, {
-      tags: uploadFiles[index].tags.filter(tag => tag !== tagToRemove)
-    })
+  const updateTags = (index: number, tags: string[]) => {
+    updateFile(index, { tags })
   }
 
   const addSharedTag = (tag: string) => {
@@ -615,48 +606,12 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                               <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Tags
                               </label>
-                              <div className="flex flex-wrap gap-2 mb-2">
-                                {file.tags.map((tag, tagIndex) => (
-                                  <span
-                                    key={tagIndex}
-                                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary-100 text-primary-800"
-                                  >
-                                    {tag}
-                                    <button
-                                      type="button"
-                                      onClick={() => removeTag(index, tag)}
-                                      className="ml-1 hover:text-primary-600"
-                                    >
-                                      ×
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="flex space-x-2">
-                                <input
-                                  type="text"
-                                  placeholder="Add a tag..."
-                                  onKeyPress={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault()
-                                      addTag(index, e.currentTarget.value)
-                                      e.currentTarget.value = ''
-                                    }
-                                  }}
-                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    const input = e.currentTarget.previousElementSibling as HTMLInputElement
-                                    addTag(index, input.value)
-                                    input.value = ''
-                                  }}
-                                  className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors duration-200"
-                                >
-                                  Add
-                                </button>
-                              </div>
+                              <TagInput
+                                tags={file.tags}
+                                onTagsChange={(tags) => updateTags(index, tags)}
+                                placeholder="Enter tags..."
+                                className="w-full"
+                              />
                             </div>
                             
                             <div>
@@ -761,53 +716,17 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Tags
                             </label>
-                            <div className="flex flex-wrap gap-1 mb-1">
-                              {file.tags.map((tag, tagIndex) => (
-                                <span
-                                  key={tagIndex}
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-primary-100 text-primary-800"
-                                >
-                                  {tag}
-                                  <button
-                                    type="button"
-                                    onClick={() => removeTag(index, tag)}
-                                    className="ml-1 hover:text-primary-600"
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                            <div className="flex space-x-1">
-                              <input
-                                type="text"
-                                placeholder="Add tag..."
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault()
-                                    addTag(index, e.currentTarget.value)
-                                    e.currentTarget.value = ''
-                                  }
-                                }}
-                                className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-primary-500 focus:border-transparent"
-                              />
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  const input = e.currentTarget.previousElementSibling as HTMLInputElement
-                                  addTag(index, input.value)
-                                  input.value = ''
-                                }}
-                                className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700 transition-colors duration-200"
-                              >
-                                +
-                              </button>
-                            </div>
-                            
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                Visibility
-                              </label>
+                            <TagInput
+                              tags={file.tags}
+                              onTagsChange={(tags) => updateTags(index, tags)}
+                              placeholder="Enter tags..."
+                              className="w-full"
+                            />
+                          
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                              Visibility
+                            </label>
                               <div className="flex space-x-1">
                                 <button
                                   type="button"

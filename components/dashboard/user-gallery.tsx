@@ -9,43 +9,10 @@ import { NewGalleryModal } from './new-gallery-modal'
 import { GalleryDetailModal } from './gallery-detail-modal'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { LazyImage } from '../lazy-image'
+import { GalleryImage } from '@/lib/types'
+import { mapImageData } from '@/lib/image-utils'
 
-interface GalleryImage {
-  id: string
-  url: string
-  thumbnail: string
-  s3Key?: string
-  thumbnailS3Key?: string
-  title: string | null
-  description: string | null
-  createdAt: string
-  tags: string[]
-  authorId: string
-  metadata: {
-    width: number
-    height: number
-    size: number
-    format: string
-  }
-}
 
-// Map backend image data to frontend format
-const mapImageData = (image: any): GalleryImage => ({
-  id: image.id,
-  url: image.s3Key || image.url, // Use S3 key if available, fallback to old URL
-  thumbnail: image.thumbnailS3Key || image.thumbnail || image.url, // Use S3 key if available, fallback to old thumbnail
-  title: image.altText || image.title,
-  description: image.caption || image.description,
-  createdAt: image.createdAt,
-  tags: image.tags || [],
-  authorId: image.authorId, // Include authorId for ownership checks
-  metadata: {
-    width: image.width || 0,
-    height: image.height || 0,
-    size: image.size || 0,
-    format: image.mimeType || 'unknown'
-  }
-})
 
 interface UserGalleryProps {
   userId: string
