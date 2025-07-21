@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen } from 'lucide-react'
+import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter } from 'lucide-react'
 import { useUserImages, useDeleteImage, useMyGalleries, useGallery } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
@@ -11,7 +11,7 @@ import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { LazyImage } from '../lazy-image'
 import { GalleryImage } from '@/lib/types'
 import { mapImageData } from '@/lib/image-utils'
-
+import { TagInput } from '../tag-input'
 
 
 interface UserGalleryProps {
@@ -25,6 +25,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const [activeView, setActiveView] = useState<'images' | 'galleries'>('images')
   const [selectedGallery, setSelectedGallery] = useState<any>(null)
   const [isGalleryDetailModalOpen, setIsGalleryDetailModalOpen] = useState(false)
+  const [filterTags, setFilterTags] = useState<string[]>([])
+  const [showFilters, setShowFilters] = useState(false)
 
   const { 
     data, 
@@ -66,7 +68,24 @@ export function UserGallery({ userId }: UserGalleryProps) {
     }
   })
 
+  // Filter images based on selected tags
+  const filteredImages = useMemo(() => {
+    if (filterTags.length === 0) {
+      return images
+    }
+    
+    return images.filter((image: any) => {
+      // Check if the image has all the selected tags
+      return filterTags.every(tag => 
+        image.tags && Array.isArray(image.tags) && image.tags.some((imageTag: string) => 
+          imageTag && typeof imageTag === 'string' && imageTag.toLowerCase().includes(tag.toLowerCase())
+        )
+      )
+    })
+  }, [images, filterTags])
+
   const totalImages = data?.data?.pagination?.total || 0
+  const filteredTotalImages = filteredImages.length
 
   // Create ghost placeholders for predictive loading
   // Show ghosts when we have more images to load, not just when currently loading
@@ -77,7 +96,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
   })) : []
 
   // Combine real images with ghost placeholders
-  const displayImages = [...images, ...ghostPlaceholders]
+  const displayImages = [...filteredImages, ...ghostPlaceholders]
   
   // Intersection Observer for infinite scroll - trigger when any ghost placeholder is visible
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
@@ -175,8 +194,13 @@ export function UserGallery({ userId }: UserGalleryProps) {
           <p className="text-gray-600 mt-1">
             {activeView === 'images' ? (
               <>
-                {totalImages} {(totalImages === 1 ? 'image' : 'images')} in your collection
-                {images.length > 0 && images.length < totalImages && (
+                {filteredTotalImages} {(filteredTotalImages === 1 ? 'image' : 'images')} in your collection
+                {filterTags.length > 0 && (
+                  <span className="text-gray-500">
+                    {' '}(filtered from {totalImages} total)
+                  </span>
+                )}
+                {filterTags.length === 0 && images.length > 0 && images.length < totalImages && (
                   <span className="text-gray-500">
                     {' '}(showing {images.length} of {totalImages})
                   </span>
@@ -260,10 +284,63 @@ export function UserGallery({ userId }: UserGalleryProps) {
                   <div className="bg-current rounded-sm h-1"></div>
                 </div>
               </button>
+              
+              {/* Filter Toggle Button */}
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`p-2 rounded-lg transition-colors duration-200 ${
+                  filterTags.length > 0
+                    ? 'bg-blue-100 text-blue-700'
+                    : showFilters
+                    ? 'bg-gray-100 text-gray-700'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+                title={filterTags.length > 0 ? `${filterTags.length} filter(s) active` : 'Filter by tags'}
+              >
+                <Filter className="h-4 w-4" />
+              </button>
             </>
           )}
         </div>
       </div>
+
+      {/* Filter Section */}
+      <AnimatePresence>
+        {activeView === 'images' && showFilters && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
+          >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-700 flex items-center">
+              <Filter className="h-4 w-4 mr-2" />
+              Filter by Tags
+            </h3>
+            {filterTags.length > 0 && (
+              <button
+                onClick={() => setFilterTags([])}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+          <TagInput
+            tags={filterTags}
+            onTagsChange={setFilterTags}
+            placeholder="Enter tags to filter by (comma-separated)..."
+            className="w-full"
+          />
+                      {filterTags.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">
+                Showing images that contain all selected tags
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Content */}
       {activeView === 'images' ? (

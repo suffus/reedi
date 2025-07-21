@@ -40,7 +40,6 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
   const [sharedTitle, setSharedTitle] = useState('')
   const [sharedDescription, setSharedDescription] = useState('')
   const [sharedTags, setSharedTags] = useState<string[]>([])
-  const [newSharedTag, setNewSharedTag] = useState('')
   const [imageVisibility, setImageVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addMoreFileInputRef = useRef<HTMLInputElement>(null)
@@ -131,15 +130,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     updateFile(index, { tags })
   }
 
-  const addSharedTag = (tag: string) => {
-    if (tag.trim() && !sharedTags.includes(tag.trim())) {
-      setSharedTags(prev => [...prev, tag.trim()])
-    }
-  }
 
-  const removeSharedTag = (tagToRemove: string) => {
-    setSharedTags(prev => prev.filter(tag => tag !== tagToRemove))
-  }
 
   const applySharedMetadata = () => {
     setUploadFiles(prev => prev.map(file => ({
@@ -465,49 +456,12 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Tags
                         </label>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          {sharedTags.map((tag, tagIndex) => (
-                            <span
-                              key={tagIndex}
-                              className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
-                            >
-                              {tag}
-                              <button
-                                type="button"
-                                onClick={() => removeSharedTag(tag)}
-                                className="ml-1 hover:text-blue-600"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                        <div className="flex space-x-2">
-                          <input
-                            type="text"
-                            value={newSharedTag}
-                            onChange={(e) => setNewSharedTag(e.target.value)}
-                            placeholder="Add a tag..."
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                addSharedTag(newSharedTag)
-                                setNewSharedTag('')
-                              }
-                            }}
-                            className="flex-1 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              addSharedTag(newSharedTag)
-                              setNewSharedTag('')
-                            }}
-                            className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors duration-200"
-                          >
-                            Add
-                          </button>
-                        </div>
+                        <TagInput
+                          tags={sharedTags}
+                          onTagsChange={setSharedTags}
+                          placeholder="Add tags..."
+                          className="w-full"
+                        />
                       </div>
                       
                       <div>
