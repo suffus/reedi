@@ -1,9 +1,12 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import sharp from 'sharp'
+import { config } from 'dotenv'
+
+config()
 
 // S3 Client configuration for IDrive
-const s3Client = new S3Client({
+const s3Args = {
   region: process.env.IDRIVE_REGION || 'us-east-1',
   endpoint: process.env.IDRIVE_ENDPOINT,
   credentials: {
@@ -11,9 +14,11 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.IDRIVE_SECRET_ACCESS_KEY!,
   },
   forcePathStyle: true, // Required for S3-compatible services
-})
+}
+console.log('s3Args', JSON.stringify(s3Args, null, 2))
+const s3Client = new S3Client(s3Args)
 
-const BUCKET_NAME = process.env.IDRIVE_BUCKET_NAME!
+const BUCKET_NAME = process.env.IDRIVE_BUCKET_NAME
 
 export interface UploadResult {
   key: string
@@ -85,14 +90,17 @@ export async function uploadImageToS3(
   mimeType: string,
   metadata?: Record<string, string>
 ): Promise<string> {
-  const command = new PutObjectCommand({
+  const cmdArg = {
     Bucket: BUCKET_NAME,
     Key: key,
     Body: buffer,
     ContentType: mimeType,
     Metadata: metadata,
     ACL: 'public-read', // Make objects publicly readable
-  })
+  }
+  const command = new PutObjectCommand(cmdArg)
+
+  console.log('command', cmdArg)
 
   await s3Client.send(command)
   
