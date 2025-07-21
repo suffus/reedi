@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useCallback } from 'react'
 import { API_BASE_URL, getAuthHeaders, getImageUrl } from './api'
+import { GalleryImage, Comment } from './types'
 
 // Helper functions to safely access localStorage
 const getToken = () => {
@@ -47,7 +48,7 @@ interface Post {
   createdAt: string
   updatedAt: string
   author: User
-  comments: Comment[]
+  comments: PostComment[]
   reactions: Reaction[]
   images: Image[]
   hashtags: Hashtag[]
@@ -57,7 +58,7 @@ interface Post {
   }
 }
 
-interface Comment {
+interface PostComment {
   id: string
   content: string
   postId: string
@@ -66,7 +67,7 @@ interface Comment {
   createdAt: string
   updatedAt: string
   author: User
-  replies: Comment[]
+  replies: PostComment[]
   reactions: Reaction[]
 }
 
@@ -102,21 +103,6 @@ interface Hashtag {
   id: string
   name: string
   createdAt: string
-}
-
-interface GalleryImage {
-  id: string
-  url: string
-  title: string | null
-  description: string | null
-  createdAt: string
-  tags: string[]
-  metadata: {
-    width: number
-    height: number
-    size: number
-    format: string
-  }
 }
 
 // Auth Hooks
@@ -673,6 +659,113 @@ export const useUpdateImage = () => {
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
       queryClient.invalidateQueries({ queryKey: ['images'] })
+    }
+  })
+}
+
+export const useBulkUpdateImages = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      imageIds, 
+      title, 
+      description, 
+      tags, 
+      mergeTags = false,
+      onOptimisticUpdate 
+    }: { 
+      imageIds: string[]; 
+      title?: string; 
+      description?: string;
+      tags?: string[];
+      mergeTags?: boolean;
+      onOptimisticUpdate?: (imageId: string, updates: any) => void;
+    }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      // Update each image individually since there's no bulk endpoint
+      const results = await Promise.all(
+        imageIds.map(async (imageId) => {
+          // Build the update payload - only include fields that are provided
+          const updatePayload: any = {}
+          
+          if (title !== undefined) {
+            updatePayload.title = title
+          }
+          if (description !== undefined) {
+            updatePayload.description = description
+          }
+          if (tags !== undefined) {
+            if (mergeTags) {
+              // For merging tags, we need to get the current image data first
+              // This will be handled by the backend, but we send a flag
+              updatePayload.tags = tags
+              updatePayload.mergeTags = true
+            } else {
+              updatePayload.tags = tags
+            }
+          }
+          
+          const response = await fetch(`${API_BASE_URL}/images/${imageId}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(token),
+            body: JSON.stringify(updatePayload)
+          })
+          
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.error || `Failed to update image ${imageId}`)
+          
+          return { imageId, data }
+        })
+      )
+      
+      return results
+    },
+    onMutate: async ({ imageIds, title, description, tags, mergeTags, onOptimisticUpdate }) => {
+      // Apply optimistic updates to local state if callback provided
+      if (onOptimisticUpdate) {
+        imageIds.forEach(imageId => {
+          const updates: any = {}
+          
+          if (title !== undefined) {
+            updates.altText = title
+            updates.title = title
+          }
+          if (description !== undefined) {
+            updates.caption = description
+            updates.description = description
+          }
+          if (tags !== undefined) {
+            if (mergeTags) {
+              // For optimistic updates with tag merging, we'll let the backend handle it
+              // and just update the tags field - the actual merging will be done by the backend
+              updates.tags = tags
+            } else {
+              updates.tags = tags
+            }
+          }
+          
+          onOptimisticUpdate(imageId, updates)
+        })
+      }
+      
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['images'] })
+      
+      // Snapshot the previous value
+      const previousImages = queryClient.getQueriesData({ queryKey: ['images'] })
+      
+      return { previousImages, onOptimisticUpdate }
+    },
+    onError: (err, variables, context) => {
+      console.error('Failed to bulk update images:', err)
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure cache consistency
+      queryClient.invalidateQueries({ queryKey: ['images'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
     }
   })
 }

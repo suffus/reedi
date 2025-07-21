@@ -45,6 +45,7 @@ interface ImageBrowserProps {
   searchPlaceholder?: string
   tagPlaceholder?: string
   emptyMessage?: string
+  existingGalleryImages?: Image[] // Add this prop to know which images are already in the gallery
 }
 
 export function ImageBrowser({
@@ -69,7 +70,8 @@ export function ImageBrowser({
   className = '',
   searchPlaceholder = "Search images...",
   tagPlaceholder = "Tag (comma separated)...",
-  emptyMessage = "No images found"
+  emptyMessage = "No images found",
+  existingGalleryImages = []
 }: ImageBrowserProps) {
   const [localViewMode, setLocalViewMode] = useState<'grid' | 'list'>(viewMode)
 
@@ -136,6 +138,7 @@ export function ImageBrowser({
           showTags={showTags}
           onViewModeChange={handleViewModeChange}
           showViewModeToggle={showViewModeToggle}
+          existingGalleryImages={existingGalleryImages}
         />
       </InfiniteScrollContainer>
 

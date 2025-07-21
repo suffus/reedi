@@ -1,59 +1,14 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, Maximize2, Minimize2 } from 'lucide-react'
 import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { ProgressiveImage } from '../progressive-image'
+import { TagInput } from '../tag-input'
+import { GalleryImage, Comment } from '@/lib/types'
+import { mapImageData } from '@/lib/image-utils'
 
-interface GalleryImage {
-  id: string
-  url: string
-  thumbnail: string
-  s3Key?: string
-  thumbnailS3Key?: string
-  title: string | null
-  description: string | null
-  createdAt: string
-  authorId: string
-  tags: string[]
-  metadata: {
-    width: number
-    height: number
-    size: number
-    format: string
-  }
-}
 
-// Map backend image data to frontend format
-const mapImageData = (image: any): GalleryImage => ({
-  id: image.id,
-  url: image.s3Key || image.url, // Use S3 key if available, fallback to old URL
-  thumbnail: image.thumbnailS3Key || image.thumbnail || image.url, // Use S3 key if available, fallback to old thumbnail
-  title: image.altText || image.title,
-  description: image.caption || image.description,
-  createdAt: image.createdAt,
-  authorId: image.authorId,
-  tags: image.tags || [],
-  metadata: {
-    width: image.width || 0,
-    height: image.height || 0,
-    size: image.size || 0,
-    format: image.mimeType || 'unknown'
-  }
-})
-
-interface Comment {
-  id: string
-  content: string
-  authorId: string
-  createdAt: string
-  author: {
-    id: string
-    name: string
-    username: string | null
-    avatar: string | null
-  }
-}
 
 interface ImageDetailModalProps {
   image: GalleryImage | null
@@ -84,11 +39,23 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
-  const [editTags, setEditTags] = useState('')
+  const [editTags, setEditTags] = useState<string[]>([])
   const [localTitle, setLocalTitle] = useState(image?.title || '')
   const [localDescription, setLocalDescription] = useState(image?.description || '')
   const [localTags, setLocalTags] = useState<string[]>(image?.tags || [])
   const containerRef = useRef<HTMLDivElement>(null)
+  
+  // Slideshow state
+  const [isSlideshowActive, setIsSlideshowActive] = useState(false)
+  const [isFullscreenSlideshow, setIsFullscreenSlideshow] = useState(false)
+  const [slideshowSpeed, setSlideshowSpeed] = useState(3000) // milliseconds
+  const slideshowIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [isCurrentImageLoaded, setIsCurrentImageLoaded] = useState(false)
+  const [isSlideshowWaitingForLoad, setIsSlideshowWaitingForLoad] = useState(false)
+  const [fullscreenDisplayMode, setFullscreenDisplayMode] = useState<'fit' | 'fill'>('fit')
+  const [fullscreenPanOffset, setFullscreenPanOffset] = useState(0)
+  const fullscreenPanDirectionRef = useRef<'up' | 'down'>('down')
+  const fullscreenPanIntervalRef = useRef<NodeJS.Timeout | null>(null)
   
   const { data: commentsData, isLoading: commentsLoading } = useImageComments(image.id)
   const createCommentMutation = useCreateComment()
@@ -125,6 +92,176 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     if (!canNavigate) return
     onNavigate(allImages[allImages.length - 1])
   }, [canNavigate, onNavigate, allImages])
+
+  // Slideshow handlers
+  const startSlideshow = useCallback(() => {
+    if (!canNavigate || !allImages || allImages.length <= 1) return
+    
+    setIsSlideshowActive(true)
+    
+    const advanceToNext = () => {
+      if (currentIndex < allImages.length - 1) {
+        handleNext()
+      } else {
+        // Loop back to first image
+        handleFirst()
+      }
+    }
+
+    const scheduleNext = () => {
+      if (isCurrentImageLoaded) {
+        // Image is loaded, schedule next advance
+        slideshowIntervalRef.current = setTimeout(() => {
+          advanceToNext()
+        }, slideshowSpeed)
+      } else {
+        // Image not loaded yet, wait for it
+        setIsSlideshowWaitingForLoad(true)
+      }
+    }
+
+    // Start the slideshow cycle
+    scheduleNext()
+  }, [canNavigate, allImages, currentIndex, handleNext, handleFirst, slideshowSpeed, isCurrentImageLoaded])
+
+  const stopSlideshow = useCallback(() => {
+    setIsSlideshowActive(false)
+    setIsSlideshowWaitingForLoad(false)
+    if (slideshowIntervalRef.current) {
+      clearTimeout(slideshowIntervalRef.current)
+      slideshowIntervalRef.current = null
+    }
+  }, [])
+
+  const toggleSlideshow = useCallback(() => {
+    if (isSlideshowActive) {
+      stopSlideshow()
+    } else {
+      startSlideshow()
+    }
+  }, [isSlideshowActive, startSlideshow, stopSlideshow])
+
+  const toggleFullscreenSlideshow = useCallback(() => {
+    setIsFullscreenSlideshow(!isFullscreenSlideshow)
+  }, [isFullscreenSlideshow])
+
+  // Handle image load completion
+  const handleImageLoad = useCallback(() => {
+    setIsCurrentImageLoaded(true)
+  }, [])
+
+  // Fullscreen panning logic for fill mode
+  const startFullscreenPanning = useCallback(() => {
+    if (fullscreenDisplayMode !== 'fill' || !isFullscreenSlideshow || !image) {
+      console.log('Panning not started:', { fullscreenDisplayMode, isFullscreenSlideshow, hasImage: !!image })
+      return
+    }
+    
+    // Safety check for metadata
+    if (!image.metadata || typeof image.metadata.width !== 'number' || typeof image.metadata.height !== 'number') {
+      console.log('Image metadata missing or invalid:', image.metadata)
+      console.log('Full image object:', image)
+      return
+    }
+    
+    console.log('Starting panning for image:', image.metadata.width, 'x', image.metadata.height)
+    
+    // Calculate pan range based on image aspect ratio
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    const imageAspectRatio = image.metadata.width / image.metadata.height
+    
+    console.log('Aspect ratios:', { imageAspectRatio, viewportAspectRatio: viewportWidth / viewportHeight })
+    
+    let panRange = 0
+    
+    // In fill mode, image is scaled to fill width, so we need to check if height overflows
+    const imageHeightInViewport = viewportWidth / imageAspectRatio
+    if (imageHeightInViewport > viewportHeight) {
+      // Image height exceeds viewport height - need vertical panning
+      panRange = (imageHeightInViewport - viewportHeight) / 2
+      console.log('Panning needed:', { imageHeightInViewport, viewportHeight, panRange })
+    } else {
+      console.log('No panning needed - image fits in viewport')
+      return
+    }
+    
+    const panDuration = slideshowSpeed - 500 // Leave 500ms for transitions
+    const halfDuration = panDuration / 2
+    
+    console.log('Panning timing:', { panDuration, halfDuration, slideshowSpeed })
+    
+    // Start at top
+    setFullscreenPanOffset(-panRange)
+    console.log('Set initial pan offset to:', -panRange)
+    
+    // Smooth pan down from top to bottom (first half)
+    const startTime = Date.now()
+    const animatePanDown = () => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(elapsed / halfDuration, 1)
+      
+      // Ease-in-out for smooth motion
+      const easedProgress = progress < 0.5 
+        ? 2 * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2
+      
+      const currentOffset = -panRange + (easedProgress * (panRange * 2))
+      setFullscreenPanOffset(currentOffset)
+      
+      if (progress < 1) {
+        requestAnimationFrame(animatePanDown)
+      } else {
+        // Start pan up from bottom to top (second half)
+        const startTimeUp = Date.now()
+        const animatePanUp = () => {
+          const elapsedUp = Date.now() - startTimeUp
+          const progressUp = Math.min(elapsedUp / halfDuration, 1)
+          
+          // Ease-in-out for smooth motion
+          const easedProgressUp = progressUp < 0.5 
+            ? 2 * progressUp * progressUp 
+            : 1 - Math.pow(-2 * progressUp + 2, 2) / 2
+          
+          const currentOffsetUp = panRange - (easedProgressUp * (panRange * 2))
+          setFullscreenPanOffset(currentOffsetUp)
+          
+          if (progressUp < 1) {
+            requestAnimationFrame(animatePanUp)
+          }
+        }
+        requestAnimationFrame(animatePanUp)
+      }
+    }
+    
+    requestAnimationFrame(animatePanDown)
+    
+  }, [fullscreenDisplayMode, isFullscreenSlideshow, slideshowSpeed, image])
+
+  // Stop fullscreen panning
+  const stopFullscreenPanning = useCallback(() => {
+    setFullscreenPanOffset(0)
+  }, [])
+
+  // Manage fullscreen panning based on display mode and slideshow state
+  useEffect(() => {
+    if (isFullscreenSlideshow && fullscreenDisplayMode === 'fill' && isSlideshowActive) {
+      startFullscreenPanning()
+    } else {
+      stopFullscreenPanning()
+    }
+  }, [isFullscreenSlideshow, fullscreenDisplayMode, isSlideshowActive, startFullscreenPanning, stopFullscreenPanning])
+
+  // Reset panning when image changes
+  useEffect(() => {
+    if (isFullscreenSlideshow && fullscreenDisplayMode === 'fill' && isSlideshowActive) {
+      startFullscreenPanning()
+    }
+  }, [image, isFullscreenSlideshow, fullscreenDisplayMode, isSlideshowActive, startFullscreenPanning])
+
+  const toggleFullscreenDisplayMode = useCallback(() => {
+    setFullscreenDisplayMode(prev => prev === 'fit' ? 'fill' : 'fit')
+  }, [])
   
   // Update local state when image prop changes
   useEffect(() => {
@@ -140,7 +277,45 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     setIsCropping(false)
     setIsCropMode(false)
     setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+    
+    // Reset image loading state when image changes
+    setIsCurrentImageLoaded(false)
   }, [image])
+
+  // Cleanup slideshow interval on unmount
+  useEffect(() => {
+    return () => {
+      if (slideshowIntervalRef.current) {
+        clearInterval(slideshowIntervalRef.current)
+      }
+      if (fullscreenPanIntervalRef.current) {
+        clearTimeout(fullscreenPanIntervalRef.current)
+      }
+    }
+  }, [])
+
+  // Restart slideshow with new speed when slideshowSpeed changes
+  useEffect(() => {
+    if (isSlideshowActive && slideshowIntervalRef.current) {
+      stopSlideshow()
+      startSlideshow()
+    }
+  }, [slideshowSpeed, isSlideshowActive, stopSlideshow, startSlideshow])
+
+  // Advance slideshow when current image finishes loading
+  useEffect(() => {
+    if (isSlideshowActive && isSlideshowWaitingForLoad && isCurrentImageLoaded) {
+      setIsSlideshowWaitingForLoad(false)
+      // Schedule next advance after the configured delay
+      slideshowIntervalRef.current = setTimeout(() => {
+        if (currentIndex < (allImages?.length || 0) - 1) {
+          handleNext()
+        } else {
+          handleFirst()
+        }
+      }, slideshowSpeed)
+    }
+  }, [isSlideshowActive, isSlideshowWaitingForLoad, isCurrentImageLoaded, slideshowSpeed, currentIndex, allImages, handleNext, handleFirst])
   
   // Add global mouse event listeners for smooth dragging
   useEffect(() => {
@@ -174,6 +349,18 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
   // Add keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if any input element is focused (comment box, search, etc.)
+      const activeElement = document.activeElement
+      const isInputFocused = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        (activeElement as HTMLElement).contentEditable === 'true' ||
+        activeElement.classList.contains('ProseMirror') // For rich text editors
+      )
+      
+      // If an input is focused, don't handle navigation/slideshow shortcuts
+      if (isInputFocused) return
+      
       if (!canNavigate) return
       
       switch (e.key) {
@@ -192,6 +379,32 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
         case 'End':
           e.preventDefault()
           handleLast()
+          break
+        case ' ': // Spacebar
+          e.preventDefault()
+          if (allImages && allImages.length > 1) {
+            toggleSlideshow()
+          }
+          break
+        case 'f':
+        case 'F':
+          e.preventDefault()
+          if (allImages && allImages.length > 1) {
+            toggleFullscreenSlideshow()
+          }
+          break
+        case 'd':
+        case 'D':
+          e.preventDefault()
+          if (isFullscreenSlideshow) {
+            toggleFullscreenDisplayMode()
+          }
+          break
+        case 'Escape':
+          if (isFullscreenSlideshow) {
+            e.preventDefault()
+            toggleFullscreenSlideshow()
+          }
           break
       }
     }
@@ -237,7 +450,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     // Use the local state which reflects the latest updates
     setEditTitle(localTitle || '')
     setEditDescription(localDescription || '')
-    setEditTags(localTags.join(', '))
+    setEditTags([...localTags])
     setIsEditing(true)
   }
 
@@ -245,16 +458,13 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     setIsEditing(false)
     setEditTitle('')
     setEditDescription('')
-    setEditTags('')
+    setEditTags([])
   }
 
   const handleSaveEdit = async () => {
     try {
-      // Parse tags from comma-separated string
-      const parsedTags = editTags
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(tag => tag.length > 0)
+      // Use tags directly from the TagInput component
+      const parsedTags = editTags.filter(tag => tag.length > 0)
       
       await updateImageMutation.mutateAsync({
         imageId: mappedImage.id,
@@ -573,6 +783,39 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   <Crop className="h-5 w-5" />
                 </button>
 
+                {/* Slideshow Controls */}
+                {canNavigate && allImages && allImages.length > 1 && (
+                  <>
+                    <button
+                      onClick={toggleSlideshow}
+                      className={`p-2 rounded-full transition-all duration-200 ${
+                        isSlideshowActive 
+                          ? 'bg-green-600 hover:bg-green-700 text-white' 
+                          : 'bg-black bg-opacity-50 hover:bg-opacity-70 text-white'
+                      }`}
+                      title={isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
+                    >
+                      {isSlideshowActive ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                    </button>
+                    <button
+                      onClick={toggleFullscreenSlideshow}
+                      className={`p-2 rounded-full transition-all duration-200 ${
+                        isFullscreenSlideshow 
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                          : 'bg-black bg-opacity-50 hover:bg-opacity-70 text-white'
+                      }`}
+                      title={isFullscreenSlideshow ? "Exit Fullscreen Slideshow" : "Fullscreen Slideshow"}
+                    >
+                      {isFullscreenSlideshow ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                    </button>
+                    {/* Loading indicator */}
+                    {isSlideshowActive && isSlideshowWaitingForLoad && !isCurrentImageLoaded && (
+                      <div className="p-2 bg-yellow-600 text-white rounded-full animate-pulse" title="Waiting for image to load...">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
 
@@ -602,6 +845,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   }}
                   showQualityIndicator={true}
                   showBlurEffect={true}
+                  onLoad={handleImageLoad}
                 />
                 
                 {/* Crop Overlay */}
@@ -640,12 +884,11 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                         rows={3}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
                       />
-                      <input
-                        type="text"
-                        value={editTags}
-                        onChange={(e) => setEditTags(e.target.value)}
-                        placeholder="Tags (comma separated)..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      <TagInput
+                        tags={editTags}
+                        onTagsChange={setEditTags}
+                        placeholder="Enter tags..."
+                        className="w-full"
                       />
                       <div className="flex space-x-2">
                         <button
@@ -705,6 +948,30 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   <Calendar className="h-3 w-3 mr-1" />
                   Posted {formatDate(mappedImage.createdAt)}
                 </div>
+
+                {/* Slideshow Speed Control */}
+                {canNavigate && allImages && allImages.length > 1 && isSlideshowActive && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">Slideshow Speed</span>
+                      <span className="text-xs text-gray-500">{slideshowSpeed / 1000}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1000"
+                      max="10000"
+                      step="500"
+                      value={slideshowSpeed}
+                      onChange={(e) => setSlideshowSpeed(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                      title={`${slideshowSpeed / 1000} seconds per image`}
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>1s</span>
+                      <span>10s</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Comments List */}
@@ -777,6 +1044,136 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
           </div>
         </motion.div>
       </div>
+
+      {/* Fullscreen Slideshow Modal */}
+      {isFullscreenSlideshow && (
+        <div className="fixed inset-0 bg-black z-[60] flex items-center justify-center">
+          <div className="relative w-full h-full flex items-center justify-center">
+            {/* Close Fullscreen Button */}
+            <button
+              onClick={toggleFullscreenSlideshow}
+              className="absolute top-4 right-4 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+            >
+              <X className="h-6 w-6" />
+            </button>
+
+            {/* Slideshow Controls */}
+            <div className="absolute top-4 left-4 z-10 flex items-center space-x-2">
+              <button
+                onClick={toggleSlideshow}
+                className={`p-3 rounded-full transition-all duration-200 ${
+                  isSlideshowActive 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-black bg-opacity-50 hover:bg-opacity-70 text-white'
+                }`}
+                title={isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
+              >
+                {isSlideshowActive ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+              </button>
+              
+              {/* Loading indicator for fullscreen */}
+              {isSlideshowActive && isSlideshowWaitingForLoad && !isCurrentImageLoaded && (
+                <div className="p-3 bg-yellow-600 text-white rounded-full animate-pulse" title="Waiting for image to load...">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+              
+              {/* Display Mode Toggle */}
+              <button
+                onClick={toggleFullscreenDisplayMode}
+                className={`p-3 rounded-full transition-all duration-200 ${
+                  fullscreenDisplayMode === 'fill'
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                    : 'bg-black bg-opacity-50 hover:bg-opacity-70 text-white'
+                }`}
+                title={fullscreenDisplayMode === 'fit' ? "Switch to Fill Mode (with panning)" : "Switch to Fit Mode"}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  {fullscreenDisplayMode === 'fit' ? (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M15 3h6v6M9 21H3v-6M21 9v6M3 15V9"/>
+                    </svg>
+                  )}
+                </div>
+              </button>
+              
+              {/* Speed Control */}
+              <div className="flex items-center space-x-2 bg-black bg-opacity-50 rounded-full px-3 py-2">
+                <span className="text-white text-sm">{slideshowSpeed / 1000}s</span>
+                <input
+                  type="range"
+                  min="1000"
+                  max="15000"
+                  step="500"
+                  value={slideshowSpeed}
+                  onChange={(e) => setSlideshowSpeed(Number(e.target.value))}
+                  className="w-20 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+                />
+              </div>
+            </div>
+
+            {/* Navigation Buttons */}
+            {canNavigate && (
+              <>
+                <button
+                  onClick={handlePrev}
+                  className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-4 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
+                    !hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                  }`}
+                  disabled={!hasPrev}
+                  title="Previous image (←)"
+                >
+                  <ChevronLeft className="h-8 w-8" />
+                </button>
+
+                <button
+                  onClick={handleNext}
+                  className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-4 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
+                    !hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                  }`}
+                  disabled={!hasNext}
+                  title="Next image (→)"
+                >
+                  <ChevronRight className="h-8 w-8" />
+                </button>
+
+                {/* Image Counter and Display Mode */}
+                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex items-center space-x-4">
+                  <div className="px-4 py-2 bg-black bg-opacity-50 text-white text-lg rounded-full">
+                    {currentIndex + 1} / {allImages.length}
+                  </div>
+                  {isFullscreenSlideshow && (
+                    <div className="px-3 py-2 bg-black bg-opacity-50 text-white text-sm rounded-full">
+                      {fullscreenDisplayMode === 'fit' ? 'Fit' : 'Fill'}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Fullscreen Image */}
+            <div className="w-full h-full flex items-center justify-center overflow-hidden">
+              <ProgressiveImage
+                src={mappedImage.url}
+                thumbnailSrc={mappedImage.thumbnail}
+                alt={mappedImage.title || 'Gallery image'}
+                className={fullscreenDisplayMode === 'fit' ? 'w-full h-full object-contain' : 'w-full h-full object-cover'}
+                style={{
+                  transform: fullscreenDisplayMode === 'fill' ? `translateY(${fullscreenPanOffset}px)` : 'none',
+                  transition: 'none' // No CSS transition since we're using requestAnimationFrame
+                }}
+                showQualityIndicator={true}
+                showBlurEffect={true}
+                onLoad={handleImageLoad}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </AnimatePresence>
   )
-} 
+}

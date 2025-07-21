@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   X, Eye, Download, Trash2, Calendar, Settings, Users, Lock, Globe, 
   Edit3, Save, X as XIcon, ChevronUp, ChevronDown, Star, StarOff,
-  Plus, Image as ImageIcon
+  Plus, Image as ImageIcon, Check, Tag, Type, FileText
 } from 'lucide-react'
 import { 
   useGallery, 
@@ -15,12 +15,17 @@ import {
   useReorderGalleryImages,
   useSetGalleryCover,
   useUserImages,
-  useAuth
+  useAuth,
+  useBulkUpdateImages
 } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 import { ImageSelectorModal } from './image-selector-modal'
 import { getImageUrlFromImage, API_BASE_URL, getAuthHeaders } from '../../lib/api'
 import { LazyImage } from '../lazy-image'
+import { useImageSelection } from '../../lib/hooks/use-image-selection'
+import { TagInput } from '../tag-input'
+import { GalleryImage } from '@/lib/types'
+import { mapImageData } from '@/lib/image-utils'
 
 interface GalleryDetailModalProps {
   isOpen: boolean
@@ -40,6 +45,23 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   const [isReordering, setIsReordering] = useState(false)
   const [draggedImage, setDraggedImage] = useState<any>(null)
   const [dragOverImage, setDragOverImage] = useState<any>(null)
+  
+  // Bulk editing state
+  const [bulkEditMode, setBulkEditMode] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({
+    title: '',
+    description: '',
+    tags: [] as string[]
+  })
+  const [showBulkEditForm, setShowBulkEditForm] = useState(false)
+
+  // Use the reusable image selection hook for bulk editing
+  const {
+    selectedImages,
+    toggleImage,
+    clearSelection,
+    selectImages
+  } = useImageSelection([], { allowMultiple: true })
 
   const { data: galleryData, isLoading, error, refetch: refetchGallery } = useGallery(galleryId)
   const { data: userImagesData } = useUserImages('me')
@@ -49,11 +71,13 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   const updateGalleryMutation = useUpdateGallery()
   const reorderImagesMutation = useReorderGalleryImages()
   const setCoverMutation = useSetGalleryCover()
+  const bulkUpdateImagesMutation = useBulkUpdateImages()
 
   const gallery = galleryData?.data?.gallery
   const images = gallery?.images || []
   const userImages = userImagesData?.data?.images || []
   const currentUserId = authData?.data?.user?.id
+  const isOwner = currentUserId === gallery?.authorId
 
   // Initialize edit form when gallery data loads
   if (gallery && !isEditing && editForm.name === '') {
@@ -67,7 +91,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   // Initialize ordered images when gallery data loads
   useEffect(() => {
     if (gallery && images.length > 0) {
-      console.log('Gallery images:', images)
+      //console.log('Gallery images:', images)
       const validImages = images.filter((img: any) => img && img.id && typeof img.id === 'string' && img.id.length > 0)
       console.log('Valid images:', validImages)
       setOrderedImages([...validImages].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)))
@@ -223,6 +247,100 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     }
   }
 
+  // Bulk editing handlers
+  const handleBulkEditToggle = () => {
+    setBulkEditMode(!bulkEditMode)
+    if (bulkEditMode) {
+      clearSelection()
+      setShowBulkEditForm(false)
+    }
+  }
+
+  const handleSelectAllImages = () => {
+    selectImages(orderedImages)
+  }
+
+  const handleDeselectAllImages = () => {
+    clearSelection()
+  }
+
+  const handleBulkEditSubmit = async () => {
+    if (selectedImages.length === 0) {
+      alert('Please select at least one image to edit.')
+      return
+    }
+
+    const imageIds = selectedImages.map(img => img.id)
+    const updates: any = {}
+    let hasUpdates = false
+
+    // Only include title if it's provided
+    if (bulkEditForm.title.trim()) {
+      updates.title = bulkEditForm.title.trim()
+      hasUpdates = true
+    }
+
+    // Only include description if it's provided
+    if (bulkEditForm.description.trim()) {
+      updates.description = bulkEditForm.description.trim()
+      hasUpdates = true
+    }
+
+    // Handle tags - merge with existing tags
+    if (bulkEditForm.tags.length > 0) {
+      updates.tags = bulkEditForm.tags
+      updates.mergeTags = true // Flag to indicate we want to merge tags
+      hasUpdates = true
+    }
+
+    if (!hasUpdates) {
+      alert('Please provide at least one field to update.')
+      return
+    }
+
+    try {
+      await bulkUpdateImagesMutation.mutateAsync({
+        imageIds,
+        ...updates,
+        onOptimisticUpdate: (imageId: string, imageUpdates: any) => {
+          // Update local state optimistically
+          setOrderedImages(prev => 
+            prev.map(img => 
+              img.id === imageId 
+                ? { 
+                    ...img, 
+                    ...imageUpdates,
+                    // Handle tag merging for optimistic updates
+                    tags: updates.mergeTags && updates.tags 
+                      ? Array.from(new Set([...(img.tags || []), ...updates.tags]))
+                      : imageUpdates.tags || img.tags
+                  }
+                : img
+            )
+          )
+        }
+      })
+
+      // Reset form and exit bulk edit mode
+      setBulkEditForm({ title: '', description: '', tags: [] })
+      setShowBulkEditForm(false)
+      setBulkEditMode(false)
+      clearSelection()
+      
+      alert(`Successfully updated ${selectedImages.length} image${selectedImages.length !== 1 ? 's' : ''}.`)
+    } catch (error) {
+      console.error('Failed to bulk update images:', error)
+      alert('Failed to update images. Please try again.')
+    }
+  }
+
+  const handleBulkEditCancel = () => {
+    setBulkEditForm({ title: '', description: '', tags: [] })
+    setShowBulkEditForm(false)
+    setBulkEditMode(false)
+    clearSelection()
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -256,8 +374,6 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
         return 'Public'
     }
   }
-
-  const isOwner = gallery?.authorId === currentUserId
 
   if (!isOpen) return null
 
@@ -445,6 +561,16 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                           >
                             {reorderMode ? 'Done Reordering' : 'Reorder'}
                           </button>
+                          <button
+                            onClick={handleBulkEditToggle}
+                            className={`px-3 py-2 rounded-lg transition-colors duration-200 ${
+                              bulkEditMode
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {bulkEditMode ? 'Done Bulk Edit' : 'Bulk Edit'}
+                          </button>
                         </>
                       )}
                       <div className="flex items-center space-x-2">
@@ -480,6 +606,109 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                       </div>
                     </div>
                   </div>
+
+                  {/* Bulk Edit Selection Bar */}
+                  {bulkEditMode && (
+                    <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <span className="text-sm font-medium text-blue-900">
+                            {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                          </span>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={handleSelectAllImages}
+                              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors duration-200"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              onClick={handleDeselectAllImages}
+                              className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors duration-200"
+                            >
+                              Clear Selection
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setShowBulkEditForm(!showBulkEditForm)}
+                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors duration-200"
+                          >
+                            {showBulkEditForm ? 'Hide Form' : 'Edit Selected'}
+                          </button>
+                          <button
+                            onClick={handleBulkEditCancel}
+                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors duration-200"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bulk Edit Form */}
+                  {bulkEditMode && showBulkEditForm && (
+                    <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                      <h4 className="text-sm font-medium text-green-900 mb-3">Bulk Edit {selectedImages.length} Image{selectedImages.length !== 1 ? 's' : ''}</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-green-800 mb-1">
+                            <Type className="h-4 w-4 inline mr-1" />
+                            Title
+                          </label>
+                          <input
+                            type="text"
+                            value={bulkEditForm.title}
+                            onChange={(e) => setBulkEditForm(prev => ({ ...prev, title: e.target.value }))}
+                            placeholder="Common title for all images"
+                            className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-green-800 mb-1">
+                            <FileText className="h-4 w-4 inline mr-1" />
+                            Description
+                          </label>
+                          <input
+                            type="text"
+                            value={bulkEditForm.description}
+                            onChange={(e) => setBulkEditForm(prev => ({ ...prev, description: e.target.value }))}
+                            placeholder="Common description for all images"
+                            className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-green-800 mb-1">
+                            <Tag className="h-4 w-4 inline mr-1" />
+                            Add Tags (will be merged with existing tags)
+                          </label>
+                          <TagInput
+                            tags={bulkEditForm.tags}
+                            onTagsChange={(tags) => setBulkEditForm(prev => ({ ...prev, tags }))}
+                            placeholder="Enter tags to add..."
+                            className="w-full"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end space-x-2 mt-4">
+                        <button
+                          onClick={handleBulkEditCancel}
+                          className="px-4 py-2 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors duration-200"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleBulkEditSubmit}
+                          disabled={bulkUpdateImagesMutation.isPending || selectedImages.length === 0}
+                          className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {bulkUpdateImagesMutation.isPending ? 'Updating...' : `Update ${selectedImages.length} Image${selectedImages.length !== 1 ? 's' : ''}`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                                     {/* Images Grid/List */}
                   {viewMode === 'grid' ? (
@@ -539,14 +768,45 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             key={image.id || `image-${index}`}
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200"
+                            className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200 ${
+                              bulkEditMode && selectedImages.some(img => img.id === image.id) 
+                                ? 'ring-2 ring-green-500' 
+                                : ''
+                            }`}
                           >
                             <LazyImage
                               src={getImageUrlFromImage(image, true)}
                               alt={image.altText || 'Gallery image'}
-                              className="w-full h-full object-cover cursor-pointer"
-                              onClick={() => setSelectedImage(image)}
+                              className={`w-full h-full object-cover ${bulkEditMode ? 'cursor-pointer' : 'cursor-pointer'}`}
+                              onClick={() => {
+                                if (bulkEditMode) {
+                                  toggleImage(image)
+                                } else {
+                                  setSelectedImage(image)
+                                }
+                              }}
                             />
+                            
+                            {/* Bulk Edit Selection Checkbox */}
+                            {bulkEditMode && (
+                              <div className="absolute top-2 left-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleImage(image)
+                                  }}
+                                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 ${
+                                    selectedImages.some(img => img.id === image.id)
+                                      ? 'bg-green-500 border-green-500 text-white'
+                                      : 'bg-white border-gray-300 hover:border-green-400'
+                                  }`}
+                                >
+                                  {selectedImages.some(img => img.id === image.id) && (
+                                    <Check className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
                             
                             {/* Cover Image Indicator */}
                             {gallery.coverImageId === image.id && (
@@ -556,48 +816,50 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             )}
                             
                             {/* Overlay Actions */}
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
-                              <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                <button
-                                  onClick={() => setSelectedImage(image)}
-                                  className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                                >
-                                  <Eye className="h-4 w-4 text-gray-700" />
-                                </button>
-                                <a
-                                  href={getImageUrlFromImage(image, false)}
-                                  download
-                                  className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                                >
-                                  <Download className="h-4 w-4 text-gray-700" />
-                                </a>
-                                {isOwner && (
-                                  <>
-                                    <button
-                                      onClick={() => handleSetCover(image.id)}
-                                      className={`p-2 rounded-full shadow-lg transition-colors duration-200 ${
-                                        gallery.coverImageId === image.id
-                                          ? 'bg-yellow-500 text-white'
-                                          : 'bg-white text-gray-700 hover:bg-yellow-50'
-                                      }`}
-                                    >
-                                      {gallery.coverImageId === image.id ? (
-                                        <StarOff className="h-4 w-4" />
-                                      ) : (
-                                        <Star className="h-4 w-4" />
-                                      )}
-                                    </button>
-                                    <button
-                                      onClick={() => handleRemoveImage(image.id)}
-                                      disabled={removeImagesMutation.isPending}
-                                      className="p-2 bg-white rounded-full shadow-lg hover:bg-red-50 transition-colors duration-200"
-                                    >
-                                      <Trash2 className="h-4 w-4 text-red-600" />
-                                    </button>
-                                  </>
-                                )}
+                            {!bulkEditMode && (
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
+                                <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                  <button
+                                    onClick={() => setSelectedImage(image)}
+                                    className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
+                                  >
+                                    <Eye className="h-4 w-4 text-gray-700" />
+                                  </button>
+                                  <a
+                                    href={getImageUrlFromImage(image, false)}
+                                    download
+                                    className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
+                                  >
+                                    <Download className="h-4 w-4 text-gray-700" />
+                                  </a>
+                                  {isOwner && (
+                                    <>
+                                      <button
+                                        onClick={() => handleSetCover(image.id)}
+                                        className={`p-2 rounded-full shadow-lg transition-colors duration-200 ${
+                                          gallery.coverImageId === image.id
+                                            ? 'bg-yellow-500 text-white'
+                                            : 'bg-white text-gray-700 hover:bg-yellow-50'
+                                        }`}
+                                      >
+                                        {gallery.coverImageId === image.id ? (
+                                          <StarOff className="h-4 w-4" />
+                                        ) : (
+                                          <Star className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemoveImage(image.id)}
+                                        disabled={removeImagesMutation.isPending}
+                                        className="p-2 bg-white rounded-full shadow-lg hover:bg-red-50 transition-colors duration-200"
+                                      >
+                                        <Trash2 className="h-4 w-4 text-red-600" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </motion.div>
                         ))}
                       </div>
@@ -676,15 +938,41 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             key={image.id || `image-${index}`}
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
-                            className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
+                            className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${
+                              bulkEditMode && selectedImages.some(img => img.id === image.id) 
+                                ? 'ring-2 ring-green-500 bg-green-50' 
+                                : ''
+                            }`}
                           >
                             <div className="flex items-center space-x-4">
+                              {/* Bulk Edit Selection Checkbox */}
+                              {bulkEditMode && (
+                                <button
+                                  onClick={() => toggleImage(image)}
+                                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 flex-shrink-0 ${
+                                    selectedImages.some(img => img.id === image.id)
+                                      ? 'bg-green-500 border-green-500 text-white'
+                                      : 'bg-white border-gray-300 hover:border-green-400'
+                                  }`}
+                                >
+                                  {selectedImages.some(img => img.id === image.id) && (
+                                    <Check className="h-4 w-4" />
+                                  )}
+                                </button>
+                              )}
+                              
                               <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                                 <LazyImage
                                   src={getImageUrlFromImage(image, true)}
                                   alt={image.altText || 'Gallery image'}
                                   className="w-full h-full object-cover cursor-pointer"
-                                  onClick={() => setSelectedImage(image)}
+                                  onClick={() => {
+                                    if (bulkEditMode) {
+                                      toggleImage(image)
+                                    } else {
+                                      setSelectedImage(image)
+                                    }
+                                  }}
                                 />
                               </div>
                               
@@ -712,42 +1000,46 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               </div>
                               
                               <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => setSelectedImage(image)}
-                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </button>
-                                <a
-                                  href={getImageUrlFromImage(image, false)}
-                                  download
-                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </a>
-                                {isOwner && (
+                                {!bulkEditMode && (
                                   <>
                                     <button
-                                      onClick={() => handleSetCover(image.id)}
-                                      className={`p-2 rounded-lg transition-colors duration-200 ${
-                                        gallery.coverImageId === image.id
-                                          ? 'text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50'
-                                          : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                                      }`}
+                                      onClick={() => setSelectedImage(image)}
+                                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                                     >
-                                      {gallery.coverImageId === image.id ? (
-                                        <StarOff className="h-4 w-4" />
-                                      ) : (
-                                        <Star className="h-4 w-4" />
-                                      )}
+                                      <Eye className="h-4 w-4" />
                                     </button>
-                                    <button
-                                      onClick={() => handleRemoveImage(image.id)}
-                                      disabled={removeImagesMutation.isPending}
-                                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                                    <a
+                                      href={getImageUrlFromImage(image, false)}
+                                      download
+                                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                                     >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
+                                      <Download className="h-4 w-4" />
+                                    </a>
+                                    {isOwner && (
+                                      <>
+                                        <button
+                                          onClick={() => handleSetCover(image.id)}
+                                          className={`p-2 rounded-lg transition-colors duration-200 ${
+                                            gallery.coverImageId === image.id
+                                              ? 'text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50'
+                                              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                                          }`}
+                                        >
+                                          {gallery.coverImageId === image.id ? (
+                                            <StarOff className="h-4 w-4" />
+                                          ) : (
+                                            <Star className="h-4 w-4" />
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={() => handleRemoveImage(image.id)}
+                                          disabled={removeImagesMutation.isPending}
+                                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -786,7 +1078,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
 
       {/* Image Detail Modal */}
       <ImageDetailModal
-        image={selectedImage}
+        image={selectedImage ? mapImageData(selectedImage) : null}
         onClose={() => setSelectedImage(null)}
         onImageUpdate={() => {
           // The optimistic update will handle this automatically
@@ -794,27 +1086,14 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
         updateImage={() => {
           // This would need to be implemented if we want to update images from the gallery view
         }}
-        allImages={orderedImages}
+        allImages={orderedImages.map(image => mapImageData(image))}
         onNavigate={(image: any) => {
+          // Debug: Log the raw image data
+          console.log('Raw gallery image data:', image)
+          
           // Map the backend image data to the format expected by ImageDetailModal
-          const mappedImage = {
-            id: image.id,
-            s3Key: image.s3Key || image.url,
-            thumbnailS3Key: image.thumbnailS3Key || image.thumbnail || image.url,
-            url: image.s3Key || image.url,
-            thumbnail: image.thumbnailS3Key || image.thumbnail || image.url,
-            title: image.altText || image.title,
-            description: image.caption || image.description,
-            createdAt: image.createdAt,
-            authorId: image.authorId,
-            tags: image.tags || [],
-            metadata: {
-              width: image.width || 0,
-              height: image.height || 0,
-              size: image.size || 0,
-              format: image.mimeType || 'unknown'
-            }
-          }
+          const mappedImage = mapImageData(image)
+          console.log('Mapped image:', mappedImage)
           setSelectedImage(mappedImage)
         }}
       />
@@ -854,6 +1133,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
           }
         }}
         userId={authData?.data?.user?.id || "me"}
+        existingGalleryImages={orderedImages}
       />
     </AnimatePresence>
   )

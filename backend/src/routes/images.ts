@@ -312,7 +312,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { altText, caption, title, description, tags } = req.body
+  const { altText, caption, title, description, tags, mergeTags } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -342,18 +342,41 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     return
   }
 
-  // Support both old (altText/caption) and new (title/description) field names
-  const newAltText = title || altText || null
-  const newCaption = description || caption || null
+  // Build update data - only include fields that are provided
+  const updateData: any = {}
+
+  // Handle title/altText - only update if provided
+  if (title !== undefined) {
+    updateData.altText = title
+  } else if (altText !== undefined) {
+    updateData.altText = altText
+  }
+
+  // Handle description/caption - only update if provided
+  if (description !== undefined) {
+    updateData.caption = description
+  } else if (caption !== undefined) {
+    updateData.caption = caption
+  }
+
+  // Handle tags - merge with existing tags if mergeTags is true
+  if (tags !== undefined) {
+    if (mergeTags && Array.isArray(tags)) {
+      // Merge tags: combine existing tags with new tags, remove duplicates
+      const existingTags = image.tags || []
+      const newTags = tags.filter(tag => tag && tag.trim().length > 0)
+      const mergedTags = [...new Set([...existingTags, ...newTags])]
+      updateData.tags = mergedTags
+    } else {
+      // Replace tags
+      updateData.tags = tags
+    }
+  }
 
   // Update the image
   const updatedImage = await prisma.image.update({
     where: { id },
-    data: {
-      altText: newAltText,
-      caption: newCaption,
-      tags: tags || undefined
-    }
+    data: updateData
   })
 
   res.json({

@@ -215,7 +215,12 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
           tags: true,
           visibility: true,
           createdAt: true,
-          order: true
+          order: true,
+          width: true,
+          height: true,
+          size: true,
+          mimeType: true,
+          authorId: true
         }
       },
       coverImage: {
