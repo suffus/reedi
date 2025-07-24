@@ -210,6 +210,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
           id: true,
           s3Key: true,
           thumbnailS3Key: true,
+          originalFilename: true,
           altText: true,
           caption: true,
           tags: true,

@@ -2,8 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { API_BASE_URL, getAuthHeaders } from '@/lib/api'
+import { motion } from 'framer-motion'
+import { Heart, MessageCircle, Share, Clock, User } from 'lucide-react'
+import { API_BASE_URL, getAuthHeaders, getImageUrlFromImage } from '@/lib/api'
 import { usePublicUserPosts, usePublicUserImages } from '@/lib/api-hooks'
+import { LazyImage } from './lazy-image'
+import { ImageDetailModal } from './dashboard/image-detail-modal'
+import { mapImageData } from '@/lib/image-utils'
 
 interface User {
   id: string
@@ -35,6 +40,9 @@ export default function UserProfile() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'posts' | 'images'>('posts')
+  const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
+  const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false)
+  const [currentPostImages, setCurrentPostImages] = useState<any[]>([])
 
   const identifier = params?.identifier as string
 
@@ -272,8 +280,167 @@ export default function UserProfile() {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     })
+  }
+
+  const handleImageClick = (image: any, postImages?: any[]) => {
+    // Map the image data to the format expected by ImageDetailModal
+    const mappedImage = mapImageData(image)
+    
+    // Map all post images for navigation
+    if (postImages && postImages.length > 0) {
+      const mappedPostImages = postImages.map(img => mapImageData(img))
+      setCurrentPostImages(mappedPostImages)
+    } else {
+      setCurrentPostImages([])
+    }
+    
+    setSelectedImageForDetail(mappedImage)
+    setIsImageDetailModalOpen(true)
+  }
+
+  // Helper component for post image layout (simplified version for public viewing)
+  function PostImagesDisplay({ 
+    images, 
+    onImageClick 
+  }: { 
+    images: any[], 
+    onImageClick: (image: any, postImages?: any[]) => void
+  }) {
+    if (!images || images.length === 0) return null;
+    
+    if (images.length === 1) {
+      const img = images[0];
+      return (
+        <div className="mb-4">
+          <LazyImage
+            src={getImageUrlFromImage(img, false)}
+            alt={img.altText || img.caption || 'Post image'}
+            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+            style={{
+              height: 'auto',
+              width: '100%',
+              display: 'block'
+            }}
+            onClick={() => onImageClick(img, images)}
+            showProgressiveEffect={true}
+          />
+        </div>
+      );
+    }
+    
+    if (images.length === 2 || images.length === 3) {
+      return (
+        <div className="mb-4">
+          <div className={`grid grid-cols-${images.length} gap-2`}>
+            {images.map((img, idx) => (
+              <div key={img.id}>
+                <LazyImage
+                  src={getImageUrlFromImage(img, false)}
+                  alt={img.altText || img.caption || `Post image ${idx + 1}`}
+                  className="w-full rounded-lg object-contain max-h-72 cursor-pointer hover:opacity-90 transition-opacity"
+                  style={{ aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
+                  onClick={() => onImageClick(img, images)}
+                  showProgressiveEffect={true}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    // 4+ images: Layout based on main image aspect ratio
+    const [main, ...thumbs] = images;
+    
+    // Calculate aspect ratio for main image
+    const mainAspectRatio = main.width && main.height ? main.width / main.height : 1;
+    const isPortrait = mainAspectRatio < 1;
+    
+    if (isPortrait) {
+      // Portrait layout: Main image scaled to 80% width with true aspect ratio, thumbnails on the right
+      return (
+        <div className="mb-4 flex gap-2">
+          {/* Main image container - 80% width */}
+          <div className="w-4/5 flex justify-center">
+            <LazyImage
+              src={getImageUrlFromImage(main, false)}
+              alt={main.altText || main.caption || 'Main post image'}
+              className="rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                height: 'auto',
+                aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined
+              }}
+              onClick={() => onImageClick(main, images)}
+              showProgressiveEffect={true}
+            />
+          </div>
+          
+          {/* Thumbnails - 17.5% of post width, vertical stack */}
+          <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
+            {thumbs.map((img, idx) => (
+              <div key={img.id}>
+                <LazyImage
+                  src={getImageUrlFromImage(img, false)}
+                  alt={img.altText || img.caption || `Thumbnail ${idx + 2}`}
+                  className="rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                  style={{
+                    width: '100%',
+                    aspectRatio: '1 / 1'
+                  }}
+                  onClick={() => onImageClick(img, images)}
+                  showProgressiveEffect={true}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    } else {
+      // Landscape layout: Main image full width, thumbnails below at 25% height
+      return (
+        <div className="mb-4">
+          {/* Main image - full width */}
+          <div className="mb-2">
+            <LazyImage
+              src={getImageUrlFromImage(main, false)}
+              alt={main.altText || main.caption || 'Main post image'}
+              className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
+              onClick={() => onImageClick(main, images)}
+              showProgressiveEffect={true}
+            />
+          </div>
+          
+          {/* Thumbnails - horizontal row at 17.5% of post width */}
+          <div className="flex gap-2 overflow-x-auto">
+            {thumbs.map((img, idx) => (
+              <div
+                key={img.id}
+                className="flex-shrink-0"
+                style={{ width: '17.5%' }}
+              >
+                <LazyImage
+                  src={getImageUrlFromImage(img, false)}
+                  alt={img.altText || img.caption || `Thumbnail ${idx + 2}`}
+                  className="w-full rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
+                  style={{
+                    aspectRatio: '1 / 1'
+                  }}
+                  onClick={() => onImageClick(img, images)}
+                  showProgressiveEffect={true}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
   }
 
   return (
@@ -408,21 +575,74 @@ export default function UserProfile() {
                 ) : (
                   <div className="space-y-6">
                     {posts.map((post: any) => (
-                      <div key={post.id} className="bg-gray-50 rounded-lg p-6">
-                        <div className="flex items-start space-x-3">
-                          <div className="flex-1">
-                            <p className="text-gray-900 mb-2">{post.content}</p>
-                            <div className="flex items-center text-sm text-gray-500">
-                              <span>{formatDate(post.createdAt)}</span>
-                              {post.visibility && (
-                                <span className="ml-2 px-2 py-1 bg-gray-200 rounded text-xs">
-                                  {post.visibility.toLowerCase()}
-                                </span>
+                      <motion.div
+                        key={post.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+                      >
+                        {/* Post Header */}
+                        <div className="p-4 border-b border-gray-100">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-accent-500 rounded-full flex items-center justify-center text-white font-semibold">
+                              {user?.avatar ? (
+                                <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
+                              ) : (
+                                user?.name?.charAt(0).toUpperCase() || 'U'
                               )}
+                            </div>
+                            <div>
+                              <h3 className="font-medium text-gray-900">{user?.name}</h3>
+                              <div className="flex items-center space-x-2">
+                                <p className="text-sm text-gray-500 flex items-center">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {formatDate(post.createdAt)}
+                                </p>
+                                {post.visibility && (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    {post.visibility.toLowerCase()}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
+
+                        {/* Post Content */}
+                        <div className="p-4">
+                          <p className="text-gray-900 mb-4">{post.content}</p>
+                          
+                          {/* Post Images */}
+                          {post.images && post.images.length > 0 && (
+                            <PostImagesDisplay 
+                              images={post.images} 
+                              onImageClick={handleImageClick}
+                            />
+                          )}
+                        </div>
+
+                        {/* Post Actions (Read-only for public profiles) */}
+                        <div className="px-4 py-3 border-t border-gray-100">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-6">
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <Heart className="h-5 w-5" />
+                                <span>{post._count?.reactions || 0}</span>
+                              </div>
+                              
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <MessageCircle className="h-5 w-5" />
+                                <span>{post._count?.comments || 0}</span>
+                              </div>
+                              
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <Share className="h-5 w-5" />
+                                <span>Share</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
                     ))}
                   </div>
                 )}
@@ -458,6 +678,26 @@ export default function UserProfile() {
           </div>
         </div>
       </div>
+
+      {/* Image Detail Modal */}
+      {selectedImageForDetail && (
+        <ImageDetailModal
+          image={selectedImageForDetail}
+          onClose={() => {
+            setIsImageDetailModalOpen(false)
+            setSelectedImageForDetail(null)
+            setCurrentPostImages([])
+          }}
+          onImageUpdate={() => {
+            // No updates needed for public profile viewing
+          }}
+          updateImage={() => {
+            // No updates needed for public profile viewing
+          }}
+          allImages={currentPostImages}
+          onNavigate={(image: any) => setSelectedImageForDetail(image)}
+        />
+      )}
     </div>
   )
 } 

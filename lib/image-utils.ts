@@ -7,6 +7,7 @@ export const mapImageData = (image: any): GalleryImage => ({
   thumbnail: image.thumbnailS3Key || image.thumbnail || image.url, // Use S3 key if available, fallback to old thumbnail
   s3Key: image.s3Key || image.url,
   thumbnailS3Key: image.thumbnailS3Key || image.thumbnail || image.url,
+  originalFilename: image.originalFilename,
   title: image.altText || image.title,
   description: image.caption || image.description,
   createdAt: image.createdAt,

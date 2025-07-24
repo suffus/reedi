@@ -6,6 +6,7 @@ import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, 
 import { useUserImages, useDeleteImage, useMyGalleries, useGallery } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
+import { FullScreenWrapper } from '../full-screen-wrapper'
 import { GalleryDetailModal } from './gallery-detail-modal'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { LazyImage } from '../lazy-image'
@@ -694,6 +695,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
       )}
 
       {/* Image Detail Modal */}
+      { selectedImage && (
+        <FullScreenWrapper>
       <ImageDetailModal
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
@@ -704,7 +707,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
         allImages={images}
         onNavigate={(image: any) => setSelectedImage(image)}
       />
-
+      </FullScreenWrapper>
+      )}
       {/* New Gallery Modal */}
       <NewGalleryModal
         isOpen={isNewGalleryModalOpen}

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react'
+import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, FileText, Image as ImageIcon, HardDrive } from 'lucide-react'
 import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { ProgressiveImage } from '../progressive-image'
@@ -596,7 +596,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   </button>
 
                   {/* Image Counter */}
-                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full">
+                  <div className="absolute bottom-4 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full">
                     {currentIndex + 1} / {allImages.length}
                   </div>
                 </>
@@ -791,6 +791,32 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                 <div className="flex items-center text-xs text-gray-500">
                   <Calendar className="h-3 w-3 mr-1" />
                   Posted {formatDate(mappedImage.createdAt)}
+                </div>
+
+                {/* Image Metadata */}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="space-y-2 text-xs text-gray-600">
+                    {mappedImage.originalFilename && (
+                      <div className="flex items-center">
+                        <FileText className="h-3 w-3 mr-2 flex-shrink-0" />
+                        <span className="truncate" title={mappedImage.originalFilename}>
+                          {mappedImage.originalFilename}
+                        </span>
+                      </div>
+                    )}
+                    {mappedImage.metadata.width > 0 && mappedImage.metadata.height > 0 && (
+                      <div className="flex items-center">
+                        <ImageIcon className="h-3 w-3 mr-2 flex-shrink-0" />
+                        <span>{mappedImage.metadata.width} × {mappedImage.metadata.height}</span>
+                      </div>
+                    )}
+                    {mappedImage.metadata.size > 0 && (
+                      <div className="flex items-center">
+                        <HardDrive className="h-3 w-3 mr-2 flex-shrink-0" />
+                        <span>{(mappedImage.metadata.size / 1024 / 1024).toFixed(1)} MB</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Slideshow Speed Control */}
