@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, FileText, Image as ImageIcon, HardDrive } from 'lucide-react'
+import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, FileText, Image as ImageIcon, HardDrive, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { ProgressiveImage } from '../progressive-image'
@@ -51,6 +51,9 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
   const slideshowIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [isCurrentImageLoaded, setIsCurrentImageLoaded] = useState(false)
   const [isSlideshowWaitingForLoad, setIsSlideshowWaitingForLoad] = useState(false)
+  const [isPanelMinimized, setIsPanelMinimized] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const { data: commentsData, isLoading: commentsLoading } = useImageComments(image.id)
   const createCommentMutation = useCreateComment()
@@ -136,6 +139,28 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     }
   }, [isSlideshowActive, startSlideshow, stopSlideshow])
 
+  const togglePanel = useCallback(() => {
+    setIsPanelMinimized(prev => !prev)
+  }, [])
+
+  const showControls = useCallback(() => {
+    setControlsVisible(true)
+    // Clear existing timeout
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current)
+    }
+    // Set new timeout to hide controls after 5 seconds only if slideshow is active
+    if (isSlideshowActive) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false)
+      }, 5000)
+    }
+  }, [isSlideshowActive])
+
+  const hideControls = useCallback(() => {
+    setControlsVisible(false)
+  }, [])
+
   // Handle image load completion
   const handleImageLoad = useCallback(() => {
     setIsCurrentImageLoaded(true)
@@ -160,11 +185,14 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     setIsCurrentImageLoaded(false)
   }, [image])
 
-  // Cleanup slideshow interval on unmount
+  // Cleanup slideshow interval and controls timeout on unmount
   useEffect(() => {
     return () => {
       if (slideshowIntervalRef.current) {
         clearInterval(slideshowIntervalRef.current)
+      }
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
       }
     }
   }, [])
@@ -221,9 +249,14 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     }
   }, [isDragging, zoom, dragStart, isCropMode])
 
-  // Add keyboard navigation
+  // Add keyboard navigation and control visibility
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Show controls on any keyboard activity during slideshow
+      if (isSlideshowActive) {
+        showControls()
+      }
+      
       // Check if any input element is focused (comment box, search, etc.)
       const activeElement = document.activeElement
       const isInputFocused = activeElement && (
@@ -268,11 +301,52 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [canNavigate, handleNext, handlePrev, handleFirst, handleLast, toggleSlideshow, allImages])
+  }, [canNavigate, handleNext, handlePrev, handleFirst, handleLast, toggleSlideshow, allImages, showControls])
 
+  // Add mouse movement detection for control visibility
+  useEffect(() => {
+    const handleMouseMove = () => {
+      if (isSlideshowActive) {
+        showControls()
+      }
+    }
 
-  
+    if (isSlideshowActive) {
+      document.addEventListener('mousemove', handleMouseMove)
+      // Start the initial timeout to hide controls
+      showControls()
+    }
 
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
+    }
+  }, [isSlideshowActive, showControls])
+
+  // Ensure controls are always visible when slideshow is not active
+  useEffect(() => {
+    if (!isSlideshowActive) {
+      setControlsVisible(true)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
+    }
+  }, [isSlideshowActive])
+
+  // Add/remove cursor hiding class to body
+  useEffect(() => {
+    if (isSlideshowActive && !controlsVisible) {
+      document.body.classList.add('cursor-none')
+    } else {
+      document.body.classList.remove('cursor-none')
+    }
+
+    return () => {
+      document.body.classList.remove('cursor-none')
+    }
+  }, [isSlideshowActive, controlsVisible])
 
   // Map image to include full URL and use local state for updated fields
   const mappedImage = {
@@ -561,48 +635,69 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
             {/* Image Section */}
             <div className="flex-1 flex items-center justify-center bg-gray-100 relative overflow-hidden">
               {/* Close Button */}
-              <button
+              <motion.button
                 onClick={() => {resetView(); onClose()}}
                 className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+                animate={{ opacity: controlsVisible ? 1 : 0 }}
+                transition={{ duration: 0.3 }}
               >
                 <X className="h-5 w-5" />
-              </button>
+              </motion.button>
 
               {/* Navigation Buttons */}
               {canNavigate && (
                 <>
                   {/* Previous Button */}
-                  <button
+                  <motion.button
                     onClick={handlePrev}
                     className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
                       !hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
                     }`}
                     disabled={!hasPrev}
                     title="Previous image (←)"
+                    animate={{ opacity: controlsVisible ? 1 : 0 }}
+                    transition={{ duration: 0.3 }}
                   >
                     <ChevronLeft className="h-6 w-6" />
-                  </button>
+                  </motion.button>
 
                   {/* Next Button */}
-                  <button
+                  <motion.button
                     onClick={handleNext}
                     className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
                       !hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
                     }`}
                     disabled={!hasNext}
                     title="Next image (→)"
+                    animate={{ opacity: controlsVisible ? 1 : 0 }}
+                    transition={{ duration: 0.3 }}
                   >
                     <ChevronRight className="h-6 w-6" />
-                  </button>
+                  </motion.button>
 
                   {/* Image Counter */}
-                  <div className="absolute bottom-4 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full">
+                  <motion.div 
+                    className="absolute bottom-4 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full"
+                    animate={{ opacity: controlsVisible ? 1 : 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
                     {currentIndex + 1} / {allImages.length}
-                  </div>
+                  </motion.div>
                 </>
               )}
               {/* Zoom Controls */}
-              <div className="absolute top-4 right-4 z-20 flex flex-col space-y-2">
+              <motion.div 
+                className="absolute top-4 right-4 z-20 flex flex-col space-y-2"
+                animate={{ opacity: controlsVisible ? 1 : 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <button
+                  onClick={togglePanel}
+                  className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+                  title={isPanelMinimized ? "Show Panel" : "Hide Panel"}
+                >
+                  {isPanelMinimized ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                </button>
                 <button
                   onClick={handleZoomIn}
                   className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
@@ -660,12 +755,12 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                     )}
                   </>
                 )}
-              </div>
+              </motion.div>
 
 
 
               {/* Image Container */}
-              <div 
+              <motion.div 
                 ref={containerRef}
                 className="relative w-full h-full flex items-center justify-center p-4 cursor-grab active:cursor-grabbing"
                 onMouseDown={handleMouseDown}
@@ -673,6 +768,10 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
                 onWheel={handleWheel}
+                animate={{ 
+                  cursor: isSlideshowActive && !controlsVisible ? 'none' : 'default'
+                }}
+                transition={{ duration: 0.3 }}
               >
                 <ProgressiveImage
                   src={mappedImage.url}
@@ -680,12 +779,12 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   alt={mappedImage.title || 'Gallery image'}
                   className="transition-transform duration-200 ease-out"
                   style={{
-                    maxWidth: 'calc(100vw - 450px)', // Account for comments sidebar
+                    maxWidth: isPanelMinimized ? '100vw' : 'calc(100vw - 450px)', // Account for comments sidebar
                     maxHeight: '100vh', // Full viewport height since no header
                     width: 'auto',
                     height: 'auto',
                     transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-                    cursor: isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default')
+                    cursor: isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'))
                   }}
                   showQualityIndicator={true}
                   showBlurEffect={true}
@@ -704,13 +803,24 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                     }}
                   />
                 )}
-              </div>
+              </motion.div>
             </div>
 
             {/* Comments Section */}
-            <div className="w-[450px] border-l border-gray-200 flex flex-col bg-white">
+            <motion.div 
+              className={`border-l border-gray-200 flex flex-col bg-white overflow-hidden ${
+                isPanelMinimized ? 'w-0' : 'w-[450px]'
+              }`}
+              animate={{ width: isPanelMinimized ? 0 : 450 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+            >
               {/* Image Info */}
-              <div className="p-4 border-b border-gray-200">
+              {isPanelMinimized ? (
+                <div className="flex items-center justify-center h-8 border-b border-gray-200">
+                  <MessageCircle className="h-4 w-4 text-gray-400" />
+                </div>
+              ) : (
+                <div className="p-4 border-b border-gray-200">
                 <div className="flex items-start justify-between mb-2">
                   {isEditing ? (
                     <div className="flex-1 space-y-3">
@@ -843,9 +953,10 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   </div>
                 )}
               </div>
+              )}
 
               {/* Comments List */}
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className={`flex-1 overflow-y-auto p-4 ${isPanelMinimized ? 'hidden' : ''}`}>
                 <div className="flex items-center space-x-2 mb-4">
                   <MessageCircle className="h-4 w-4 text-gray-500" />
                   <span className="text-sm font-medium text-gray-700">
@@ -891,7 +1002,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
               </div>
 
               {/* Comment Form */}
-              <div className="p-4 border-t border-gray-200">
+              <div className={`p-4 border-t border-gray-200 ${isPanelMinimized ? 'hidden' : ''}`}>
                 <form onSubmit={handleSubmitComment} className="flex space-x-2">
                   <input
                     type="text"
@@ -910,7 +1021,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                   </button>
                 </form>
               </div>
-            </div>
+            </motion.div>
           </div>
         </motion.div>
       </div>
