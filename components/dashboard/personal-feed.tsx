@@ -6,6 +6,7 @@ import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send } from '
 import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostImages } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 import { PostMenu } from './post-menu'
+import { FullScreenWrapper } from '../full-screen-wrapper'
 import { PostAuthorForm } from './post-author-form'
 import { getImageUrl, getImageUrlFromImage } from '../../lib/api'
 import { LazyImage } from '../lazy-image'
@@ -774,6 +775,7 @@ export function PersonalFeed() {
 
       {/* Image Detail Modal */}
       {selectedImageForDetail && (
+        <FullScreenWrapper>
         <ImageDetailModal
           image={selectedImageForDetail}
           onClose={() => {
@@ -792,6 +794,7 @@ export function PersonalFeed() {
           allImages={currentPostImages}
           onNavigate={(image: any) => setSelectedImageForDetail(image)}
         />
+        </FullScreenWrapper>
       )}
     </div>
   )

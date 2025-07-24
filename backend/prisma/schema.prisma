@@ -130,6 +130,7 @@ model Image {
   thumbnail      String?    // Path to the thumbnail image file
   s3Key          String?    // S3 key for the original image
   thumbnailS3Key String?    // S3 key for the thumbnail
+  originalFilename String?  // Original filename from user's device
   altText        String?
   caption        String?
   width          Int?

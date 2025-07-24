@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, X, Image as ImageIcon, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List } from 'lucide-react'
+import { Upload, X, Image as ImageIcon, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle } from 'lucide-react'
 import { useUploadImage } from '../../lib/api-hooks'
 import { TagInput } from '../tag-input'
 
@@ -41,6 +41,8 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
   const [sharedDescription, setSharedDescription] = useState('')
   const [sharedTags, setSharedTags] = useState<string[]>([])
   const [imageVisibility, setImageVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
+  const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addMoreFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -94,7 +96,18 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
   const handleFiles = (files: File[]) => {
     const imageFiles = files.filter(file => file.type.startsWith('image/'))
     
-    imageFiles.forEach(file => {
+    // Sort files by filename to ensure proper order (e.g., DSC_5689.JPG before DSC_5690.JPG)
+    const sortedFiles = imageFiles.sort((a, b) => {
+      // Extract filename without extension for better sorting
+      const nameA = a.name.replace(/\.[^/.]+$/, '').toLowerCase()
+      const nameB = b.name.replace(/\.[^/.]+$/, '').toLowerCase()
+      
+      // Natural sort for better handling of numbers in filenames
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' })
+    })
+    
+    // Process files in sorted order
+    sortedFiles.forEach(file => {
       const reader = new FileReader()
       reader.onload = (e) => {
         const newFile: UploadFile = {
@@ -130,7 +143,24 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     updateFile(index, { tags })
   }
 
+  // Sort upload files by filename to maintain proper order
+  const sortUploadFiles = () => {
+    setUploadFiles(prev => {
+      const sorted = [...prev].sort((a, b) => {
+        const nameA = a.file.name.replace(/\.[^/.]+$/, '').toLowerCase()
+        const nameB = b.file.name.replace(/\.[^/.]+$/, '').toLowerCase()
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' })
+      })
+      return sorted
+    })
+  }
 
+  // Auto-sort files when they're added
+  React.useEffect(() => {
+    if (uploadFiles.length > 1) {
+      sortUploadFiles()
+    }
+  }, [uploadFiles.length])
 
   const applySharedMetadata = () => {
     setUploadFiles(prev => prev.map(file => ({
@@ -141,14 +171,59 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     })))
   }
 
+  // Check if there's unsaved shared metadata
+  const hasUnsavedSharedMetadata = () => {
+    return sharedTitle.trim() !== '' || sharedDescription.trim() !== '' || sharedTags.length > 0
+  }
+
+  // Handle upload with potential warning
+  const handleUploadWithWarning = () => {
+    if (hasUnsavedSharedMetadata()) {
+      setShowUnsavedWarning(true)
+      setPendingUploadAction(() => handleUpload)
+    } else {
+      handleUpload()
+    }
+  }
+
+  // Apply metadata and continue with upload
+  const handleApplyAndUpload = () => {
+    // Apply metadata directly to the current files
+    const updatedFiles = uploadFiles.map(file => ({
+      ...file,
+      title: sharedTitle || file.title,
+      description: sharedDescription || file.description,
+      tags: Array.from(new Set([...file.tags, ...sharedTags]))
+    }))
+    
+    // Update the state immediately
+    setUploadFiles(updatedFiles)
+    setShowUnsavedWarning(false)
+    setPendingUploadAction(null)
+    
+    // Use the updated files for upload
+    handleUploadWithFiles(updatedFiles)
+  }
+
+  // Continue with upload without applying metadata
+  const handleUploadWithoutApplying = () => {
+    setShowUnsavedWarning(false)
+    setPendingUploadAction(null)
+    handleUpload()
+  }
+
   const handleUpload = async () => {
-    if (uploadFiles.length === 0) return
+    await handleUploadWithFiles(uploadFiles)
+  }
+
+  const handleUploadWithFiles = async (files: UploadFile[]) => {
+    if (files.length === 0) return
 
     setIsUploading(true)
     
     // Initialize progress for all files
     const initialProgress: UploadProgress = {}
-    uploadFiles.forEach((_, index) => {
+    files.forEach((_, index) => {
       initialProgress[index] = { status: 'pending' }
     })
     setUploadProgress(initialProgress)
@@ -157,8 +232,8 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     let hasErrors = false
 
     try {
-      for (let i = 0; i < uploadFiles.length; i++) {
-        const uploadFile = uploadFiles[i]
+      for (let i = 0; i < files.length; i++) {
+        const uploadFile = files[i]
         
         // Update status to uploading
         setUploadProgress(prev => ({
@@ -380,9 +455,16 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      {uploadFiles.length} {uploadFiles.length === 1 ? 'image' : 'images'} selected
-                    </h3>
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">
+                        {uploadFiles.length} {uploadFiles.length === 1 ? 'image' : 'images'} selected
+                      </h3>
+                      {uploadFiles.length > 1 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Files will be uploaded in filename order (e.g., DSC_5689.JPG before DSC_5690.JPG)
+                        </p>
+                      )}
+                    </div>
                     {uploadFiles.length > 1 && (
                       <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
                         <button
@@ -745,7 +827,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
               {!isUploading && (
                 <button
                   type="button"
-                  onClick={handleUpload}
+                  onClick={handleUploadWithWarning}
                   disabled={!canUpload}
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -763,17 +845,86 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
       }
 
       return (
-        <AnimatePresence>
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden"
-            >
-              {content}
-            </motion.div>
-          </div>
-        </AnimatePresence>
+        <>
+          <AnimatePresence>
+            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden"
+              >
+                {content}
+              </motion.div>
+            </div>
+          </AnimatePresence>
+
+          {/* Unsaved Metadata Warning Dialog */}
+          <AnimatePresence>
+            {showUnsavedWarning && (
+              <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="bg-white rounded-lg max-w-md w-full p-6"
+                >
+                  <div className="flex items-center mb-4">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-lg font-medium text-gray-900">
+                        Unsaved Metadata
+                      </h3>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-6">
+                    <p className="text-sm text-gray-600">
+                      You have entered shared metadata (title, description, or tags) that hasn't been applied to all images yet.
+                    </p>
+                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-2">Unsaved metadata:</p>
+                      {sharedTitle && (
+                        <p className="text-xs text-gray-700"><strong>Title:</strong> {sharedTitle}</p>
+                      )}
+                      {sharedDescription && (
+                        <p className="text-xs text-gray-700"><strong>Description:</strong> {sharedDescription}</p>
+                      )}
+                      {sharedTags.length > 0 && (
+                        <p className="text-xs text-gray-700"><strong>Tags:</strong> {sharedTags.join(', ')}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      type="button"
+                      onClick={handleApplyAndUpload}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      Apply & Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUploadWithoutApplying}
+                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                    >
+                      Upload Without Applying
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowUnsavedWarning(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </>
       )
     } 

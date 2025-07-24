@@ -23,6 +23,7 @@ import { ImageSelectorModal } from './image-selector-modal'
 import { getImageUrlFromImage, API_BASE_URL, getAuthHeaders } from '../../lib/api'
 import { LazyImage } from '../lazy-image'
 import { useImageSelection } from '../../lib/hooks/use-image-selection'
+import { FullScreenWrapper } from '../full-screen-wrapper'
 import { TagInput } from '../tag-input'
 import { GalleryImage } from '@/lib/types'
 import { mapImageData } from '@/lib/image-utils'
@@ -79,14 +80,16 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   const currentUserId = authData?.data?.user?.id
   const isOwner = currentUserId === gallery?.authorId
 
-  // Initialize edit form when gallery data loads
-  if (gallery && !isEditing && editForm.name === '') {
-    setEditForm({
-      name: gallery.name,
-      description: gallery.description || '',
-      visibility: gallery.visibility
-    })
-  }
+  // Initialize edit form when gallery data loads or changes
+  useEffect(() => {
+    if (gallery && !isEditing) {
+      setEditForm({
+        name: gallery.name,
+        description: gallery.description || '',
+        visibility: gallery.visibility
+      })
+    }
+  }, [gallery?.id, gallery?.name, gallery?.description, gallery?.visibility, isEditing])
 
   // Initialize ordered images when gallery data loads
   useEffect(() => {
@@ -1077,6 +1080,8 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
       </div>
 
       {/* Image Detail Modal */}
+      { selectedImage && (
+        <FullScreenWrapper>
       <ImageDetailModal
         image={selectedImage ? mapImageData(selectedImage) : null}
         onClose={() => setSelectedImage(null)}
@@ -1097,8 +1102,11 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
           setSelectedImage(mappedImage)
         }}
       />
+      </FullScreenWrapper>
+      )}
 
       {/* Image Selector Modal */}
+
       <ImageSelectorModal
         isOpen={showImageSelector}
         onClose={() => setShowImageSelector(false)}

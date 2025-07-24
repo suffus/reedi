@@ -4,6 +4,7 @@ export interface GalleryImage {
   thumbnail: string
   s3Key?: string
   thumbnailS3Key?: string
+  originalFilename?: string
   title: string | null
   description: string | null
   createdAt: string
