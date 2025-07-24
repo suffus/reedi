@@ -15,7 +15,7 @@ RUN npm ci
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 # Install OpenSSL for Prisma
 RUN apk add --no-cache openssl
@@ -34,8 +34,8 @@ USER nodejs
 
 EXPOSE 8088
 
-ENV PORT 8088
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=8088
+ENV HOSTNAME="0.0.0.0"
 
 # Run database migrations and start the app
 CMD ["npm", "run", "docker:start"] 

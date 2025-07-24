@@ -5,8 +5,9 @@ import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, Clock, User } from 'lucide-react'
 import { API_BASE_URL, getAuthHeaders, getImageUrlFromImage } from '@/lib/api'
-import { usePublicUserPosts, usePublicUserImages } from '@/lib/api-hooks'
+import { usePublicUserPosts, usePublicUserImages, useAuth } from '@/lib/api-hooks'
 import { LazyImage } from './lazy-image'
+import { ImageGrid } from './image-grid'
 import { ImageDetailModal } from './dashboard/image-detail-modal'
 import { mapImageData } from '@/lib/image-utils'
 
@@ -45,6 +46,10 @@ export default function UserProfile() {
   const [currentPostImages, setCurrentPostImages] = useState<any[]>([])
 
   const identifier = params?.identifier as string
+
+  // Get current user info
+  const { data: authData } = useAuth()
+  const currentUserId = authData?.data?.user?.id
 
   // Use the new visibility-aware hooks
   const { data: postsData, isLoading: postsLoading } = usePublicUserPosts(identifier)
@@ -208,7 +213,8 @@ export default function UserProfile() {
   }
 
   const renderActionButton = () => {
-    if (friendshipStatus?.status === 'SELF') {
+    // Don't show any action button if viewing your own profile
+    if (friendshipStatus?.status === 'SELF' || (currentUserId && user && currentUserId === user.id)) {
       return null
     }
 
@@ -661,17 +667,14 @@ export default function UserProfile() {
                     <p>No public images available</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {images.map((image: any) => (
-                      <div key={image.id} className="aspect-square bg-gray-200 rounded-lg overflow-hidden">
-                        <img
-                          src={`${API_BASE_URL}/images/serve/${image.id}/thumbnail`}
-                          alt={image.altText || 'User image'}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <ImageGrid
+                    images={images}
+                    viewMode="grid"
+                    selectedImages={[]}
+                    onImageClick={handleImageClick}
+                    showTags={false}
+                    className="gap-4"
+                  />
                 )}
               </div>
             )}

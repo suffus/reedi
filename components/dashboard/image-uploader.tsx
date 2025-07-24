@@ -507,7 +507,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                     <h4 className="text-sm font-medium text-blue-900 mb-3">
                       Shared Metadata (applies to all images)
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Title
@@ -704,7 +704,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     {uploadFiles.map((file, index) => (
                       <div key={index} className="bg-gray-50 rounded-lg p-3 relative">
                         <button
