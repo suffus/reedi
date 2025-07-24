@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, FileText, Image as ImageIcon, HardDrive, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useImageComments, useCreateComment, useAuth, useUpdateImage } from '@/lib/api-hooks'
 import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
 import { ProgressiveImage } from '../progressive-image'
@@ -26,6 +27,7 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     return null
   }
 
+  const router = useRouter()
   const [commentText, setCommentText] = useState('')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -619,6 +621,15 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
     })
   }
 
+  const handleAuthorClick = (authorId: string, authorUsername: string | null) => {
+    // Don't navigate if it's the current user's own comment
+    if (authorId === authData?.data?.user?.id) return
+    
+    // Navigate to the user's public profile
+    const identifier = authorUsername || authorId
+    router.push(`/user/${identifier}`)
+  }
+
   if (!mappedImage) return null
 
   return (
@@ -985,7 +996,12 @@ export function ImageDetailModal({ image, onClose, onImageUpdate, updateImage, a
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center space-x-2 mb-1">
-                              <span className="text-sm font-medium text-gray-900">
+                              <span 
+                                className={`text-sm font-medium text-gray-900 ${
+                                  comment.author.id !== authData?.data?.user?.id ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''
+                                }`}
+                                onClick={() => handleAuthorClick(comment.author.id, comment.author.username)}
+                              >
                                 {comment.author.name}
                               </span>
                               <span className="text-xs text-gray-500">

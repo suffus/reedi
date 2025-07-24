@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostImages } from '../../lib/api-hooks'
 import { ImageDetailModal } from './image-detail-modal'
 import { PostMenu } from './post-menu'
@@ -68,6 +69,7 @@ interface Comment {
 }
 
 export function PersonalFeed() {
+  const router = useRouter()
   const [newComments, setNewComments] = useState<{ [postId: string]: string }>({})
   const [showComments, setShowComments] = useState<{ [postId: string]: boolean }>({})
   const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
@@ -129,6 +131,15 @@ export function PersonalFeed() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const handleAuthorClick = (authorId: string, authorUsername: string | null) => {
+    // Don't navigate if it's the current user's own post
+    if (authorId === user?.id) return
+    
+    // Navigate to the user's public profile
+    const identifier = authorUsername || authorId
+    router.push(`/user/${identifier}`)
   }
 
   const handleImageClick = async (image: any, postId?: string, postImages?: any[]) => {
@@ -626,7 +637,14 @@ export function PersonalFeed() {
                   )}
                 </div>
                 <div>
-                  <h3 className="font-medium text-gray-900">{post.author.name}</h3>
+                  <h3 
+                    className={`font-medium text-gray-900 ${
+                      post.author.id !== user?.id ? 'cursor-pointer hover:text-primary-600 hover:underline' : ''
+                    }`}
+                    onClick={() => handleAuthorClick(post.author.id, post.author.username)}
+                  >
+                    {post.author.name}
+                  </h3>
                   <div className="flex items-center space-x-2">
                     <p className="text-sm text-gray-500 flex items-center">
                       <Clock className="h-3 w-3 mr-1" />
@@ -713,7 +731,14 @@ export function PersonalFeed() {
                     <div className="flex-1">
                       <div className="bg-white rounded-lg p-3">
                         <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-medium text-sm text-gray-900">{comment.author.name}</span>
+                          <span 
+                            className={`font-medium text-sm text-gray-900 ${
+                              comment.author.id !== user?.id ? 'cursor-pointer hover:text-primary-600 hover:underline' : ''
+                            }`}
+                            onClick={() => handleAuthorClick(comment.author.id, comment.author.username)}
+                          >
+                            {comment.author.name}
+                          </span>
                           <span className="text-xs text-gray-500">{formatDate(comment.createdAt)}</span>
                         </div>
                         <p className="text-sm text-gray-700">{comment.content}</p>

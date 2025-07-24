@@ -507,8 +507,8 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                     <h4 className="text-sm font-medium text-blue-900 mb-3">
                       Shared Metadata (applies to all images)
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="md:col-span-1 lg:col-span-1">
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Title
                         </label>
@@ -521,7 +521,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         />
                       </div>
                       
-                      <div>
+                      <div className="md:col-span-1 lg:col-span-1">
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Description
                         </label>
@@ -534,7 +534,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         />
                       </div>
                       
-                      <div>
+                      <div className="md:col-span-1 lg:col-span-1">
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Tags
                         </label>
@@ -546,7 +546,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         />
                       </div>
                       
-                      <div>
+                      <div className="md:col-span-1 lg:col-span-1">
                         <label className="block text-sm font-medium text-blue-800 mb-1">
                           Visibility
                         </label>
