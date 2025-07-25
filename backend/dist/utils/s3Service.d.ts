@@ -15,6 +15,7 @@ export interface ProcessedImage {
     size: number;
 }
 export declare function processImageForS3(buffer: Buffer, originalName: string, mimeType: string): Promise<ProcessedImage>;
+export declare function uploadToS3(buffer: Buffer, originalName: string, mimeType: string, userId: string): Promise<string>;
 export declare function uploadImageToS3(buffer: Buffer, key: string, mimeType: string, metadata?: Record<string, string>): Promise<string>;
 export declare function uploadImageWithThumbnail(originalBuffer: Buffer, thumbnailBuffer: Buffer, originalName: string, mimeType: string, userId: string): Promise<UploadResult>;
 export declare function deleteImageFromS3(key: string): Promise<void>;

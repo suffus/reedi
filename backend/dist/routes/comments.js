@@ -69,14 +69,14 @@ router.get('/post/:postId', (0, errorHandler_1.asyncHandler)(async (req, res) =>
         }
     });
 }));
-router.get('/image/:imageId', (0, errorHandler_1.asyncHandler)(async (req, res) => {
-    const { imageId } = req.params;
+router.get('/media/:mediaId', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { mediaId } = req.params;
     const { page = 1, limit = 20 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     const [comments, total] = await Promise.all([
         index_1.prisma.comment.findMany({
             where: {
-                imageId,
+                mediaId,
                 parentId: null
             },
             include: {
@@ -113,7 +113,7 @@ router.get('/image/:imageId', (0, errorHandler_1.asyncHandler)(async (req, res) 
         }),
         index_1.prisma.comment.count({
             where: {
-                imageId,
+                mediaId,
                 parentId: null
             }
         })
@@ -135,7 +135,7 @@ router.get('/image/:imageId', (0, errorHandler_1.asyncHandler)(async (req, res) 
 }));
 router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
-    const { content, postId, imageId, parentId } = req.body;
+    const { content, postId, mediaId, parentId } = req.body;
     if (!userId) {
         res.status(401).json({
             success: false,
@@ -143,17 +143,17 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         });
         return;
     }
-    if (!postId && !imageId) {
+    if (!postId && !mediaId) {
         res.status(400).json({
             success: false,
-            error: 'Either postId or imageId is required'
+            error: 'Either postId or mediaId is required'
         });
         return;
     }
-    if (postId && imageId) {
+    if (postId && mediaId) {
         res.status(400).json({
             success: false,
-            error: 'Cannot comment on both post and image simultaneously'
+            error: 'Cannot comment on both post and media simultaneously'
         });
         return;
     }
@@ -189,33 +189,33 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
             return;
         }
     }
-    if (imageId) {
-        const image = await index_1.prisma.image.findUnique({
-            where: { id: imageId },
+    if (mediaId) {
+        const media = await index_1.prisma.media.findUnique({
+            where: { id: mediaId },
             include: {
                 author: true
             }
         });
-        if (!image) {
+        if (!media) {
             res.status(404).json({
                 success: false,
-                error: 'Image not found'
+                error: 'Media not found'
             });
             return;
         }
-        const isAuthor = image.authorId === userId;
+        const isAuthor = media.authorId === userId;
         const isFriend = await index_1.prisma.friendRequest.findFirst({
             where: {
                 OR: [
-                    { senderId: userId, receiverId: image.authorId, status: 'ACCEPTED' },
-                    { senderId: image.authorId, receiverId: userId, status: 'ACCEPTED' }
+                    { senderId: userId, receiverId: media.authorId, status: 'ACCEPTED' },
+                    { senderId: media.authorId, receiverId: userId, status: 'ACCEPTED' }
                 ]
             }
         });
         if (!isAuthor && !isFriend) {
             res.status(403).json({
                 success: false,
-                error: 'You can only comment on your own images or friends\' images'
+                error: 'You can only comment on your own media or friends\' media'
             });
             return;
         }
@@ -224,7 +224,7 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         data: {
             content,
             postId,
-            imageId,
+            mediaId,
             parentId,
             authorId: userId
         },

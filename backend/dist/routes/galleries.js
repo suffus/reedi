@@ -41,10 +41,10 @@ router.get('/user/:userId', auth_1.optionalAuthMiddleware, (0, errorHandler_1.as
             include: {
                 _count: {
                     select: {
-                        images: true
+                        media: true
                     }
                 },
-                coverImage: {
+                coverMedia: {
                     select: {
                         id: true,
                         s3Key: true,
@@ -92,10 +92,10 @@ router.get('/my', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async 
             include: {
                 _count: {
                     select: {
-                        images: true
+                        media: true
                     }
                 },
-                coverImage: {
+                coverMedia: {
                     select: {
                         id: true,
                         s3Key: true,
@@ -155,7 +155,7 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         include: {
             _count: {
                 select: {
-                    images: true
+                    media: true
                 }
             }
         }
@@ -180,7 +180,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
                     avatar: true
                 }
             },
-            images: {
+            media: {
                 orderBy: [
                     { order: 'asc' },
                     { createdAt: 'asc' }
@@ -189,15 +189,21 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
                     id: true,
                     s3Key: true,
                     thumbnailS3Key: true,
+                    originalFilename: true,
                     altText: true,
                     caption: true,
                     tags: true,
                     visibility: true,
                     createdAt: true,
-                    order: true
+                    order: true,
+                    width: true,
+                    height: true,
+                    size: true,
+                    mimeType: true,
+                    authorId: true
                 }
             },
-            coverImage: {
+            coverMedia: {
                 select: {
                     id: true,
                     s3Key: true,
@@ -208,7 +214,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
             },
             _count: {
                 select: {
-                    images: true
+                    media: true
                 }
             }
         }
@@ -251,12 +257,12 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
             return;
         }
     }
-    const visibleImages = gallery.images.filter(image => {
-        if (image.visibility === 'PUBLIC')
+    const visibleMedia = gallery.media.filter(media => {
+        if (media.visibility === 'PUBLIC')
             return true;
         if (gallery.authorId === viewerId)
             return true;
-        if (image.visibility === 'FRIENDS_ONLY' && viewerId) {
+        if (media.visibility === 'FRIENDS_ONLY' && viewerId) {
             return true;
         }
         return false;
@@ -266,7 +272,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
         data: {
             gallery: {
                 ...gallery,
-                images: visibleImages
+                media: visibleMedia
             }
         }
     });
@@ -312,10 +318,10 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
         include: {
             _count: {
                 select: {
-                    images: true
+                    media: true
                 }
             },
-            coverImage: {
+            coverMedia: {
                 select: {
                     id: true,
                     s3Key: true,
@@ -361,13 +367,13 @@ router.post('/:id/cover', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler
         return;
     }
     if (imageId) {
-        const image = await index_1.prisma.image.findUnique({
+        const media = await index_1.prisma.media.findUnique({
             where: { id: imageId }
         });
-        if (!image || image.authorId !== userId) {
+        if (!media || media.authorId !== userId) {
             res.status(400).json({
                 success: false,
-                error: 'Invalid image ID'
+                error: 'Invalid media ID'
             });
             return;
         }
@@ -375,10 +381,10 @@ router.post('/:id/cover', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler
     const updatedGallery = await index_1.prisma.gallery.update({
         where: { id },
         data: {
-            coverImageId: imageId || null
+            coverMediaId: imageId || null
         },
         include: {
-            coverImage: {
+            coverMedia: {
                 select: {
                     id: true,
                     s3Key: true,
@@ -430,21 +436,21 @@ router.post('/:id/images', auth_1.authMiddleware, (0, errorHandler_1.asyncHandle
         });
         return;
     }
-    const userImages = await index_1.prisma.image.findMany({
+    const userMedia = await index_1.prisma.media.findMany({
         where: {
             id: { in: imageIds },
             authorId: userId
         },
         select: { id: true }
     });
-    if (userImages.length !== imageIds.length) {
+    if (userMedia.length !== imageIds.length) {
         res.status(400).json({
             success: false,
-            error: 'Some images do not belong to you or do not exist'
+            error: 'Some media do not belong to you or do not exist'
         });
         return;
     }
-    await index_1.prisma.image.updateMany({
+    await index_1.prisma.media.updateMany({
         where: {
             id: { in: imageIds }
         },
@@ -492,7 +498,7 @@ router.delete('/:id/images', auth_1.authMiddleware, (0, errorHandler_1.asyncHand
         });
         return;
     }
-    await index_1.prisma.image.updateMany({
+    await index_1.prisma.media.updateMany({
         where: {
             id: { in: imageIds },
             galleryId: id
@@ -520,7 +526,7 @@ router.put('/:id/images/reorder', auth_1.authMiddleware, (0, errorHandler_1.asyn
     const gallery = await index_1.prisma.gallery.findUnique({
         where: { id },
         include: {
-            images: true
+            media: true
         }
     });
     if (!gallery) {
@@ -537,10 +543,10 @@ router.put('/:id/images/reorder', auth_1.authMiddleware, (0, errorHandler_1.asyn
         });
         return;
     }
-    const galleryImageIds = gallery.images.map(img => img.id);
-    const isValidOrder = imageIds.every((imageId) => galleryImageIds.includes(imageId));
-    const hasAllImages = galleryImageIds.every(imageId => imageIds.includes(imageId));
-    if (!isValidOrder || !hasAllImages) {
+    const galleryMediaIds = gallery.media.map(media => media.id);
+    const isValidOrder = imageIds.every((imageId) => galleryMediaIds.includes(imageId));
+    const hasAllMedia = galleryMediaIds.every(mediaId => imageIds.includes(mediaId));
+    if (!isValidOrder || !hasAllMedia) {
         res.status(400).json({
             success: false,
             error: 'Invalid image order provided'
@@ -548,7 +554,7 @@ router.put('/:id/images/reorder', auth_1.authMiddleware, (0, errorHandler_1.asyn
         return;
     }
     for (let i = 0; i < imageIds.length; i++) {
-        await index_1.prisma.image.update({
+        await index_1.prisma.media.update({
             where: { id: imageIds[i] },
             data: { order: i }
         });

@@ -38,14 +38,55 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
             }
           }
         },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true
+              }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        },
         _count: {
           select: {
             comments: true,
             reactions: true
           }
         },
-        images: {
-          include: { image: true },
+        media: {
+          include: { 
+            media: {
+              select: {
+                id: true,
+                s3Key: true,
+                thumbnailS3Key: true,
+                originalFilename: true,
+                altText: true,
+                caption: true,
+                tags: true,
+                visibility: true,
+                createdAt: true,
+                updatedAt: true,
+                width: true,
+                height: true,
+                size: true,
+                mimeType: true,
+                authorId: true,
+                mediaType: true,
+                processingStatus: true,
+                duration: true,
+                codec: true,
+                bitrate: true,
+                framerate: true,
+                videoUrl: true,
+                videoS3Key: true
+              }
+            }
+          },
           orderBy: { order: 'asc' }
         }
       },
@@ -61,16 +102,16 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
     })
   ])
 
-  // Map images to array of image objects in order
-  const postsWithOrderedImages = posts.map(post => ({
+  // Map media to array of media objects in order
+  const postsWithOrderedMedia = posts.map(post => ({
     ...post,
-    images: post.images.map(pi => pi.image)
+    media: post.media.map(pm => pm.media)
   }))
 
   res.json({
     success: true,
     data: {
-      posts: postsWithOrderedImages,
+      posts: postsWithOrderedMedia,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -175,14 +216,55 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
             }
           }
         },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true
+              }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        },
         _count: {
           select: {
             comments: true,
             reactions: true
           }
         },
-        images: {
-          include: { image: true },
+        media: {
+          include: { 
+            media: {
+              select: {
+                id: true,
+                s3Key: true,
+                thumbnailS3Key: true,
+                originalFilename: true,
+                altText: true,
+                caption: true,
+                tags: true,
+                visibility: true,
+                createdAt: true,
+                updatedAt: true,
+                width: true,
+                height: true,
+                size: true,
+                mimeType: true,
+                authorId: true,
+                mediaType: true,
+                processingStatus: true,
+                duration: true,
+                codec: true,
+                bitrate: true,
+                framerate: true,
+                videoUrl: true,
+                videoS3Key: true
+              }
+            }
+          },
           orderBy: { order: 'asc' }
         }
       },
@@ -248,16 +330,16 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
     })
   ])
 
-  // Map images to array of image objects in order
-  const postsWithOrderedImages = posts.map(post => ({
+  // Map media to array of media objects in order
+  const postsWithOrderedMedia = posts.map(post => ({
     ...post,
-    images: post.images.map(pi => pi.image)
+    media: post.media.map(pm => pm.media)
   }))
 
   res.json({
     success: true,
     data: {
-      posts: postsWithOrderedImages,
+      posts: postsWithOrderedMedia,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -273,7 +355,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
 // Create a new post
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { title, content, visibility, hashtags, mentions, imageIds } = req.body
+  const { title, content, visibility, hashtags, mentions, mediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -283,27 +365,27 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     return
   }
 
-  // Validate that all images belong to the user
-  if (imageIds && imageIds.length > 0) {
-    const userImages = await prisma.image.findMany({
+  // Validate that all media belong to the user
+  if (mediaIds && mediaIds.length > 0) {
+    const userMedia = await prisma.media.findMany({
       where: {
-        id: { in: imageIds },
+        id: { in: mediaIds },
         authorId: userId
       },
       select: { id: true }
     })
 
-    if (userImages.length !== imageIds.length) {
+    if (userMedia.length !== mediaIds.length) {
       res.status(400).json({
         success: false,
-        error: 'Some images do not belong to you or do not exist'
+        error: 'Some media do not belong to you or do not exist'
       })
       return
     }
   }
 
   // Use transaction to ensure atomicity and proper connection management
-  const postWithImages = await prisma.$transaction(async (tx) => {
+  const postWithMedia = await prisma.$transaction(async (tx) => {
     // Create the post
     const post = await tx.post.create({
       data: {
@@ -331,18 +413,18 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
       }
     })
 
-    // Create PostImage records with order if images are provided
-    if (imageIds && imageIds.length > 0) {
-      await tx.postImage.createMany({
-        data: imageIds.map((imageId: string, index: number) => ({
+    // Create PostMedia records with order if media are provided
+    if (mediaIds && mediaIds.length > 0) {
+      await tx.postMedia.createMany({
+        data: mediaIds.map((mediaId: string, index: number) => ({
           postId: post.id,
-          imageId,
+          mediaId,
           order: index
         }))
       })
     }
 
-    // Fetch the complete post with ordered images
+    // Fetch the complete post with ordered media
     return await tx.post.findUnique({
       where: { id: post.id },
       include: {
@@ -355,8 +437,8 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
           }
         },
         hashtags: true,
-        images: {
-          include: { image: true },
+        media: {
+          include: { media: true },
           orderBy: { order: 'asc' }
         }
       }
@@ -366,15 +448,15 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     timeout: 10000, // 10 seconds timeout
   })
 
-  // Map images to array of image objects in order
-  const postWithOrderedImages = {
-    ...postWithImages,
-    images: postWithImages?.images.map(pi => pi.image) || []
+  // Map media to array of media objects in order
+  const postWithOrderedMedia = {
+    ...postWithMedia,
+    media: postWithMedia?.media.map(pm => pm.media) || []
   }
 
   res.status(201).json({
     success: true,
-    data: { post: postWithOrderedImages },
+    data: { post: postWithOrderedMedia },
     message: 'Post created successfully'
   })
 }))
@@ -409,8 +491,36 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
         orderBy: { createdAt: 'asc' }
       },
       reactions: true,
-      images: {
-        include: { image: true },
+      media: {
+        include: { 
+          media: {
+            select: {
+              id: true,
+              s3Key: true,
+              thumbnailS3Key: true,
+              originalFilename: true,
+              altText: true,
+              caption: true,
+              tags: true,
+              visibility: true,
+              createdAt: true,
+              updatedAt: true,
+              width: true,
+              height: true,
+              size: true,
+              mimeType: true,
+              authorId: true,
+              mediaType: true,
+              processingStatus: true,
+              duration: true,
+              codec: true,
+              bitrate: true,
+              framerate: true,
+              videoUrl: true,
+              videoS3Key: true
+            }
+          }
+        },
         orderBy: { order: 'asc' }
       },
       hashtags: true
@@ -450,15 +560,15 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  // Map images to array of image objects in order
-  const postWithOrderedImages = {
+  // Map media to array of media objects in order
+  const postWithOrderedMedia = {
     ...post,
-    images: post.images.map(pi => pi.image)
+    media: post.media.map(pm => pm.media)
   }
 
   res.json({
     success: true,
-    data: { post: postWithOrderedImages }
+    data: { post: postWithOrderedMedia }
   })
 }))
 
@@ -466,7 +576,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { title, content, visibility, hashtags, imageIds } = req.body
+  const { title, content, visibility, hashtags, mediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -496,20 +606,20 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     return
   }
 
-  // Validate that all images belong to the user
-  if (imageIds && imageIds.length > 0) {
-    const userImages = await prisma.image.findMany({
+  // Validate that all media belong to the user
+  if (mediaIds && mediaIds.length > 0) {
+    const userMedia = await prisma.media.findMany({
       where: {
-        id: { in: imageIds },
+        id: { in: mediaIds },
         authorId: userId
       },
       select: { id: true }
     })
 
-    if (userImages.length !== imageIds.length) {
+    if (userMedia.length !== mediaIds.length) {
       res.status(400).json({
         success: false,
-        error: 'Some images do not belong to you or do not exist'
+        error: 'Some media do not belong to you or do not exist'
       })
       return
     }
@@ -542,27 +652,27 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     }
   })
 
-  // Update PostImage records with new order
-  if (imageIds) {
-    // Delete existing PostImage records
-    await prisma.postImage.deleteMany({
+  // Update PostMedia records with new order
+  if (mediaIds) {
+    // Delete existing PostMedia records
+    await prisma.postMedia.deleteMany({
       where: { postId: id }
     })
 
-    // Create new PostImage records with order
-    if (imageIds.length > 0) {
-      await prisma.postImage.createMany({
-        data: imageIds.map((imageId: string, index: number) => ({
+    // Create new PostMedia records with order
+    if (mediaIds.length > 0) {
+      await prisma.postMedia.createMany({
+        data: mediaIds.map((mediaId: string, index: number) => ({
           postId: id,
-          imageId,
+          mediaId,
           order: index
         }))
       })
     }
   }
 
-  // Fetch the post with ordered images
-  const postWithImages = await prisma.post.findUnique({
+  // Fetch the post with ordered media
+  const postWithMedia = await prisma.post.findUnique({
     where: { id },
     include: {
       author: {
@@ -574,22 +684,22 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
         }
       },
       hashtags: true,
-      images: {
-        include: { image: true },
+      media: {
+        include: { media: true },
         orderBy: { order: 'asc' }
       }
     }
   })
 
-  // Map images to array of image objects in order
-  const postWithOrderedImages = {
-    ...postWithImages,
-    images: postWithImages?.images.map(pi => pi.image) || []
+  // Map media to array of media objects in order
+  const postWithOrderedMedia = {
+    ...postWithMedia,
+    media: postWithMedia?.media.map(pm => pm.media) || []
   }
 
   res.json({
     success: true,
-    data: { post: postWithOrderedImages },
+    data: { post: postWithOrderedMedia },
     message: 'Post updated successfully'
   })
 }))
@@ -787,11 +897,11 @@ router.delete('/:postId/reactions', authMiddleware, asyncHandler(async (req: Aut
   })
 }))
 
-// Reorder images in a post
-router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+// Reorder media in a post
+router.put('/:id/media/reorder', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { imageIds } = req.body
+  const { mediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -804,8 +914,8 @@ router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: Authe
   const post = await prisma.post.findUnique({
     where: { id },
     include: {
-      images: {
-        include: { image: true },
+      media: {
+        include: { media: true },
         orderBy: { order: 'asc' }
       }
     }
@@ -822,30 +932,30 @@ router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: Authe
   if (post.authorId !== userId) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to reorder images in this post'
+      error: 'Not authorized to reorder media in this post'
     })
     return
   }
 
-  // Validate that all provided image IDs belong to this post
-  const postImageIds = post.images.map(pi => pi.image.id)
-  const isValidOrder = imageIds.every((imageId: string) => postImageIds.includes(imageId))
-  const hasAllImages = postImageIds.every(imageId => imageIds.includes(imageId))
+  // Validate that all provided media IDs belong to this post
+  const postMediaIds = post.media.map(pm => pm.media.id)
+  const isValidOrder = mediaIds.every((mediaId: string) => postMediaIds.includes(mediaId))
+  const hasAllMedia = postMediaIds.every(mediaId => mediaIds.includes(mediaId))
 
-  if (!isValidOrder || !hasAllImages) {
+  if (!isValidOrder || !hasAllMedia) {
     res.status(400).json({
       success: false,
-      error: 'Invalid image order provided'
+      error: 'Invalid media order provided'
     })
     return
   }
 
-  // Update the order of PostImage records
-  for (let i = 0; i < imageIds.length; i++) {
-    await prisma.postImage.updateMany({
+  // Update the order of PostMedia records
+  for (let i = 0; i < mediaIds.length; i++) {
+    await prisma.postMedia.updateMany({
       where: {
         postId: id,
-        imageId: imageIds[i]
+        mediaId: mediaIds[i]
       },
       data: {
         order: i
@@ -855,7 +965,7 @@ router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: Authe
 
   res.json({
     success: true,
-    message: 'Image order updated successfully'
+    message: 'Media order updated successfully'
   })
 }))
   
@@ -916,22 +1026,22 @@ router.patch('/:id/status', authMiddleware, asyncHandler(async (req: Authenticat
           avatar: true
         }
       },
-      images: {
-        include: { image: true },
+      media: {
+        include: { media: true },
         orderBy: { order: 'asc' }
       }
     }
   })
 
-  // Map images to array of image objects in order
-  const postWithOrderedImages = {
+  // Map media to array of media objects in order
+  const postWithOrderedMedia = {
     ...updatedPost,
-    images: updatedPost.images.map(pi => pi.image)
+    media: updatedPost.media.map(pm => pm.media)
   }
 
   res.json({
     success: true,
-    data: { post: postWithOrderedImages },
+    data: { post: postWithOrderedMedia },
     message: 'Post status updated successfully'
   })
 }))
@@ -994,22 +1104,22 @@ router.patch('/:id/visibility', authMiddleware, asyncHandler(async (req: Authent
           avatar: true
         }
       },
-      images: {
-        include: { image: true },
+      media: {
+        include: { media: true },
         orderBy: { order: 'asc' }
       }
     }
   })
 
-  // Map images to array of image objects in order
-  const postWithOrderedImages = {
+  // Map media to array of media objects in order
+  const postWithOrderedMedia = {
     ...updatedPost,
-    images: updatedPost.images.map(pi => pi.image)
+    media: updatedPost.media.map(pm => pm.media)
   }
 
   res.json({
     success: true,
-    data: { post: postWithOrderedImages },
+    data: { post: postWithOrderedMedia },
     message: 'Post visibility updated successfully'
   })
 }))
@@ -1105,8 +1215,8 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
             reactions: true
           }
         },
-        images: {
-          include: { image: true },
+        media: {
+          include: { media: true },
           orderBy: { order: 'asc' }
         }
       },
@@ -1119,15 +1229,15 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
 
   console.log('Found posts:', posts.length, 'Total:', total)
 
-  const postsWithOrderedImages = posts.map(post => ({
+  const postsWithOrderedMedia = posts.map(post => ({
     ...post,
-    images: (post.images || []).map((pi: any) => pi.image)
+    media: (post.media || []).map((pm: any) => pm.media)
   }))
 
   res.json({
     success: true,
     data: {
-      posts: postsWithOrderedImages,
+      posts: postsWithOrderedMedia,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -1160,9 +1270,9 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
             avatar: true
           }
         },
-        images: {
+        media: {
           include: {
-            image: true
+            media: true
           }
         },
         hashtags: true,
@@ -1187,7 +1297,7 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
 
   const formattedPosts = posts.map(post => ({
     ...post,
-    images: post.images.map(pi => pi.image)
+    media: post.media.map(pi => pi.media)
   }))
 
   res.json({

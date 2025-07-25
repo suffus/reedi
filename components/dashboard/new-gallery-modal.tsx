@@ -3,9 +3,11 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus } from 'lucide-react'
-import { useCreateGallery, useAddImagesToGallery, useUserImages } from '../../lib/api-hooks'
-import { ImageBrowser } from '../image-browser'
-import { useImageSelection } from '../../lib/hooks/use-image-selection'
+import { useCreateGallery, useAddMediaToGallery, useUserMedia } from '../../lib/api-hooks'
+import { MediaGrid } from '../media-grid'
+import { Media } from '@/lib/types'
+import { mapMediaData } from '@/lib/media-utils'
+import { getMediaUrlFromMedia } from '@/lib/api'
 
 interface NewGalleryModalProps {
   isOpen: boolean
@@ -21,15 +23,11 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
-  // Use the reusable image selection hook
-  const {
-    selectedImages,
-    toggleImage,
-    clearSelection
-  } = useImageSelection([], { allowMultiple: true })
+  // Media selection state
+  const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
 
   const createGalleryMutation = useCreateGallery()
-  const addImagesToGalleryMutation = useAddImagesToGallery()
+  const addMediaToGalleryMutation = useAddMediaToGallery()
   
   const { 
     data: galleryData, 
@@ -38,9 +36,17 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
     hasMore, 
     isLoadingMore,
     reset
-  } = useUserImages(userId)
+  } = useUserMedia(userId)
   
-  const galleryImages = galleryData?.data?.images || []
+  // Map the raw media to our frontend format
+  const galleryMedia = (galleryData?.data?.media || []).map((mediaItem: any) => {
+    const mapped = mapMediaData(mediaItem)
+    return {
+      ...mapped,
+      url: getMediaUrlFromMedia(mapped, false),
+      thumbnail: getMediaUrlFromMedia(mapped, true),
+    }
+  })
 
   const handleCreateGallery = async () => {
     if (!galleryName.trim()) {
@@ -56,11 +62,11 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
         visibility: galleryVisibility
       })
 
-      // If images are selected, add them to the gallery
-      if (selectedImages.length > 0) {
-        await addImagesToGalleryMutation.mutateAsync({
+      // If media is selected, add it to the gallery
+      if (selectedMedia.length > 0) {
+        await addMediaToGalleryMutation.mutateAsync({
           galleryId: galleryResult.data.gallery.id,
-          imageIds: selectedImages.map(img => img.id)
+          mediaIds: selectedMedia.map(media => media.id)
         })
       }
 
@@ -68,7 +74,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
       setGalleryName('')
       setGalleryDescription('')
       setGalleryVisibility('PUBLIC')
-      clearSelection()
+      setSelectedMedia([])
       setSearchQuery('')
       onClose()
       onGalleryCreated?.()
@@ -105,7 +111,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Create New Gallery</h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  Select images from your collection to create a new gallery
+                  Select media from your collection to create a new gallery
                 </p>
               </div>
               <button
@@ -188,36 +194,38 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                 </div>
               </div>
 
-              {/* Image Selection */}
+              {/* Media Selection */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900">Select Images</h3>
+                    <h3 className="text-lg font-medium text-gray-900">Select Media</h3>
                     <p className="text-sm text-gray-600">
-                      {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                      {selectedMedia.length} media item{selectedMedia.length !== 1 ? 's' : ''} selected
                     </p>
                   </div>
                 </div>
 
-                {/* Use our reusable ImageBrowser component */}
-                <ImageBrowser
-                  images={galleryImages}
-                  hasMore={hasMore}
-                  isLoading={galleryLoading}
-                  onLoadMore={loadMore}
-                  selectedImages={selectedImages}
-                  onImageSelect={toggleImage}
+                {/* Use our reusable MediaGrid component */}
+                <MediaGrid
+                  media={galleryMedia}
                   viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                  searchQuery={searchQuery}
-                  onSearchChange={setSearchQuery}
-                  showSearch={true}
-                  showSelection={true}
-                  showAuthor={false}
+                  selectedMedia={selectedMedia}
+                  onMediaSelect={(media) => {
+                    setSelectedMedia(prev => {
+                      const isSelected = prev.some(m => m.id === media.id)
+                      if (isSelected) {
+                        return prev.filter(m => m.id !== media.id)
+                      } else {
+                        return [...prev, media]
+                      }
+                    })
+                  }}
+                  isSelectable={true}
+                  showActions={false}
+                  showMediaInfo={true}
+                  showDate={true}
                   showTags={true}
                   showViewModeToggle={true}
-                  searchPlaceholder="Search your images..."
-                  emptyMessage="No images in your collection"
                 />
               </div>
             </div>
@@ -225,7 +233,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
             {/* Footer */}
             <div className="flex items-center justify-between p-6 border-t border-gray-200">
               <div className="text-sm text-gray-600">
-                {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                {selectedMedia.length} media item{selectedMedia.length !== 1 ? 's' : ''} selected
               </div>
               <div className="flex space-x-3">
                 <button

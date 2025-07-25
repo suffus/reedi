@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useCallback } from 'react'
-import { API_BASE_URL, getAuthHeaders, getImageUrl } from './api'
-import { GalleryImage, Comment } from './types'
+import { API_BASE_URL, getAuthHeaders, getImageUrl, API_ENDPOINTS } from './api'
+import { GalleryMedia, Comment } from './types'
 
 // Helper functions to safely access localStorage
 const getToken = () => {
@@ -50,7 +50,7 @@ interface Post {
   author: User
   comments: PostComment[]
   reactions: Reaction[]
-  images: Image[]
+  media: Media[]
   hashtags: Hashtag[]
   _count: {
     comments: number
@@ -81,7 +81,7 @@ interface Reaction {
   author: User
 }
 
-interface Image {
+interface Media {
   id: string
   url: string
   thumbnail: string | null
@@ -91,12 +91,19 @@ interface Image {
   height: number | null
   size: number | null
   mimeType: string | null
-  postId: string | null
-  authorId: string
-  galleryId: string | null
+  tags: string[]
   visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
+  mediaType: 'IMAGE' | 'VIDEO'
+  processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+  duration?: number | null
+  codec?: string | null
+  bitrate?: number | null
+  framerate?: number | null
+  videoUrl?: string | null
+  videoS3Key?: string | null
   createdAt: string
   updatedAt: string
+  authorId: string
 }
 
 interface Hashtag {
@@ -312,7 +319,7 @@ export const useCreatePost = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (postData: { title?: string; content: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; hashtags?: string[]; imageIds?: string[] }) => {
+    mutationFn: async (postData: { title?: string; content: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; hashtags?: string[]; mediaIds?: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
@@ -385,7 +392,7 @@ export const useCreateComment = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (commentData: { content: string; postId?: string; imageId?: string; parentId?: string }) => {
+    mutationFn: async (commentData: { content: string; postId?: string; mediaId?: string; parentId?: string }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
@@ -405,44 +412,44 @@ export const useCreateComment = () => {
         queryClient.invalidateQueries({ queryKey: ['comments', variables.postId] })
         queryClient.invalidateQueries({ queryKey: ['posts'] })
       }
-      if (variables.imageId) {
-        queryClient.invalidateQueries({ queryKey: ['comments', 'image', variables.imageId] })
-        queryClient.invalidateQueries({ queryKey: ['images'] })
+      if (variables.mediaId) {
+        queryClient.invalidateQueries({ queryKey: ['comments', 'media', variables.mediaId] })
+        queryClient.invalidateQueries({ queryKey: ['media'] })
       }
     }
   })
 }
 
-export const useImageComments = (imageId: string) => {
+export const useMediaComments = (mediaId: string) => {
   const isClient = useIsClient()
   
   return useQuery({
-    queryKey: ['comments', 'image', imageId],
+    queryKey: ['comments', 'media', mediaId],
     queryFn: async () => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/comments/image/${imageId}`, {
+      const response = await fetch(`${API_BASE_URL}/comments/media/${mediaId}`, {
         headers: getAuthHeaders(token)
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to fetch image comments')
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch media comments')
       
       return data
     },
-    enabled: isClient && hasToken() && !!imageId
+    enabled: isClient && hasToken() && !!mediaId
   })
 }
 
-export const usePublicUserImages = (identifier: string, page = 1, limit = 20) => {
+export const usePublicUserMedia = (identifier: string, page = 1, limit = 20) => {
   return useQuery({
-    queryKey: ['images', 'user', 'public', identifier, page, limit],
+    queryKey: ['media', 'user', 'public', identifier, page, limit],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/images/user/${identifier}/public?page=${page}&limit=${limit}`)
+      const response = await fetch(`${API_ENDPOINTS.MEDIA.PUBLIC_USER(identifier)}?page=${page}&limit=${limit}`)
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to fetch public user images')
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch public user media')
       
       return data
     },
@@ -450,75 +457,75 @@ export const usePublicUserImages = (identifier: string, page = 1, limit = 20) =>
   })
 }
 
-// Infinite scroll user images hook
-export const useUserImages = (userId: string) => {
+// Infinite scroll user media hook
+export const useUserMedia = (userId: string) => {
   const isClient = useIsClient()
-  const [allImages, setAllImages] = useState<any[]>([])
+  const [allMedia, setAllMedia] = useState<any[]>([])
   const [hasMore, setHasMore] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
-  const [totalImages, setTotalImages] = useState(0)
+  const [totalMedia, setTotalMedia] = useState(0)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [nextPageSize, setNextPageSize] = useState(20) // Default page size
   
-  // Function to update a specific image in the local state
-  const updateImage = useCallback((imageId: string, updates: Partial<any>) => {
-    setAllImages(prev => 
-      prev.map(img => 
-        img.id === imageId ? { ...img, ...updates } : img
+  // Function to update a specific media in the local state
+  const updateMedia = useCallback((mediaId: string, updates: Partial<any>) => {
+    setAllMedia(prev => 
+      prev.map(media => 
+        media.id === mediaId ? { ...media, ...updates } : media
       )
     )
   }, [])
   
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['images', 'user', userId, currentPage],
+    queryKey: ['media', 'user', userId, currentPage],
     queryFn: async () => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/images/user/${userId}?page=${currentPage}&limit=20`, {
+      const response = await fetch(`${API_ENDPOINTS.MEDIA.USER(userId)}?page=${currentPage}&limit=20`, {
         headers: getAuthHeaders(token)
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to fetch images')
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch media')
       
       return data
     },
     enabled: isClient && hasToken() && !!userId
   })
 
-  // Update accumulated images when new data arrives
+  // Update accumulated media when new data arrives
   useEffect(() => {
     if (data?.data) {
-      const newImages = data.data.images || []
+      const newMedia = data.data.media || []
       const pagination = data.data.pagination
       
       if (currentPage === 1) {
-        // First page - replace all images
-        setAllImages(newImages)
+        // First page - replace all media
+        setAllMedia(newMedia)
       } else {
-        // Subsequent pages - append new images, avoiding duplicates
-        setAllImages(prev => {
-          const existingIds = new Set(prev.map((img: any) => img.id))
-          const uniqueNewImages = newImages.filter((img: any) => !existingIds.has(img.id))
-          return [...prev, ...uniqueNewImages]
+        // Subsequent pages - append new media, avoiding duplicates
+        setAllMedia(prev => {
+          const existingIds = new Set(prev.map((media: any) => media.id))
+          const uniqueNewMedia = newMedia.filter((media: any) => !existingIds.has(media.id))
+          return [...prev, ...uniqueNewMedia]
         })
       }
       
-      setTotalImages(pagination?.total || 0)
+      setTotalMedia(pagination?.total || 0)
       setHasMore(pagination?.hasNext || false)
       
       // Calculate next page size for predictive loading
       if (pagination?.total && pagination?.hasNext) {
-        const remainingImages = pagination.total - allImages.length - newImages.length
-        const nextSize = Math.min(20, remainingImages) // Max 20 per page
+        const remainingMedia = pagination.total - allMedia.length - newMedia.length
+        const nextSize = Math.min(20, remainingMedia) // Max 20 per page
         setNextPageSize(nextSize)
       }
       
       // Stop loading immediately since we're using lazy loading
       setIsLoadingMore(false)
     }
-  }, [data, currentPage, allImages.length])
+  }, [data, currentPage, allMedia.length])
 
   const loadMore = useCallback(() => {
     if (hasMore && !isFetching && !isLoadingMore) {
@@ -528,19 +535,19 @@ export const useUserImages = (userId: string) => {
   }, [hasMore, isFetching, isLoadingMore, currentPage])
 
   const reset = useCallback(() => {
-    setAllImages([])
+    setAllMedia([])
     setHasMore(true)
     setCurrentPage(1)
-    setTotalImages(0)
+    setTotalMedia(0)
     setIsLoadingMore(false)
   }, [])
 
   return {
     data: {
       data: {
-        images: allImages,
+        media: allMedia,
         pagination: {
-          total: totalImages,
+          total: totalMedia,
           hasNext: hasMore
         }
       }
@@ -553,11 +560,11 @@ export const useUserImages = (userId: string) => {
     hasMore,
     isLoadingMore,
     nextPageSize,
-    updateImage
+    updateMedia
   }
 }
 
-export const useUploadImage = () => {
+export const useUploadMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
@@ -565,7 +572,7 @@ export const useUploadImage = () => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/images/upload`, {
+      const response = await fetch(`${API_ENDPOINTS.MEDIA.UPLOAD}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -574,67 +581,67 @@ export const useUploadImage = () => {
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to upload image')
+      if (!response.ok) throw new Error(data.error || 'Failed to upload media')
       
       return data
     },
     onSuccess: (data, variables) => {
-      // Extract userId from form data to invalidate specific user's images
+      // Extract userId from form data to invalidate specific user's media
       const userId = variables.get('userId') as string
       console.log('Upload successful, invalidating queries for userId:', userId)
       if (userId) {
         // Invalidate queries but don't remove them - this will trigger refetch while keeping old data visible
         queryClient.invalidateQueries({ 
-          queryKey: ['images', 'user', userId],
+          queryKey: ['media', 'user', userId],
           exact: false 
         })
-        console.log('Invalidated user image queries')
+        console.log('Invalidated user media queries')
         
         // Force a fresh fetch after a short delay to ensure DB transaction is committed
         setTimeout(() => {
           queryClient.refetchQueries({ 
-            queryKey: ['images', 'user', userId],
+            queryKey: ['media', 'user', userId],
             exact: false 
           })
-          console.log('Forced fresh fetch of user images')
+          console.log('Forced fresh fetch of user media')
         }, 500)
       }
-      // Also invalidate general images queries
-      queryClient.invalidateQueries({ queryKey: ['images'] })
-      console.log('Invalidated general image queries')
+      // Also invalidate general media queries
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+      console.log('Invalidated general media queries')
     }
   })
 }
 
-export const useUpdateImage = () => {
+export const useUpdateMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ imageId, title, description, tags, onOptimisticUpdate }: { 
-      imageId: string; 
+    mutationFn: async ({ mediaId, title, description, tags, onOptimisticUpdate }: { 
+      mediaId: string; 
       title?: string; 
       description?: string;
       tags?: string[];
-      onOptimisticUpdate?: (imageId: string, updates: any) => void;
+      onOptimisticUpdate?: (mediaId: string, updates: any) => void;
     }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/images/${imageId}`, {
+      const response = await fetch(`${API_ENDPOINTS.MEDIA.UPDATE(mediaId)}`, {
         method: 'PUT',
         headers: getAuthHeaders(token),
         body: JSON.stringify({ title, description, tags })
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to update image')
+      if (!response.ok) throw new Error(data.error || 'Failed to update media')
       
       return data
     },
-    onMutate: async ({ imageId, title, description, tags, onOptimisticUpdate }) => {
+    onMutate: async ({ mediaId, title, description, tags, onOptimisticUpdate }) => {
       // Apply optimistic update to local state if callback provided
       if (onOptimisticUpdate) {
-        onOptimisticUpdate(imageId, {
+        onOptimisticUpdate(mediaId, {
           altText: title || null,
           caption: description || null,
           title: title || null,
@@ -644,50 +651,50 @@ export const useUpdateImage = () => {
       }
       
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['images'] })
+      await queryClient.cancelQueries({ queryKey: ['media'] })
       
       // Snapshot the previous value
-      const previousImages = queryClient.getQueriesData({ queryKey: ['images'] })
+      const previousMedia = queryClient.getQueriesData({ queryKey: ['media'] })
       
-      return { previousImages, onOptimisticUpdate }
+      return { previousMedia, onOptimisticUpdate }
     },
     onError: (err, variables, context) => {
       // If the mutation fails, we could rollback the optimistic update
       // but since we're using local state, we'll just let the error be handled
-      console.error('Failed to update image:', err)
+      console.error('Failed to update media:', err)
     },
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
-      queryClient.invalidateQueries({ queryKey: ['images'] })
+      queryClient.invalidateQueries({ queryKey: ['media'] })
     }
   })
 }
 
-export const useBulkUpdateImages = () => {
+export const useBulkUpdateMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
     mutationFn: async ({ 
-      imageIds, 
+      mediaIds, 
       title, 
       description, 
       tags, 
       mergeTags = false,
       onOptimisticUpdate 
     }: { 
-      imageIds: string[]; 
+      mediaIds: string[]; 
       title?: string; 
       description?: string;
       tags?: string[];
       mergeTags?: boolean;
-      onOptimisticUpdate?: (imageId: string, updates: any) => void;
+      onOptimisticUpdate?: (mediaId: string, updates: any) => void;
     }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      // Update each image individually since there's no bulk endpoint
+      // Update each media individually since there's no bulk endpoint
       const results = await Promise.all(
-        imageIds.map(async (imageId) => {
+        mediaIds.map(async (mediaId) => {
           // Build the update payload - only include fields that are provided
           const updatePayload: any = {}
           
@@ -699,7 +706,7 @@ export const useBulkUpdateImages = () => {
           }
           if (tags !== undefined) {
             if (mergeTags) {
-              // For merging tags, we need to get the current image data first
+              // For merging tags, we need to get the current media data first
               // This will be handled by the backend, but we send a flag
               updatePayload.tags = tags
               updatePayload.mergeTags = true
@@ -708,25 +715,25 @@ export const useBulkUpdateImages = () => {
             }
           }
           
-          const response = await fetch(`${API_BASE_URL}/images/${imageId}`, {
+          const response = await fetch(`${API_ENDPOINTS.MEDIA.UPDATE(mediaId)}`, {
             method: 'PUT',
             headers: getAuthHeaders(token),
             body: JSON.stringify(updatePayload)
           })
           
           const data = await response.json()
-          if (!response.ok) throw new Error(data.error || `Failed to update image ${imageId}`)
+          if (!response.ok) throw new Error(data.error || `Failed to update media ${mediaId}`)
           
-          return { imageId, data }
+          return { mediaId, data }
         })
       )
       
       return results
     },
-    onMutate: async ({ imageIds, title, description, tags, mergeTags, onOptimisticUpdate }) => {
+    onMutate: async ({ mediaIds, title, description, tags, mergeTags, onOptimisticUpdate }) => {
       // Apply optimistic updates to local state if callback provided
       if (onOptimisticUpdate) {
-        imageIds.forEach(imageId => {
+        mediaIds.forEach(mediaId => {
           const updates: any = {}
           
           if (title !== undefined) {
@@ -747,69 +754,69 @@ export const useBulkUpdateImages = () => {
             }
           }
           
-          onOptimisticUpdate(imageId, updates)
+          onOptimisticUpdate(mediaId, updates)
         })
       }
       
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['images'] })
+      await queryClient.cancelQueries({ queryKey: ['media'] })
       
       // Snapshot the previous value
-      const previousImages = queryClient.getQueriesData({ queryKey: ['images'] })
+      const previousMedia = queryClient.getQueriesData({ queryKey: ['media'] })
       
-      return { previousImages, onOptimisticUpdate }
+      return { previousMedia, onOptimisticUpdate }
     },
     onError: (err, variables, context) => {
-      console.error('Failed to bulk update images:', err)
+      console.error('Failed to bulk update media:', err)
     },
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
-      queryClient.invalidateQueries({ queryKey: ['images'] })
+      queryClient.invalidateQueries({ queryKey: ['media'] })
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
     }
   })
 }
 
-export const useDeleteImage = () => {
+export const useDeleteMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (imageId: string) => {
+    mutationFn: async (mediaId: string) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/images/${imageId}`, {
+      const response = await fetch(`${API_ENDPOINTS.MEDIA.DELETE(mediaId)}`, {
         method: 'DELETE',
         headers: getAuthHeaders(token)
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to delete image')
+      if (!response.ok) throw new Error(data.error || 'Failed to delete media')
       
       return data
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['images'] })
+      queryClient.invalidateQueries({ queryKey: ['media'] })
     }
   })
 }
 
-export const useReorderPostImages = () => {
+export const useReorderPostMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ postId, imageIds }: { postId: string; imageIds: string[] }) => {
+    mutationFn: async ({ postId, mediaIds }: { postId: string; mediaIds: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/posts/${postId}/images/reorder`, {
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/media/reorder`, {
         method: 'PUT',
         headers: getAuthHeaders(token),
-        body: JSON.stringify({ imageIds })
+        body: JSON.stringify({ mediaIds })
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to reorder images')
+      if (!response.ok) throw new Error(data.error || 'Failed to reorder media')
       
       return data
     },
@@ -873,12 +880,12 @@ export const useUpdatePostVisibility = () => {
   })
 }
 
-// Search images by tags across all users
-export const useSearchImagesByTags = (tags: string[], page = 1, limit = 20) => {
+// Search media by tags across all users
+export const useSearchMediaByTags = (tags: string[], page = 1, limit = 20) => {
   const isClient = useIsClient()
   
   return useQuery({
-    queryKey: ['searchImagesByTags', tags, page, limit],
+    queryKey: ['searchMediaByTags', tags, page, limit],
     queryFn: async () => {
       const token = getToken()
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -887,13 +894,13 @@ export const useSearchImagesByTags = (tags: string[], page = 1, limit = 20) => {
       }
       
       const tagsParam = tags.join(',')
-      const response = await fetch(`${API_BASE_URL}/search/images/tags?tags=${encodeURIComponent(tagsParam)}&page=${page}&limit=${limit}`, {
+      const response = await fetch(`${API_ENDPOINTS.MEDIA.SEARCH_TAGS}?tags=${encodeURIComponent(tagsParam)}&page=${page}&limit=${limit}`, {
         headers
       })
       
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Failed to search images by tags')
+        throw new Error(error.error || 'Failed to search media by tags')
       }
       
       return response.json()
@@ -1053,56 +1060,56 @@ export const useDeleteGallery = () => {
   })
 }
 
-export const useAddImagesToGallery = () => {
+export const useAddMediaToGallery = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ galleryId, imageIds }: { galleryId: string; imageIds: string[] }) => {
+    mutationFn: async ({ galleryId, mediaIds }: { galleryId: string; mediaIds: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/images`, {
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/media`, {
         method: 'POST',
         headers: getAuthHeaders(token),
-        body: JSON.stringify({ imageIds })
+        body: JSON.stringify({ mediaIds })
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to add images to gallery')
+      if (!response.ok) throw new Error(data.error || 'Failed to add media to gallery')
       
       return data
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
-      queryClient.invalidateQueries({ queryKey: ['images'] })
+      queryClient.invalidateQueries({ queryKey: ['media'] })
     }
   })
 }
 
-export const useRemoveImagesFromGallery = () => {
+export const useRemoveMediaFromGallery = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ galleryId, imageIds }: { galleryId: string; imageIds: string[] }) => {
+    mutationFn: async ({ galleryId, mediaIds }: { galleryId: string; mediaIds: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/images`, {
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/media`, {
         method: 'DELETE',
         headers: getAuthHeaders(token),
-        body: JSON.stringify({ imageIds })
+        body: JSON.stringify({ mediaIds })
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to remove images from gallery')
+      if (!response.ok) throw new Error(data.error || 'Failed to remove media from gallery')
       
       return data
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
-      queryClient.invalidateQueries({ queryKey: ['images'] })
+      queryClient.invalidateQueries({ queryKey: ['media'] })
     }
   })
 }
@@ -1111,14 +1118,14 @@ export const useSetGalleryCover = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ galleryId, imageId }: { galleryId: string; imageId?: string }) => {
+    mutationFn: async ({ galleryId, mediaId }: { galleryId: string; mediaId?: string }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
       const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/cover`, {
         method: 'POST',
         headers: getAuthHeaders(token),
-        body: JSON.stringify({ imageId })
+        body: JSON.stringify({ mediaId })
       })
       
       const data = await response.json()
@@ -1133,21 +1140,21 @@ export const useSetGalleryCover = () => {
   })
 }
 
-export const useReorderGalleryImages = () => {
+export const useReorderGalleryMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ galleryId, imageIds }: { galleryId: string; imageIds: string[] }) => {
+    mutationFn: async ({ galleryId, mediaIds }: { galleryId: string; mediaIds: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      console.log('Making reorder API call to:', `${API_BASE_URL}/galleries/${galleryId}/images/reorder`)
-      console.log('With imageIds:', imageIds)
+      console.log('Making reorder API call to:', `${API_BASE_URL}/galleries/${galleryId}/media/reorder`)
+      console.log('With mediaIds:', mediaIds)
       
-      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/images/reorder`, {
+      const response = await fetch(`${API_BASE_URL}/galleries/${galleryId}/media/reorder`, {
         method: 'PUT',
         headers: getAuthHeaders(token),
-        body: JSON.stringify({ imageIds })
+        body: JSON.stringify({ mediaIds })
       })
       
       console.log('Response status:', response.status)

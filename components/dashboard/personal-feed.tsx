@@ -4,13 +4,13 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostImages } from '../../lib/api-hooks'
-import { ImageDetailModal } from './image-detail-modal'
+import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostMedia } from '../../lib/api-hooks'
+import { MediaDetailModal } from './media-detail-modal'
 import { PostMenu } from './post-menu'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { PostAuthorForm } from './post-author-form'
-import { getImageUrl, getImageUrlFromImage } from '../../lib/api'
-import { LazyImage } from '../lazy-image'
+import { getMediaUrl, getMediaUrlFromMedia } from '../../lib/api'
+import { LazyMedia } from '../lazy-media'
 
 interface Post {
   id: string
@@ -18,14 +18,30 @@ interface Post {
   publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
   visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   authorId: string
-  images: {
+  media: {
     id: string
-    url: string
-    thumbnail?: string | null
+    s3Key: string
+    thumbnailS3Key?: string | null
+    originalFilename?: string | null
     altText?: string | null
     caption?: string | null
+    tags?: string[]
+    visibility?: string
+    createdAt?: string
+    updatedAt?: string
     width?: number | null
     height?: number | null
+    size?: number | null
+    mimeType?: string | null
+    authorId?: string
+    mediaType: 'IMAGE' | 'VIDEO'
+    processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+    duration?: number | null
+    codec?: string | null
+    bitrate?: number | null
+    framerate?: number | null
+    videoUrl?: string | null
+    videoS3Key?: string | null
   }[]
   createdAt: string
   author: {
@@ -68,13 +84,77 @@ interface Comment {
   }
 }
 
+// Separate component for comment input to prevent post re-renders
+function CommentInput({ 
+  postId, 
+  onAddComment, 
+  isPending, 
+  user, 
+  authLoading 
+}: { 
+  postId: string
+  onAddComment: (postId: string, content: string) => void
+  isPending: boolean
+  user: any
+  authLoading: boolean
+}) {
+  const [commentText, setCommentText] = useState('')
+
+  const handleSubmit = () => {
+    const trimmedContent = commentText.trim()
+    if (!trimmedContent) return
+    
+    onAddComment(postId, trimmedContent)
+    setCommentText('')
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
+
+  return (
+    <div className="flex space-x-3">
+      <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-accent-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+        {authLoading ? (
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : user?.avatar ? (
+          <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
+        ) : user?.name ? (
+          user.name.charAt(0).toUpperCase()
+        ) : (
+          <User className="h-4 w-4" />
+        )}
+      </div>
+      <div className="flex-1 flex space-x-2">
+        <input
+          type="text"
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Write a comment..."
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!commentText.trim() || isPending}
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isPending ? '...' : <Send className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function PersonalFeed() {
   const router = useRouter()
-  const [newComments, setNewComments] = useState<{ [postId: string]: string }>({})
   const [showComments, setShowComments] = useState<{ [postId: string]: boolean }>({})
-  const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
-  const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false)
-  const [currentPostImages, setCurrentPostImages] = useState<any[]>([])
+  const [selectedMediaForDetail, setSelectedMediaForDetail] = useState<any>(null)
+  const [isMediaDetailModalOpen, setIsMediaDetailModalOpen] = useState(false)
+  const [currentPostMedia, setCurrentPostMedia] = useState<any[]>([])
   const [currentPostId, setCurrentPostId] = useState<string | null>(null)
 
   const { data: authData, isLoading: authLoading } = useAuth()
@@ -84,7 +164,7 @@ export function PersonalFeed() {
   const { data: postsData, isLoading } = usePostsFeed()
   const postReactionMutation = usePostReaction()
   const createCommentMutation = useCreateComment()
-  const reorderImagesMutation = useReorderPostImages()
+  const reorderMediaMutation = useReorderPostMedia()
 
   const posts = postsData?.data?.posts || []
 
@@ -96,16 +176,12 @@ export function PersonalFeed() {
     }
   }
 
-  const handleAddComment = async (postId: string) => {
-    const commentContent = newComments[postId]?.trim()
-    if (!commentContent) return
-
+  const handleAddComment = async (postId: string, content: string) => {
     try {
       await createCommentMutation.mutateAsync({
-        content: commentContent,
+        content,
         postId
       })
-      setNewComments(prev => ({ ...prev, [postId]: '' }))
     } catch (error) {
       console.error('Failed to add comment:', error)
     }
@@ -142,13 +218,13 @@ export function PersonalFeed() {
     router.push(`/user/${identifier}`)
   }
 
-  const handleImageClick = async (image: any, postId?: string, postImages?: any[]) => {
+  const handleMediaClick = async (media: any, postId?: string, postMedia?: any[]) => {
     try {
-      // Fetch complete image data from backend
+      // Fetch complete media data from backend
       const token = localStorage.getItem('token')
       if (!token) return
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api'}/images/${image.id}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api'}/media/${media.id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -156,139 +232,150 @@ export function PersonalFeed() {
       })
       
       if (!response.ok) {
-        throw new Error('Failed to fetch image details')
+        throw new Error('Failed to fetch media details')
       }
       
       const data = await response.json()
       if (data.success) {
-        // Map the backend image data to the format expected by ImageDetailModal
-        const mappedImage = {
-          id: data.data.image.id,
-          s3Key: data.data.image.s3Key || data.data.image.url,
-          thumbnailS3Key: data.data.image.thumbnailS3Key || data.data.image.thumbnail || data.data.image.url,
-          url: data.data.image.s3Key || data.data.image.url, // Keep for backward compatibility
-          thumbnail: data.data.image.thumbnailS3Key || data.data.image.thumbnail || data.data.image.url, // Keep for backward compatibility
-          title: data.data.image.altText || data.data.image.title,
-          description: data.data.image.caption || data.data.image.description,
-          createdAt: data.data.image.createdAt,
-          authorId: data.data.image.authorId,
-          tags: data.data.image.tags || [],
+        // Map the backend media data to the format expected by MediaDetailModal
+        const mappedMedia = {
+          id: data.data.media.id,
+          s3Key: data.data.media.s3Key || data.data.media.url,
+          thumbnailS3Key: data.data.media.thumbnailS3Key || data.data.media.thumbnail || data.data.media.url,
+          url: data.data.media.s3Key || data.data.media.url, // Keep for backward compatibility
+          thumbnail: data.data.media.thumbnailS3Key || data.data.media.thumbnail || data.data.media.url, // Keep for backward compatibility
+          title: data.data.media.altText || data.data.media.title,
+          description: data.data.media.caption || data.data.media.description,
+          createdAt: data.data.media.createdAt,
+          authorId: data.data.media.authorId,
+          tags: data.data.media.tags || [],
+          mediaType: data.data.media.mediaType || 'IMAGE',
+          processingStatus: data.data.media.processingStatus || 'COMPLETED',
           metadata: {
-            width: data.data.image.width || 0,
-            height: data.data.image.height || 0,
-            size: data.data.image.size || 0,
-            format: data.data.image.mimeType || 'unknown'
+            width: data.data.media.width || 0,
+            height: data.data.media.height || 0,
+            size: data.data.media.size || 0,
+            format: data.data.media.mimeType || 'unknown'
           }
         }
         
         // Set post context for navigation
-        if (postId && postImages) {
+        if (postId && postMedia) {
           setCurrentPostId(postId)
-          setCurrentPostImages(postImages.map(img => ({
-            id: img.id,
-            s3Key: img.s3Key || img.url,
-            thumbnailS3Key: img.thumbnailS3Key || img.thumbnail || img.url,
-            url: img.s3Key || img.url,
-            thumbnail: img.thumbnailS3Key || img.thumbnail || img.url,
-            title: img.altText || img.title,
-            description: img.caption || img.description,
-            createdAt: img.createdAt,
-            authorId: img.authorId,
-            tags: img.tags || [],
+          setCurrentPostMedia(postMedia.map(mediaItem => ({
+            id: mediaItem.id,
+            s3Key: mediaItem.s3Key || mediaItem.url,
+            thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+            url: mediaItem.s3Key || mediaItem.url,
+            thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+            title: mediaItem.altText || mediaItem.title,
+            description: mediaItem.caption || mediaItem.description,
+            createdAt: mediaItem.createdAt,
+            authorId: mediaItem.authorId,
+            tags: mediaItem.tags || [],
+            mediaType: mediaItem.mediaType || 'IMAGE',
+            processingStatus: mediaItem.processingStatus || 'COMPLETED',
             metadata: {
-              width: img.width || 0,
-              height: img.height || 0,
-              size: img.size || 0,
-              format: img.mimeType || 'unknown'
+              width: mediaItem.width || 0,
+              height: mediaItem.height || 0,
+              size: mediaItem.size || 0,
+              format: mediaItem.mimeType || 'unknown'
             }
           })))
         }
         
-        setSelectedImageForDetail(mappedImage)
-        setIsImageDetailModalOpen(true)
+        setSelectedMediaForDetail(mappedMedia)
+        setIsMediaDetailModalOpen(true)
       }
     } catch (error) {
-      console.error('Failed to fetch image details:', error)
-      // Fallback to using the post image data if fetch fails
-      // Ensure the fallback image has the correct structure
-      const fallbackImage = {
-        id: image.id,
-        s3Key: image.s3Key || image.url,
-        thumbnailS3Key: image.thumbnailS3Key || image.thumbnail || image.url,
-        url: image.s3Key || image.url,
-        thumbnail: image.thumbnailS3Key || image.thumbnail || image.url,
-        title: image.altText || image.title,
-        description: image.caption || image.description,
-        createdAt: image.createdAt,
-        authorId: image.authorId,
-        tags: image.tags || [],
+      console.error('Failed to fetch media details:', error)
+      // Fallback to using the post media data if fetch fails
+      // Ensure the fallback media has the correct structure
+      const fallbackMedia = {
+        id: media.id,
+        s3Key: media.s3Key || media.url,
+        thumbnailS3Key: media.thumbnailS3Key || media.thumbnail || media.url,
+        url: media.s3Key || media.url,
+        thumbnail: media.thumbnailS3Key || media.thumbnail || media.url,
+        title: media.altText || media.title,
+        description: media.caption || media.description,
+        createdAt: media.createdAt,
+        authorId: media.authorId,
+        tags: media.tags || [],
+        mediaType: media.mediaType || 'IMAGE',
+        processingStatus: media.processingStatus || 'COMPLETED',
         metadata: {
-          width: image.width || 0,
-          height: image.height || 0,
-          size: image.size || 0,
-          format: image.mimeType || 'unknown'
+          width: media.width || 0,
+          height: media.height || 0,
+          size: media.size || 0,
+          format: media.mimeType || 'unknown'
         }
       }
       
       // Set post context for navigation
-      if (postId && postImages) {
+      if (postId && postMedia) {
         setCurrentPostId(postId)
-        setCurrentPostImages(postImages.map(img => ({
-          id: img.id,
-          s3Key: img.s3Key || img.url,
-          thumbnailS3Key: img.thumbnailS3Key || img.thumbnail || img.url,
-          url: img.s3Key || img.url,
-          thumbnail: img.thumbnailS3Key || img.thumbnail || img.url,
-          title: img.altText || img.title,
-          description: img.caption || img.description,
-          createdAt: img.createdAt,
-          authorId: img.authorId,
-          tags: img.tags || [],
+        setCurrentPostMedia(postMedia.map(mediaItem => ({
+          id: mediaItem.id,
+          s3Key: mediaItem.s3Key || mediaItem.url,
+          thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+          url: mediaItem.s3Key || mediaItem.url,
+          thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+          title: mediaItem.altText || mediaItem.title,
+          description: mediaItem.caption || mediaItem.description,
+          createdAt: mediaItem.createdAt,
+          authorId: mediaItem.authorId,
+          tags: mediaItem.tags || [],
+          mediaType: mediaItem.mediaType || 'IMAGE',
+          processingStatus: mediaItem.processingStatus || 'COMPLETED',
           metadata: {
-            width: img.width || 0,
-            height: img.height || 0,
-            size: img.size || 0,
-            format: img.mimeType || 'unknown'
+            width: mediaItem.width || 0,
+            height: mediaItem.height || 0,
+            size: mediaItem.size || 0,
+            format: mediaItem.mimeType || 'unknown'
           }
         })))
       }
       
-      setSelectedImageForDetail(fallbackImage)
-      setIsImageDetailModalOpen(true)
+      setSelectedMediaForDetail(fallbackMedia)
+      setIsMediaDetailModalOpen(true)
     }
   }
 
-  // Helper component for post image layout
-  function PostImagesDisplay({ 
-    images, 
-    onImageClick, 
+  // Helper component for post media layout
+  function PostMediaDisplay({ 
+    media, 
+    onMediaClick, 
     postId, 
     isOwner 
   }: { 
-    images: Post["images"], 
-    onImageClick: (image: any) => void,
+    media: Post["media"], 
+    onMediaClick: (media: any) => void,
     postId: string,
     isOwner: boolean
   }) {
-    const [draggedImage, setDraggedImage] = useState<any>(null)
+    const [draggedMedia, setDraggedMedia] = useState<any>(null)
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
     const [isDragging, setIsDragging] = useState(false)
     const [isReordering, setIsReordering] = useState(false)
-    const [reorderedImages, setReorderedImages] = useState<Post["images"]>(images)
+    const [reorderedMedia, setReorderedMedia] = useState<Post["media"]>(media)
     
-    // Update reordered images when images prop changes
+
+
+    //console.log('reorderedMedia', reorderedMedia  )
+    // Update reordered media when media prop changes
     useEffect(() => {
-      setReorderedImages(images)
-    }, [images])
+      setReorderedMedia(media)
+    }, [media])
     
-    if (!reorderedImages || reorderedImages.length === 0) return null;
+    if (!reorderedMedia || reorderedMedia.length === 0) return null;
     
     // Show reorder indicator for post owners
-    const showReorderHint = isOwner && reorderedImages.length > 1;
+    const showReorderHint = isOwner && reorderedMedia.length > 1;
     
-    const handleDragStart = (e: React.DragEvent, image: any, index: number) => {
+    const handleDragStart = (e: React.DragEvent, mediaItem: any, index: number) => {
       if (!isOwner) return
-      setDraggedImage(image)
+      setDraggedMedia(mediaItem)
       setIsDragging(true)
       e.dataTransfer.effectAllowed = 'move'
       e.dataTransfer.setData('text/plain', index.toString())
@@ -306,47 +393,48 @@ export function PersonalFeed() {
     
     const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
       e.preventDefault()
-      if (draggedImage === null || !isOwner) return
+      if (draggedMedia === null || !isOwner) return
       
       const dragIndex = parseInt(e.dataTransfer.getData('text/plain'))
       if (dragIndex === dropIndex) return
       
-      const newImages = [...reorderedImages]
-      const [draggedItem] = newImages.splice(dragIndex, 1)
-      newImages.splice(dropIndex, 0, draggedItem)
+      const newMedia = [...reorderedMedia]
+      const [draggedItem] = newMedia.splice(dragIndex, 1)
+      newMedia.splice(dropIndex, 0, draggedItem)
       
-      setReorderedImages(newImages)
-      setDraggedImage(null)
+      setReorderedMedia(newMedia)
+      setDraggedMedia(null)
       setDragOverIndex(null)
       setIsDragging(false)
       setIsReordering(true)
       
       // Persist the new order to the backend
       try {
-        const imageIds = newImages.map(img => typeof img === 'string' ? img : img.id)
-        await reorderImagesMutation.mutateAsync({ postId, imageIds })
+        const mediaIds = newMedia.map(mediaItem => typeof mediaItem === 'string' ? mediaItem : mediaItem.id)
+        await reorderMediaMutation.mutateAsync({ postId, mediaIds })
         // Show success feedback (you could add a toast notification here)
-        console.log('Image order updated successfully')
+        console.log('Media order updated successfully')
       } catch (error) {
-        console.error('Failed to persist image order:', error)
+        console.error('Failed to persist media order:', error)
         // Revert to original order on error
-        setReorderedImages(images)
+        setReorderedMedia(media)
         // Show error feedback (you could add a toast notification here)
-        alert('Failed to update image order. Please try again.')
+        alert('Failed to update media order. Please try again.')
       } finally {
         setIsReordering(false)
       }
     }
     
     const handleDragEnd = () => {
-      setDraggedImage(null)
+      setDraggedMedia(null)
       setDragOverIndex(null)
       setIsDragging(false)
     }
+
     
-    if (reorderedImages.length === 1) {
-      const img = reorderedImages[0];
-                    const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
+    if (reorderedMedia.length === 1) {
+      const mediaItem = reorderedMedia[0];
+      const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
       return (
         <div className="mb-4 relative">
           {showReorderHint && (
@@ -354,29 +442,30 @@ export function PersonalFeed() {
               {isReordering ? 'Updating...' : 'Drag to reorder'}
             </div>
           )}
-          <LazyImage
-            src={imageUrl}
-            alt={typeof img === 'string' ? 'Post image' : (img.caption || img.altText || 'Post image')}
+          <LazyMedia
+            src={mediaUrl}
+            alt={typeof mediaItem === 'string' ? 'Post media' : (mediaItem.caption || mediaItem.altText || 'Post media')}
             className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
             style={{
               height: 'auto',
               width: '100%',
               display: 'block'
             }}
-            onClick={() => onImageClick(img)}
+            onClick={() => onMediaClick(mediaItem)}
             draggable={isOwner}
-            onDragStart={(e) => handleDragStart(e, img, 0)}
+            onDragStart={(e) => handleDragStart(e, mediaItem, 0)}
             onDragOver={(e) => handleDragOver(e, 0)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, 0)}
             onDragEnd={handleDragEnd}
+            mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
             showProgressiveEffect={true}
           />
         </div>
       );
     }
     
-        if (reorderedImages.length === 2 || reorderedImages.length === 3) {
+        if (reorderedMedia.length === 2 || reorderedMedia.length === 3) {
       return (
         <div className="mb-4 relative">
           {showReorderHint && (
@@ -384,32 +473,33 @@ export function PersonalFeed() {
               {isReordering ? 'Updating...' : 'Drag to reorder'}
             </div>
           )}
-          <div className={`grid grid-cols-${reorderedImages.length} gap-2`}>
-          {reorderedImages.map((img, idx) => {
-              const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
+          <div className={`grid grid-cols-${reorderedMedia.length} gap-2`}>
+          {reorderedMedia.map((mediaItem, idx) => {
+              const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
                               return (
                   <div
-                    key={typeof img === 'string' ? idx : img.id}
+                    key={typeof mediaItem === 'string' ? idx : mediaItem.id}
                     draggable
-                    onDragStart={(e) => handleDragStart(e, img, idx)}
+                    onDragStart={(e) => handleDragStart(e, mediaItem, idx)}
                     onDragOver={(e) => handleDragOver(e, idx)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, idx)}
                     onDragEnd={handleDragEnd}
                     className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                   >
-                    <LazyImage
-                      src={imageUrl}
-                      alt={typeof img === 'string' ? `Post image ${idx + 1}` : (img.caption || img.altText || `Post image ${idx + 1}`)}
+                    <LazyMedia
+                      src={mediaUrl}
+                      alt={typeof mediaItem === 'string' ? `Post media ${idx + 1}` : (mediaItem.caption || mediaItem.altText || `Post media ${idx + 1}`)}
                       className={`w-full rounded-lg object-contain max-h-72 transition-opacity ${
-                        isDragging && draggedImage?.id === img.id ? 'opacity-50' : 'opacity-100'
+                        isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                       } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
-                      style={typeof img === 'string' ? undefined : { aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
-                      onClick={() => onImageClick(img)}
+                      style={typeof mediaItem === 'string' ? undefined : { aspectRatio: mediaItem.width && mediaItem.height ? `${mediaItem.width} / ${mediaItem.height}` : undefined }}
+                      onClick={() => onMediaClick(mediaItem)}
+                      mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
                       showProgressiveEffect={true}
                     />
                     {/* Insertion marker */}
-                    {dragOverIndex === idx && draggedImage?.id !== img.id && (
+                    {dragOverIndex === idx && draggedMedia?.id !== mediaItem.id && (
                       <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
                     )}
                   </div>
@@ -420,11 +510,11 @@ export function PersonalFeed() {
       );
     }
     
-    // 4+ images: Layout based on main image aspect ratio
-    const [main, ...thumbs] = reorderedImages;
-    const mainImageUrl = typeof main === 'string' ? getImageUrl(main) : getImageUrlFromImage(main, false);
+    // 4+ media items: Layout based on main media aspect ratio
+    const [main, ...thumbs] = reorderedMedia;
+    const mainMediaUrl = typeof main === 'string' ? getMediaUrl(main) : getMediaUrlFromMedia(main, false);
     
-    // Calculate aspect ratio for main image
+    // Calculate aspect ratio for main media
     const mainAspectRatio = typeof main === 'string' ? 1 : (main.width && main.height ? main.width / main.height : 1);
     const isPortrait = mainAspectRatio < 1;
     
@@ -448,11 +538,11 @@ export function PersonalFeed() {
               onDragEnd={handleDragEnd}
               className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
             >
-              <LazyImage
-                src={mainImageUrl}
-                alt={typeof main === 'string' ? 'Main post image' : (main.caption || main.altText || 'Main post image')}
+              <LazyMedia
+                src={mainMediaUrl}
+                alt={typeof main === 'string' ? 'Main post media' : (main.caption || main.altText || 'Main post media')}
                 className={`rounded-lg object-contain transition-opacity ${
-                  isDragging && draggedImage?.id === main.id ? 'opacity-50' : 'opacity-100'
+                  isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
                 } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
                 style={{
                   width: '100%',
@@ -460,10 +550,11 @@ export function PersonalFeed() {
                   height: 'auto',
                   aspectRatio: typeof main === 'string' ? undefined : (main.width && main.height ? `${main.width} / ${main.height}` : undefined)
                 }}
-                onClick={() => onImageClick(main)}
+                onClick={() => onMediaClick(main)}
+                mediaType={main.mediaType || 'IMAGE'}
               />
               {/* Insertion marker */}
-              {dragOverIndex === 0 && draggedImage?.id !== main.id && (
+              {dragOverIndex === 0 && draggedMedia?.id !== main.id && (
                 <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
               )}
             </div>
@@ -471,34 +562,35 @@ export function PersonalFeed() {
           
           {/* Thumbnails - 17.5% of post width, vertical stack */}
           <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
-            {thumbs.map((img, idx) => {
-              const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
-              const actualIndex = idx + 1; // +1 because main image is at index 0
+            {thumbs.map((mediaItem, idx) => {
+              const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
+              const actualIndex = idx + 1; // +1 because main media is at index 0
               return (
                 <div
-                  key={typeof img === 'string' ? idx : img.id}
+                  key={typeof mediaItem === 'string' ? idx : mediaItem.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, img, actualIndex)}
+                  onDragStart={(e) => handleDragStart(e, mediaItem, actualIndex)}
                   onDragOver={(e) => handleDragOver(e, actualIndex)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, actualIndex)}
                   onDragEnd={handleDragEnd}
                   className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                 >
-                  <LazyImage
-                    src={imageUrl}
-                    alt={typeof img === 'string' ? `Thumbnail ${idx + 2}` : (img.caption || img.altText || `Thumbnail ${idx + 2}`)}
+                  <LazyMedia
+                    src={mediaUrl}
+                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
                     className={`rounded-lg object-cover transition-opacity ${
-                      isDragging && draggedImage?.id === img.id ? 'opacity-50' : 'opacity-100'
+                      isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                     } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
                     style={{
                       width: '100%',
                       aspectRatio: '1 / 1'
                     }}
-                    onClick={() => onImageClick(img)}
+                    onClick={() => onMediaClick(mediaItem)}
+                    mediaType={mediaItem.mediaType || 'IMAGE'}
                   />
                   {/* Insertion marker */}
-                  {dragOverIndex === actualIndex && draggedImage?.id !== img.id && (
+                  {dragOverIndex === actualIndex && draggedMedia?.id !== mediaItem.id && (
                     <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
                   )}
                 </div>
@@ -526,31 +618,32 @@ export function PersonalFeed() {
             onDragEnd={handleDragEnd}
             className={`relative mb-2 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           >
-            <LazyImage
-              src={mainImageUrl}
-              alt={typeof main === 'string' ? 'Main post image' : (main.caption || main.altText || 'Main post image')}
+            <LazyMedia
+              src={mainMediaUrl}
+              alt={typeof main === 'string' ? 'Main post media' : (main.caption || main.altText || 'Main post media')}
               className={`w-full rounded-lg object-contain transition-opacity ${
-                isDragging && draggedImage?.id === main.id ? 'opacity-50' : 'opacity-100'
+                isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
               } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
               style={typeof main === 'string' ? undefined : { aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
-              onClick={() => onImageClick(main)}
+              onClick={() => onMediaClick(main)}
+              mediaType={main.mediaType || 'IMAGE'}
             />
             {/* Insertion marker */}
-            {dragOverIndex === 0 && draggedImage?.id !== main.id && (
+            {dragOverIndex === 0 && draggedMedia?.id !== main.id && (
               <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
             )}
           </div>
           
           {/* Thumbnails - horizontal row at 17.5% of post width */}
           <div className="flex gap-2 overflow-x-auto">
-            {thumbs.map((img, idx) => {
-              const imageUrl = typeof img === 'string' ? getImageUrl(img) : getImageUrlFromImage(img, false);
-              const actualIndex = idx + 1; // +1 because main image is at index 0
+            {thumbs.map((mediaItem, idx) => {
+              const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
+              const actualIndex = idx + 1; // +1 because main media is at index 0
               return (
                 <div
-                  key={typeof img === 'string' ? idx : img.id}
+                  key={typeof mediaItem === 'string' ? idx : mediaItem.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, img, actualIndex)}
+                  onDragStart={(e) => handleDragStart(e, mediaItem, actualIndex)}
                   onDragOver={(e) => handleDragOver(e, actualIndex)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, actualIndex)}
@@ -558,19 +651,20 @@ export function PersonalFeed() {
                   className={`relative flex-shrink-0 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                   style={{ width: '17.5%' }}
                 >
-                  <LazyImage
-                    src={imageUrl}
-                    alt={typeof img === 'string' ? `Thumbnail ${idx + 2}` : (img.caption || img.altText || `Thumbnail ${idx + 2}`)}
+                  <LazyMedia
+                    src={mediaUrl}
+                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
                     className={`w-full rounded-lg object-cover border border-gray-200 transition-opacity ${
-                      isDragging && draggedImage?.id === img.id ? 'opacity-50' : 'opacity-100'
+                      isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                     } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
                     style={{
                       aspectRatio: '1 / 1'
                     }}
-                    onClick={() => onImageClick(img)}
+                    onClick={() => onMediaClick(mediaItem)}
+                    mediaType={mediaItem.mediaType || 'IMAGE'}
                   />
                   {/* Insertion marker */}
-                  {dragOverIndex === actualIndex && draggedImage?.id !== img.id && (
+                  {dragOverIndex === actualIndex && draggedMedia?.id !== mediaItem.id && (
                     <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
                   )}
                 </div>
@@ -673,11 +767,11 @@ export function PersonalFeed() {
           <div className="p-4">
             <p className="text-gray-900 mb-4">{post.content}</p>
             
-            {/* Post Images */}
-            {post.images && post.images.length > 0 && (
-              <PostImagesDisplay 
-                images={post.images} 
-                onImageClick={(image) => handleImageClick(image, post.id, post.images)}
+            {/* Post Media */}
+            {post.media && post.media.length > 0 && (
+              <PostMediaDisplay 
+                media={post.media} 
+                onMediaClick={(mediaItem) => handleMediaClick(mediaItem, post.id, post.media)}
                 postId={post.id}
                 isOwner={post.author.id === user?.id}
               />
@@ -748,35 +842,13 @@ export function PersonalFeed() {
                 ))}
                 
                 {/* Add Comment */}
-                <div className="flex space-x-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-accent-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                    {authLoading ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : user?.avatar ? (
-                      <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
-                    ) : user?.name ? (
-                      user.name.charAt(0).toUpperCase()
-                    ) : (
-                      <User className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div className="flex-1 flex space-x-2">
-                    <input
-                      type="text"
-                      value={newComments[post.id] || ''}
-                      onChange={(e) => setNewComments(prev => ({ ...prev, [post.id]: e.target.value }))}
-                      placeholder="Write a comment..."
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
-                    <button
-                      onClick={() => handleAddComment(post.id)}
-                      disabled={!newComments[post.id]?.trim() || createCommentMutation.isPending}
-                      className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {createCommentMutation.isPending ? '...' : <Send className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
+                <CommentInput 
+                  postId={post.id} 
+                  onAddComment={handleAddComment} 
+                  isPending={createCommentMutation.isPending} 
+                  user={user} 
+                  authLoading={authLoading} 
+                />
               </div>
             </div>
           )}
@@ -798,26 +870,26 @@ export function PersonalFeed() {
         </div>
       )}
 
-      {/* Image Detail Modal */}
-      {selectedImageForDetail && (
+      {/* Media Detail Modal */}
+      {selectedMediaForDetail && (
         <FullScreenWrapper>
-        <ImageDetailModal
-          image={selectedImageForDetail}
+        <MediaDetailModal
+          media={selectedMediaForDetail}
           onClose={() => {
-            setIsImageDetailModalOpen(false)
-            setSelectedImageForDetail(null)
+            setIsMediaDetailModalOpen(false)
+            setSelectedMediaForDetail(null)
             setCurrentPostId(null)
-            setCurrentPostImages([])
+            setCurrentPostMedia([])
           }}
-          onImageUpdate={() => {
-            // Refresh posts data when image is updated
-            // This will be handled by the ImageDetailModal internally
+          onMediaUpdate={() => {
+            // Refresh posts data when media is updated
+            // This will be handled by the MediaDetailModal internally
           }}
-          updateImage={() => {
-            // This will be handled by the ImageDetailModal internally
+          updateMedia={() => {
+            // This will be handled by the MediaDetailModal internally
           }}
-          allImages={currentPostImages}
-          onNavigate={(image: any) => setSelectedImageForDetail(image)}
+          allMedia={currentPostMedia}
+          onNavigate={(media: any) => setSelectedMediaForDetail(media)}
         />
         </FullScreenWrapper>
       )}

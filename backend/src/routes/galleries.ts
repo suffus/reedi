@@ -47,10 +47,10 @@ router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: Aut
       include: {
         _count: {
           select: {
-            images: true
+            media: true
           }
         },
-        coverImage: {
+        coverMedia: {
           select: {
             id: true,
             s3Key: true,
@@ -103,10 +103,10 @@ router.get('/my', authMiddleware, asyncHandler(async (req: AuthenticatedRequest,
       include: {
         _count: {
           select: {
-            images: true
+            media: true
           }
         },
-        coverImage: {
+        coverMedia: {
           select: {
             id: true,
             s3Key: true,
@@ -172,7 +172,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     include: {
       _count: {
         select: {
-          images: true
+          media: true
         }
       }
     }
@@ -201,7 +201,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
           avatar: true
         }
       },
-      images: {
+      media: {
         orderBy: [
           { order: 'asc' },
           { createdAt: 'asc' }
@@ -216,15 +216,24 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
           tags: true,
           visibility: true,
           createdAt: true,
+          updatedAt: true,
           order: true,
           width: true,
           height: true,
           size: true,
           mimeType: true,
-          authorId: true
+          authorId: true,
+          mediaType: true,
+          processingStatus: true,
+          duration: true,
+          codec: true,
+          bitrate: true,
+          framerate: true,
+          videoUrl: true,
+          videoS3Key: true
         }
       },
-      coverImage: {
+      coverMedia: {
         select: {
           id: true,
           s3Key: true,
@@ -235,7 +244,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
       },
       _count: {
         select: {
-          images: true
+          media: true
         }
       }
     }
@@ -285,11 +294,11 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     }
   }
 
-  // Filter images based on visibility
-  const visibleImages = gallery.images.filter(image => {
-    if (image.visibility === 'PUBLIC') return true
+  // Filter media based on visibility
+  const visibleMedia = gallery.media.filter(media => {
+    if (media.visibility === 'PUBLIC') return true
     if (gallery.authorId === viewerId) return true
-    if (image.visibility === 'FRIENDS_ONLY' && viewerId) {
+    if (media.visibility === 'FRIENDS_ONLY' && viewerId) {
       // We already checked friendship above, so if we got here, they're friends
       return true
     }
@@ -301,7 +310,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     data: { 
       gallery: {
         ...gallery,
-        images: visibleImages
+        media: visibleMedia
       }
     }
   })
@@ -352,10 +361,10 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     include: {
       _count: {
         select: {
-          images: true
+          media: true
         }
       },
-      coverImage: {
+      coverMedia: {
         select: {
           id: true,
           s3Key: true,
@@ -378,7 +387,7 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 router.post('/:id/cover', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { imageId } = req.body
+  const { mediaId } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -408,16 +417,16 @@ router.post('/:id/cover', authMiddleware, asyncHandler(async (req: Authenticated
     return
   }
 
-  // Verify the image exists and belongs to the user
-  if (imageId) {
-    const image = await prisma.image.findUnique({
-      where: { id: imageId }
+  // Verify the media exists and belongs to the user
+  if (mediaId) {
+    const media = await prisma.media.findUnique({
+      where: { id: mediaId }
     })
 
-    if (!image || image.authorId !== userId) {
+    if (!media || media.authorId !== userId) {
       res.status(400).json({
         success: false,
-        error: 'Invalid image ID'
+        error: 'Invalid media ID'
       })
       return
     }
@@ -426,10 +435,10 @@ router.post('/:id/cover', authMiddleware, asyncHandler(async (req: Authenticated
   const updatedGallery = await prisma.gallery.update({
     where: { id },
     data: {
-      coverImageId: imageId || null
+      coverMediaId: mediaId || null
     },
     include: {
-      coverImage: {
+      coverMedia: {
         select: {
           id: true,
           s3Key: true,
@@ -448,11 +457,11 @@ router.post('/:id/cover', authMiddleware, asyncHandler(async (req: Authenticated
   })
 }))
 
-// Add images to gallery
-router.post('/:id/images', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+// Add media to gallery
+router.post('/:id/media', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { imageIds } = req.body
+  const { mediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -462,10 +471,10 @@ router.post('/:id/images', authMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+  if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
     res.status(400).json({
       success: false,
-      error: 'Image IDs array is required'
+      error: 'Media IDs array is required'
     })
     return
   }
@@ -490,27 +499,27 @@ router.post('/:id/images', authMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  // Verify that all images belong to the user
-  const userImages = await prisma.image.findMany({
+  // Verify that all media belong to the user
+  const userMedia = await prisma.media.findMany({
     where: {
-      id: { in: imageIds },
+      id: { in: mediaIds },
       authorId: userId
     },
     select: { id: true }
   })
 
-  if (userImages.length !== imageIds.length) {
+  if (userMedia.length !== mediaIds.length) {
     res.status(400).json({
       success: false,
-      error: 'Some images do not belong to you or do not exist'
+      error: 'Some media do not belong to you or do not exist'
     })
     return
   }
 
-  // Add images to gallery
-  await prisma.image.updateMany({
+  // Add media to gallery
+  await prisma.media.updateMany({
     where: {
-      id: { in: imageIds }
+      id: { in: mediaIds }
     },
     data: {
       galleryId: id
@@ -519,15 +528,15 @@ router.post('/:id/images', authMiddleware, asyncHandler(async (req: Authenticate
 
   res.json({
     success: true,
-    message: 'Images added to gallery successfully'
+    message: 'Media added to gallery successfully'
   })
 }))
 
-// Remove images from gallery
-router.delete('/:id/images', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+// Remove media from gallery
+router.delete('/:id/media', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { imageIds } = req.body
+  const { mediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -537,10 +546,10 @@ router.delete('/:id/images', authMiddleware, asyncHandler(async (req: Authentica
     return
   }
 
-  if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+  if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
     res.status(400).json({
       success: false,
-      error: 'Image IDs array is required'
+      error: 'Media IDs array is required'
     })
     return
   }
@@ -565,10 +574,10 @@ router.delete('/:id/images', authMiddleware, asyncHandler(async (req: Authentica
     return
   }
 
-  // Remove images from gallery
-  await prisma.image.updateMany({
+  // Remove media from gallery
+  await prisma.media.updateMany({
     where: {
-      id: { in: imageIds },
+      id: { in: mediaIds },
       galleryId: id
     },
     data: {
@@ -578,15 +587,15 @@ router.delete('/:id/images', authMiddleware, asyncHandler(async (req: Authentica
 
   res.json({
     success: true,
-    message: 'Images removed from gallery successfully'
+    message: 'Media removed from gallery successfully'
   })
 }))
 
-// Add endpoint for reordering images in a gallery:
-router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+// Add endpoint for reordering media in a gallery:
+router.put('/:id/media/reorder', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { id } = req.params
-  const { imageIds } = req.body
+  const { mediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -599,7 +608,7 @@ router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: Authe
   const gallery = await prisma.gallery.findUnique({
     where: { id },
     include: {
-      images: true
+      media: true
     }
   })
 
@@ -614,35 +623,35 @@ router.put('/:id/images/reorder', authMiddleware, asyncHandler(async (req: Authe
   if (gallery.authorId !== userId) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to reorder images in this gallery'
+      error: 'Not authorized to reorder media in this gallery'
     })
     return
   }
 
-  // Validate that all provided image IDs belong to this gallery
-  const galleryImageIds = gallery.images.map(img => img.id)
-  const isValidOrder = imageIds.every((imageId: string) => galleryImageIds.includes(imageId))
-  const hasAllImages = galleryImageIds.every(imageId => imageIds.includes(imageId))
+  // Validate that all provided media IDs belong to this gallery
+  const galleryMediaIds = gallery.media.map(media => media.id)
+  const isValidOrder = mediaIds.every((mediaId: string) => galleryMediaIds.includes(mediaId))
+  const hasAllMedia = galleryMediaIds.every(mediaId => mediaIds.includes(mediaId))
 
-  if (!isValidOrder || !hasAllImages) {
+  if (!isValidOrder || !hasAllMedia) {
     res.status(400).json({
       success: false,
-      error: 'Invalid image order provided'
+      error: 'Invalid media order provided'
     })
     return
   }
 
-  // Update the order of images
-  for (let i = 0; i < imageIds.length; i++) {
-    await prisma.image.update({
-      where: { id: imageIds[i] },
+  // Update the order of media
+  for (let i = 0; i < mediaIds.length; i++) {
+    await prisma.media.update({
+      where: { id: mediaIds[i] },
       data: { order: i }
     })
   }
 
   res.json({
     success: true,
-    message: 'Image order updated successfully'
+    message: 'Media order updated successfully'
   })
 }))
 

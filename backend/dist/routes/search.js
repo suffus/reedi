@@ -58,8 +58,8 @@ router.get('/images/tags', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asy
         ...tagWhereClause,
         OR: visibilityFilter
     };
-    const [images, total] = await Promise.all([
-        index_1.prisma.image.findMany({
+    const [media, total] = await Promise.all([
+        index_1.prisma.media.findMany({
             where,
             skip: offset,
             take: Number(limit),
@@ -75,6 +75,14 @@ router.get('/images/tags', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asy
                 size: true,
                 mimeType: true,
                 tags: true,
+                mediaType: true,
+                processingStatus: true,
+                duration: true,
+                codec: true,
+                bitrate: true,
+                framerate: true,
+                videoUrl: true,
+                videoS3Key: true,
                 createdAt: true,
                 updatedAt: true,
                 authorId: true,
@@ -88,12 +96,12 @@ router.get('/images/tags', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asy
                 }
             }
         }),
-        index_1.prisma.image.count({ where })
+        index_1.prisma.media.count({ where })
     ]);
     res.json({
         success: true,
         data: {
-            images,
+            media,
             tags: tagArray,
             pagination: {
                 page: Number(page),

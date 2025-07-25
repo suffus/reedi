@@ -2,11 +2,11 @@
 
 import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, X, Image as ImageIcon, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle } from 'lucide-react'
-import { useUploadImage } from '../../lib/api-hooks'
+import { Upload, X, Image as ImageIcon, Video, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle } from 'lucide-react'
+import { useUploadMedia } from '../../lib/api-hooks'
 import { TagInput } from '../tag-input'
 
-interface ImageUploaderProps {
+interface MediaUploaderProps {
   userId: string
   onClose: () => void
   onUploadComplete?: () => void
@@ -19,6 +19,7 @@ interface UploadFile {
   title: string
   description: string
   tags: string[]
+  mediaType: 'IMAGE' | 'VIDEO'
 }
 
 interface UploadProgress {
@@ -31,7 +32,7 @@ interface UploadProgress {
 
 type ViewMode = 'table' | 'grid'
 
-export function ImageUploader({ userId, onClose, onUploadComplete, inline = false }: ImageUploaderProps) {
+export function MediaUploader({ userId, onClose, onUploadComplete, inline = false }: MediaUploaderProps) {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [dragActive, setDragActive] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -40,19 +41,19 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
   const [sharedTitle, setSharedTitle] = useState('')
   const [sharedDescription, setSharedDescription] = useState('')
   const [sharedTags, setSharedTags] = useState<string[]>([])
-  const [imageVisibility, setImageVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
+  const [mediaVisibility, setMediaVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
   const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addMoreFileInputRef = useRef<HTMLInputElement>(null)
 
-  const uploadImageMutation = useUploadImage()
+  const uploadMediaMutation = useUploadMedia()
 
-  // Auto-select view mode based on image count
+  // Auto-select view mode based on media count
   const autoViewMode: ViewMode = uploadFiles.length <= 3 ? 'table' : 'grid'
   const effectiveViewMode = uploadFiles.length > 0 ? viewMode : autoViewMode
 
-  // Update view mode when image count changes
+  // Update view mode when media count changes
   React.useEffect(() => {
     if (uploadFiles.length > 0) {
       setViewMode(autoViewMode)
@@ -94,10 +95,13 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
   }
 
   const handleFiles = (files: File[]) => {
-    const imageFiles = files.filter(file => file.type.startsWith('image/'))
+    // Filter for both images and videos
+    const mediaFiles = files.filter(file => 
+      file.type.startsWith('image/') || file.type.startsWith('video/')
+    )
     
     // Sort files by filename to ensure proper order (e.g., DSC_5689.JPG before DSC_5690.JPG)
-    const sortedFiles = imageFiles.sort((a, b) => {
+    const sortedFiles = mediaFiles.sort((a, b) => {
       // Extract filename without extension for better sorting
       const nameA = a.name.replace(/\.[^/.]+$/, '').toLowerCase()
       const nameB = b.name.replace(/\.[^/.]+$/, '').toLowerCase()
@@ -108,18 +112,52 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     
     // Process files in sorted order
     sortedFiles.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const newFile: UploadFile = {
-          file,
-          preview: e.target?.result as string,
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          description: '',
-          tags: []
+      const isVideo = file.type.startsWith('video/')
+      const mediaType: 'IMAGE' | 'VIDEO' = isVideo ? 'VIDEO' : 'IMAGE'
+      
+      if (isVideo) {
+        // For videos, create a video element to get thumbnail
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        video.onloadedmetadata = () => {
+          // Create a canvas to capture the first frame
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+          
+          if (ctx) {
+            ctx.drawImage(video, 0, 0)
+            const preview = canvas.toDataURL('image/jpeg', 0.8)
+            
+            const newFile: UploadFile = {
+              file,
+              preview,
+              title: file.name.replace(/\.[^/.]+$/, ''),
+              description: '',
+              tags: [],
+              mediaType
+            }
+            setUploadFiles(prev => [...prev, newFile])
+          }
         }
-        setUploadFiles(prev => [...prev, newFile])
+        video.src = URL.createObjectURL(file)
+      } else {
+        // For images, use FileReader as before
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const newFile: UploadFile = {
+            file,
+            preview: e.target?.result as string,
+            title: file.name.replace(/\.[^/.]+$/, ''),
+            description: '',
+            tags: [],
+            mediaType
+          }
+          setUploadFiles(prev => [...prev, newFile])
+        }
+        reader.readAsDataURL(file)
       }
-      reader.readAsDataURL(file)
     })
   }
 
@@ -196,16 +234,20 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
       tags: Array.from(new Set([...file.tags, ...sharedTags]))
     }))
     
-    // Update the state immediately
     setUploadFiles(updatedFiles)
     setShowUnsavedWarning(false)
     setPendingUploadAction(null)
     
-    // Use the updated files for upload
+    // Clear shared metadata
+    setSharedTitle('')
+    setSharedDescription('')
+    setSharedTags([])
+    
+    // Upload with updated files
     handleUploadWithFiles(updatedFiles)
   }
 
-  // Continue with upload without applying metadata
+  // Upload without applying metadata
   const handleUploadWithoutApplying = () => {
     setShowUnsavedWarning(false)
     setPendingUploadAction(null)
@@ -243,12 +285,12 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
 
         try {
           const formData = new FormData()
-          formData.append('image', uploadFile.file)
+          formData.append('media', uploadFile.file)
           formData.append('title', uploadFile.title)
           formData.append('description', uploadFile.description)
           formData.append('tags', JSON.stringify(uploadFile.tags))
           formData.append('userId', userId)
-          formData.append('visibility', imageVisibility)
+          formData.append('visibility', mediaVisibility)
 
           // Simulate progress updates (since we can't get real progress from the mutation)
           const progressInterval = setInterval(() => {
@@ -261,7 +303,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
             }))
           }, 200)
 
-          const result = await uploadImageMutation.mutateAsync(formData)
+          const result = await uploadMediaMutation.mutateAsync(formData)
           
           console.log('Upload result:', result)
           
@@ -315,6 +357,14 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
     }
   }
 
+  const getFileIcon = (mediaType: 'IMAGE' | 'VIDEO') => {
+    return mediaType === 'VIDEO' ? <Video className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />
+  }
+
+  const getFileTypeLabel = (mediaType: 'IMAGE' | 'VIDEO') => {
+    return mediaType === 'VIDEO' ? 'Video' : 'Image'
+  }
+
   const canClose = !isUploading && uploadFiles.length === 0
   const canUpload = uploadFiles.length > 0 && !isUploading
   const hasUploads = uploadFiles.length > 0
@@ -327,7 +377,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
       {!inline && (
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">
-            {isUploading ? 'Uploading Images...' : 'Upload Images'}
+            {isUploading ? 'Uploading Media...' : 'Upload Media'}
           </h2>
           <button
             onClick={onClose}
@@ -356,9 +406,15 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                     return (
                       <div key={index} className="bg-gray-50 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-900 truncate">
-                            {file.title}
-                          </span>
+                          <div className="flex items-center space-x-2">
+                            {getFileIcon(file.mediaType)}
+                            <span className="text-sm font-medium text-gray-900 truncate">
+                              {file.title}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              ({getFileTypeLabel(file.mediaType)})
+                            </span>
+                          </div>
                           <div className="flex items-center space-x-2">
                             {progress?.status === 'pending' && (
                               <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
@@ -417,10 +473,10 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
               >
                 <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Drop images here or click to browse
+                  Drop images and videos here or click to browse
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  Upload JPG, PNG, or GIF files up to 10MB each
+                  Upload JPG, PNG, GIF, MP4, WebM, or MOV files up to 500MB each
                 </p>
                 <button
                   type="button"
@@ -433,7 +489,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/*"
+                  accept="image/*,video/*"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -445,7 +501,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
               ref={addMoreFileInputRef}
               type="file"
               multiple
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -457,7 +513,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                   <div className="flex items-center space-x-4">
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">
-                        {uploadFiles.length} {uploadFiles.length === 1 ? 'image' : 'images'} selected
+                        {uploadFiles.length} {uploadFiles.length === 1 ? 'file' : 'files'} selected
                       </h3>
                       {uploadFiles.length > 1 && (
                         <p className="text-xs text-gray-500 mt-1">
@@ -505,7 +561,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                 {effectiveViewMode === 'grid' && uploadFiles.length > 1 && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h4 className="text-sm font-medium text-blue-900 mb-3">
-                      Shared Metadata (applies to all images)
+                      Shared Metadata (applies to all files)
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="md:col-span-1 lg:col-span-1">
@@ -516,7 +572,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                           type="text"
                           value={sharedTitle}
                           onChange={(e) => setSharedTitle(e.target.value)}
-                          placeholder="Shared title for all images..."
+                          placeholder="Shared title for all files..."
                           className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
@@ -528,7 +584,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         <textarea
                           value={sharedDescription}
                           onChange={(e) => setSharedDescription(e.target.value)}
-                          placeholder="Shared description for all images..."
+                          placeholder="Shared description for all files..."
                           rows={2}
                           className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
@@ -553,9 +609,9 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         <div className="flex space-x-1">
                           <button
                             type="button"
-                            onClick={() => setImageVisibility('PUBLIC')}
+                            onClick={() => setMediaVisibility('PUBLIC')}
                             className={`px-2 py-1 text-xs rounded-none transition-colors ${
-                              imageVisibility === 'PUBLIC'
+                              mediaVisibility === 'PUBLIC'
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
                             }`}
@@ -564,9 +620,9 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                           </button>
                           <button
                             type="button"
-                            onClick={() => setImageVisibility('FRIENDS_ONLY')}
+                            onClick={() => setMediaVisibility('FRIENDS_ONLY')}
                             className={`px-2 py-1 text-xs rounded-none transition-colors ${
-                              imageVisibility === 'FRIENDS_ONLY'
+                              mediaVisibility === 'FRIENDS_ONLY'
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
                             }`}
@@ -575,9 +631,9 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                           </button>
                           <button
                             type="button"
-                            onClick={() => setImageVisibility('PRIVATE')}
+                            onClick={() => setMediaVisibility('PRIVATE')}
                             className={`px-2 py-1 text-xs rounded-none transition-colors ${
-                              imageVisibility === 'PRIVATE'
+                              mediaVisibility === 'PRIVATE'
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
                             }`}
@@ -593,7 +649,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         onClick={applySharedMetadata}
                         className="text-sm text-blue-700 hover:text-blue-800 font-medium"
                       >
-                        Apply to all images
+                        Apply to all files
                       </button>
                     </div>
                   </div>
@@ -605,7 +661,12 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                     {uploadFiles.map((file, index) => (
                       <div key={index} className="bg-gray-50 rounded-lg p-4">
                         <div className="flex space-x-4">
-                          <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                          <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 relative">
+                            {file.mediaType === 'VIDEO' && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                                <Video className="h-6 w-6 text-white" />
+                              </div>
+                            )}
                             <img
                               src={file.preview}
                               alt={file.title}
@@ -614,6 +675,13 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                           </div>
                           
                           <div className="flex-1 space-y-3">
+                            <div className="flex items-center space-x-2">
+                              {getFileIcon(file.mediaType)}
+                              <span className="text-xs text-gray-500">
+                                {getFileTypeLabel(file.mediaType)}
+                              </span>
+                            </div>
+                            
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Title
@@ -657,9 +725,9 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                               <div className="flex space-x-1">
                                 <button
                                   type="button"
-                                  onClick={() => setImageVisibility('PUBLIC')}
+                                  onClick={() => setMediaVisibility('PUBLIC')}
                                   className={`px-2 py-1 text-xs rounded-none transition-colors ${
-                                    imageVisibility === 'PUBLIC'
+                                    mediaVisibility === 'PUBLIC'
                                       ? 'bg-primary-600 text-white'
                                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                   }`}
@@ -668,9 +736,9 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setImageVisibility('FRIENDS_ONLY')}
+                                  onClick={() => setMediaVisibility('FRIENDS_ONLY')}
                                   className={`px-2 py-1 text-xs rounded-none transition-colors ${
-                                    imageVisibility === 'FRIENDS_ONLY'
+                                    mediaVisibility === 'FRIENDS_ONLY'
                                       ? 'bg-primary-600 text-white'
                                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                   }`}
@@ -679,9 +747,9 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setImageVisibility('PRIVATE')}
+                                  onClick={() => setMediaVisibility('PRIVATE')}
                                   className={`px-2 py-1 text-xs rounded-none transition-colors ${
-                                    imageVisibility === 'PRIVATE'
+                                    mediaVisibility === 'PRIVATE'
                                       ? 'bg-primary-600 text-white'
                                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                   }`}
@@ -715,7 +783,12 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                           <X className="h-4 w-4" />
                         </button>
                         
-                        <div className="aspect-square bg-gray-200 rounded-lg overflow-hidden mb-3">
+                        <div className="aspect-square bg-gray-200 rounded-lg overflow-hidden mb-3 relative">
+                          {file.mediaType === 'VIDEO' && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                              <Video className="h-6 w-6 text-white" />
+                            </div>
+                          )}
                           <img
                             src={file.preview}
                             alt={file.title}
@@ -724,6 +797,13 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                         </div>
                         
                         <div className="space-y-2">
+                          <div className="flex items-center space-x-1">
+                            {getFileIcon(file.mediaType)}
+                            <span className="text-xs text-gray-500">
+                              {getFileTypeLabel(file.mediaType)}
+                            </span>
+                          </div>
+                          
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Title
@@ -758,46 +838,46 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                               placeholder="Enter tags..."
                               className="w-full"
                             />
+                          </div>
                           
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Visibility
                             </label>
-                              <div className="flex space-x-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setImageVisibility('PUBLIC')}
-                                  className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
-                                    imageVisibility === 'PUBLIC'
-                                      ? 'bg-primary-600 text-white'
-                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                  }`}
-                                >
-                                  Public
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setImageVisibility('FRIENDS_ONLY')}
-                                  className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
-                                    imageVisibility === 'FRIENDS_ONLY'
-                                      ? 'bg-primary-600 text-white'
-                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                  }`}
-                                >
-                                  Friends
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setImageVisibility('PRIVATE')}
-                                  className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
-                                    imageVisibility === 'PRIVATE'
-                                      ? 'bg-primary-600 text-white'
-                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                  }`}
-                                >
-                                  Private
-                                </button>
-                              </div>
+                            <div className="flex space-x-1">
+                              <button
+                                type="button"
+                                onClick={() => setMediaVisibility('PUBLIC')}
+                                className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
+                                  mediaVisibility === 'PUBLIC'
+                                    ? 'bg-primary-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                              >
+                                Public
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMediaVisibility('FRIENDS_ONLY')}
+                                className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
+                                  mediaVisibility === 'FRIENDS_ONLY'
+                                    ? 'bg-primary-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                              >
+                                Friends
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMediaVisibility('PRIVATE')}
+                                className={`px-1 py-0.5 text-xs rounded-none transition-colors ${
+                                  mediaVisibility === 'PRIVATE'
+                                    ? 'bg-primary-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                              >
+                                Private
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -831,7 +911,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                   disabled={!canUpload}
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {allSuccessful ? 'Upload Complete' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'Image' : 'Images'}`}
+                  {allSuccessful ? 'Upload Complete' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'File' : 'Files'}`}
                 </button>
               )}
             </div>
@@ -882,7 +962,7 @@ export function ImageUploader({ userId, onClose, onUploadComplete, inline = fals
                   
                   <div className="mb-6">
                     <p className="text-sm text-gray-600">
-                      You have entered shared metadata (title, description, or tags) that hasn't been applied to all images yet.
+                      You have entered shared metadata (title, description, or tags) that hasn't been applied to all files yet.
                     </p>
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                       <p className="text-xs text-gray-500 mb-2">Unsaved metadata:</p>

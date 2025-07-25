@@ -12,8 +12,8 @@ import authRoutes from '@/routes/auth'
 import userRoutes from '@/routes/users'
 import postRoutes from '@/routes/posts'
 import commentRoutes from '@/routes/comments'
-import imageRoutes from '@/routes/images'
-import imageServeRoutes from '@/routes/imageServe'
+import mediaRoutes from '@/routes/media'
+import mediaServeRoutes from '@/routes/mediaServe'
 import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
 import friendRoutes from '@/routes/friends'
@@ -91,11 +91,11 @@ app.use('/api/users', authMiddleware, userRoutes)
 app.use('/api/posts', postRoutes)
 app.use('/api/comments', commentRoutes)
 
-// Public image serve endpoints (no authentication required)
-app.use('/api/images/serve', imageServeRoutes)
+// Public media serve endpoints (no authentication required)
+app.use('/api/media/serve', mediaServeRoutes)
 
-// Protected image routes (authentication required)
-app.use('/api/images', authMiddleware, imageRoutes)
+// Protected media routes (authentication required)
+app.use('/api/media', authMiddleware, mediaRoutes)
 app.use('/api/galleries', authMiddleware, galleryRoutes)
 app.use('/api/search', searchRoutes)
 app.use('/api/friends', friendRoutes)

@@ -36,8 +36,8 @@ model User {
   // Reactions
   reactions Reaction[]
 
-  // Images
-  images Image[]
+  // Media (renamed from Images)
+  media Media[]
 
   // Galleries
   galleries Gallery[]
@@ -76,7 +76,7 @@ model Post {
   author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments  Comment[]
   reactions Reaction[]
-  images    PostImage[]
+  media     PostMedia[]
   hashtags  Hashtag[]
   mentions  Mention[]
   notifications Notification[]
@@ -88,7 +88,7 @@ model Comment {
   id        String   @id @default(cuid())
   content   String
   postId    String?
-  imageId   String?
+  mediaId   String?
   authorId  String
   parentId  String?  // For nested comments
   createdAt DateTime @default(now())
@@ -96,7 +96,7 @@ model Comment {
 
   // Relations
   post     Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  image    Image?    @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  media    Media?    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   replies  Comment[] @relation("CommentReplies")
@@ -124,11 +124,11 @@ model Reaction {
   @@map("reactions")
 }
 
-model Image {
+model Media {
   id             String     @id @default(cuid())
-  url            String     // Path to the full-size image file
-  thumbnail      String?    // Path to the thumbnail image file
-  s3Key          String?    // S3 key for the original image
+  url            String     // Path to the full-size media file
+  thumbnail      String?    // Path to the thumbnail file
+  s3Key          String?    // S3 key for the original media
   thumbnailS3Key String?    // S3 key for the thumbnail
   originalFilename String?  // Original filename from user's device
   altText        String?
@@ -143,17 +143,30 @@ model Image {
   authorId       String
   galleryId      String?
   order          Int        @default(0)
+  
+  // Media type and processing status
+  mediaType      MediaType  @default(IMAGE)
+  processingStatus ProcessingStatus @default(COMPLETED)
+  
+  // Video-specific fields
+  duration       Float?     // Duration in seconds
+  codec          String?    // Video codec (e.g., "h264", "h265")
+  bitrate        Int?       // Bitrate in kbps
+  framerate      Float?     // Frames per second
+  videoUrl       String?    // Path to processed video file
+  videoS3Key     String?    // S3 key for processed video
+  
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   // Relations
-  posts     PostImage[]
+  posts     PostMedia[]
   author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   gallery  Gallery?  @relation(fields: [galleryId], references: [id], onDelete: SetNull)
   coverForGallery Gallery? @relation("GalleryCover")
   comments Comment[]
 
-  @@map("images")
+  @@map("media")
 }
 
 model Gallery {
@@ -161,15 +174,15 @@ model Gallery {
   name        String
   description String?
   visibility  Visibility @default(PUBLIC)
-  coverImageId String?  @unique
+  coverMediaId String?  @unique
   authorId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
   author     User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  images     Image[]
-  coverImage Image?  @relation("GalleryCover", fields: [coverImageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  media      Media[]
+  coverMedia Media?  @relation("GalleryCover", fields: [coverMediaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("galleries")
 }
@@ -260,18 +273,18 @@ model SearchHistory {
   @@map("search_history")
 }
 
-model PostImage {
+model PostMedia {
   id     String @id @default(cuid())
   postId String
-  imageId String
+  mediaId String
   order  Int    @default(0)
 
   // Relations
   post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
-  image Image @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
-  @@unique([postId, imageId])
-  @@map("post_images")
+  @@unique([postId, mediaId])
+  @@map("post_media")
 }
 
 // Enums
@@ -311,4 +324,17 @@ enum FriendRequestStatus {
   ACCEPTED
   REJECTED
   CANCELLED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
 } 

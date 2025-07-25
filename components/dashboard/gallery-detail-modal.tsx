@@ -9,24 +9,23 @@ import {
 } from 'lucide-react'
 import { 
   useGallery, 
-  useRemoveImagesFromGallery, 
+  useRemoveMediaFromGallery, 
   useDeleteGallery, 
   useUpdateGallery,
-  useReorderGalleryImages,
+  useReorderGalleryMedia,
   useSetGalleryCover,
-  useUserImages,
+  useUserMedia,
   useAuth,
-  useBulkUpdateImages
+  useBulkUpdateMedia
 } from '../../lib/api-hooks'
-import { ImageDetailModal } from './image-detail-modal'
-import { ImageSelectorModal } from './image-selector-modal'
-import { getImageUrlFromImage, API_BASE_URL, getAuthHeaders } from '../../lib/api'
-import { LazyImage } from '../lazy-image'
-import { useImageSelection } from '../../lib/hooks/use-image-selection'
+import { MediaDetailModal } from './media-detail-modal'
+import { MediaSelectorModal } from './media-selector-modal'
+import { getMediaUrlFromMedia, API_BASE_URL, getAuthHeaders } from '../../lib/api'
+import { LazyMedia } from '../lazy-media'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { TagInput } from '../tag-input'
-import { GalleryImage } from '@/lib/types'
-import { mapImageData } from '@/lib/image-utils'
+import { Media } from '@/lib/types'
+import { mapMediaData } from '@/lib/media-utils'
 
 interface GalleryDetailModalProps {
   isOpen: boolean
@@ -36,16 +35,16 @@ interface GalleryDetailModalProps {
 }
 
 export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDeleted }: GalleryDetailModalProps) {
-  const [selectedImage, setSelectedImage] = useState<any>(null)
+  const [selectedMedia, setSelectedMedia] = useState<any>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', description: '', visibility: 'PUBLIC' as const })
-  const [showImageSelector, setShowImageSelector] = useState(false)
+  const [showMediaSelector, setShowMediaSelector] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
-  const [orderedImages, setOrderedImages] = useState<any[]>([])
+  const [orderedMedia, setOrderedMedia] = useState<any[]>([])
   const [isReordering, setIsReordering] = useState(false)
-  const [draggedImage, setDraggedImage] = useState<any>(null)
-  const [dragOverImage, setDragOverImage] = useState<any>(null)
+  const [draggedMedia, setDraggedMedia] = useState<any>(null)
+  const [dragOverMedia, setDragOverMedia] = useState<any>(null)
   
   // Bulk editing state
   const [bulkEditMode, setBulkEditMode] = useState(false)
@@ -56,27 +55,22 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   })
   const [showBulkEditForm, setShowBulkEditForm] = useState(false)
 
-  // Use the reusable image selection hook for bulk editing
-  const {
-    selectedImages,
-    toggleImage,
-    clearSelection,
-    selectImages
-  } = useImageSelection([], { allowMultiple: true })
+  // Media selection state for bulk editing
+  const [selectedMediaItems, setSelectedMediaItems] = useState<any[]>([])
 
   const { data: galleryData, isLoading, error, refetch: refetchGallery } = useGallery(galleryId)
-  const { data: userImagesData } = useUserImages('me')
+  const { data: userMediaData } = useUserMedia('me')
   const { data: authData } = useAuth()
-  const removeImagesMutation = useRemoveImagesFromGallery()
+  const removeMediaMutation = useRemoveMediaFromGallery()
   const deleteGalleryMutation = useDeleteGallery()
   const updateGalleryMutation = useUpdateGallery()
-  const reorderImagesMutation = useReorderGalleryImages()
+  const reorderMediaMutation = useReorderGalleryMedia()
   const setCoverMutation = useSetGalleryCover()
-  const bulkUpdateImagesMutation = useBulkUpdateImages()
+  const bulkUpdateMediaMutation = useBulkUpdateMedia()
 
   const gallery = galleryData?.data?.gallery
-  const images = gallery?.images || []
-  const userImages = userImagesData?.data?.images || []
+  const media = gallery?.media || []
+  const userMedia = userMediaData?.data?.media || []
   const currentUserId = authData?.data?.user?.id
   const isOwner = currentUserId === gallery?.authorId
 
@@ -91,29 +85,37 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     }
   }, [gallery?.id, gallery?.name, gallery?.description, gallery?.visibility, isEditing])
 
-  // Initialize ordered images when gallery data loads
+  // Initialize ordered media when gallery data loads
   useEffect(() => {
-    if (gallery && images.length > 0) {
-      //console.log('Gallery images:', images)
-      const validImages = images.filter((img: any) => img && img.id && typeof img.id === 'string' && img.id.length > 0)
-      console.log('Valid images:', validImages)
-      setOrderedImages([...validImages].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)))
-    } else if (gallery && images.length === 0) {
-      setOrderedImages([])
+    if (gallery && media.length > 0) {
+      console.log('Raw gallery media:', media)
+      const validMedia = media.filter((mediaItem: any) => mediaItem && mediaItem.id && typeof mediaItem.id === 'string' && mediaItem.id.length > 0)
+      console.log('Valid media:', validMedia)
+      
+      // Map the media to ensure proper structure
+      const mappedMedia = validMedia.map((mediaItem: any) => {
+        const mapped = mapMediaData(mediaItem)
+        console.log('Mapped media item:', mapped)
+        return mapped
+      })
+      
+      setOrderedMedia([...mappedMedia].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)))
+    } else if (gallery && media.length === 0) {
+      setOrderedMedia([])
     }
-  }, [gallery, images])
+  }, [gallery, media])
 
-  const handleRemoveImage = async (imageId: string) => {
+  const handleRemoveMedia = async (mediaId: string) => {
     if (!gallery) return
     
     try {
-      await removeImagesMutation.mutateAsync({
+      await removeMediaMutation.mutateAsync({
         galleryId: gallery.id,
-        imageIds: [imageId]
+        mediaIds: [mediaId]
       })
     } catch (error) {
-      console.error('Failed to remove image from gallery:', error)
-      alert('Failed to remove image from gallery. Please try again.')
+      console.error('Failed to remove media from gallery:', error)
+      alert('Failed to remove media from gallery. Please try again.')
     }
   }
 
@@ -160,90 +162,98 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     setIsEditing(false)
   }
 
-  const handleDragStart = useCallback((e: React.DragEvent, image: any) => {
-    if (!image || !image.id) return
-    setDraggedImage(image)
+  const handleDragStart = useCallback((e: React.DragEvent, mediaItem: any) => {
+    if (!mediaItem || !mediaItem.id) return
+    setDraggedMedia(mediaItem)
     e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', image.id)
+    e.dataTransfer.setData('text/plain', mediaItem.id)
   }, [])
 
-  const handleDragOver = useCallback((e: React.DragEvent, image: any) => {
+  const handleDragOver = useCallback((e: React.DragEvent, mediaItem: any) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-    if (image && image.id !== draggedImage?.id) {
-      setDragOverImage(image)
+    if (mediaItem && mediaItem.id !== draggedMedia?.id) {
+      setDragOverMedia(mediaItem)
     }
-  }, [draggedImage])
+  }, [draggedMedia])
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    setDragOverImage(null)
+    setDragOverMedia(null)
   }, [])
 
-  const handleDrop = useCallback(async (e: React.DragEvent, targetImage: any) => {
+  const handleDrop = useCallback(async (e: React.DragEvent, targetMedia: any) => {
     e.preventDefault()
     
-    if (!gallery || !draggedImage || !targetImage || draggedImage.id === targetImage.id || isReordering) {
-      setDraggedImage(null)
-      setDragOverImage(null)
+    if (!gallery || !draggedMedia || !targetMedia || draggedMedia.id === targetMedia.id || isReordering) {
+      setDraggedMedia(null)
+      setDragOverMedia(null)
       return
     }
 
-    const draggedIndex = orderedImages.findIndex(img => img.id === draggedImage.id)
-    const targetIndex = orderedImages.findIndex(img => img.id === targetImage.id)
+    const draggedIndex = orderedMedia.findIndex(img => img.id === draggedMedia.id)
+    const targetIndex = orderedMedia.findIndex(img => img.id === targetMedia.id)
     
     if (draggedIndex === -1 || targetIndex === -1) {
-      setDraggedImage(null)
-      setDragOverImage(null)
+      setDraggedMedia(null)
+      setDragOverMedia(null)
       return
     }
 
     // Create new order by moving dragged item to target position
-    const newOrder = [...orderedImages]
+    const newOrder = [...orderedMedia]
     const [draggedItem] = newOrder.splice(draggedIndex, 1)
     newOrder.splice(targetIndex, 0, draggedItem)
 
-    console.log('Reordering images:', { draggedIndex, targetIndex, newOrder })
+          console.log('Reordering media:', { draggedIndex, targetIndex, newOrder })
     
     // Set reordering flag to prevent multiple calls
     setIsReordering(true)
     
     // Update local state immediately for optimistic UI
-    setOrderedImages(newOrder)
+    setOrderedMedia(newOrder)
     
     try {
-      const imageIds = newOrder.map(img => img.id)
-      await reorderImagesMutation.mutateAsync({
+      const mediaIds = newOrder.map(img => img.id)
+      await reorderMediaMutation.mutateAsync({
         galleryId: gallery.id,
-        imageIds
+        mediaIds
       })
     } catch (error) {
-      console.error('Failed to reorder images:', error)
-      alert('Failed to reorder images. Please try again.')
+      console.error('Failed to reorder media:', error)
+      alert('Failed to reorder media. Please try again.')
       // Revert to original order
-      const validImages = images.filter((img: any) => img && img.id && typeof img.id === 'string' && img.id.length > 0)
-      setOrderedImages([...validImages].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)))
+      const validMedia = media.filter((med: any) => med && med.id && typeof med.id === 'string' && med.id.length > 0)
+      setOrderedMedia([...validMedia].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)))
     } finally {
       setIsReordering(false)
     }
     
-    setDraggedImage(null)
-    setDragOverImage(null)
-  }, [gallery, draggedImage, orderedImages, isReordering, reorderImagesMutation, images])
+    setDraggedMedia(null)
+    setDragOverMedia(null)
+  }, [gallery, draggedMedia, orderedMedia, isReordering, reorderMediaMutation, media])
 
   const handleDragEnd = useCallback(() => {
-    setDraggedImage(null)
-    setDragOverImage(null)
+    setDraggedMedia(null)
+    setDragOverMedia(null)
   }, [])
 
-  const handleSetCover = async (imageId: string) => {
+  const handleSetCover = async (mediaId: string) => {
     if (!gallery) return
     
+    console.log('Setting cover for gallery:', gallery.id, 'mediaId:', mediaId)
+    console.log('Current coverMediaId:', gallery.coverMediaId)
+    
     try {
+      const newMediaId = gallery.coverMediaId === mediaId ? undefined : mediaId
+      console.log('New mediaId to set:', newMediaId)
+      
       await setCoverMutation.mutateAsync({
         galleryId: gallery.id,
-        imageId: gallery.coverImageId === imageId ? undefined : imageId
+        mediaId: newMediaId
       })
+      
+      console.log('Cover set successfully')
     } catch (error) {
       console.error('Failed to set cover image:', error)
       alert('Failed to set cover image. Please try again.')
@@ -259,21 +269,40 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     }
   }
 
-  const handleSelectAllImages = () => {
-    selectImages(orderedImages)
+  const clearSelection = () => {
+    setSelectedMediaItems([])
   }
 
-  const handleDeselectAllImages = () => {
+  const selectMedia = (mediaItems: any[]) => {
+    setSelectedMediaItems(mediaItems)
+  }
+
+  const handleSelectAllMedia = () => {
+    selectMedia(orderedMedia)
+  }
+
+  const handleDeselectAllMedia = () => {
     clearSelection()
   }
 
+  const toggleMedia = (mediaItem: any) => {
+    setSelectedMediaItems(prev => {
+      const isSelected = prev.some(m => m.id === mediaItem.id)
+      if (isSelected) {
+        return prev.filter(m => m.id !== mediaItem.id)
+      } else {
+        return [...prev, mediaItem]
+      }
+    })
+  }
+
   const handleBulkEditSubmit = async () => {
-    if (selectedImages.length === 0) {
-      alert('Please select at least one image to edit.')
+    if (selectedMediaItems.length === 0) {
+      alert('Please select at least one media item to edit.')
       return
     }
 
-    const imageIds = selectedImages.map(img => img.id)
+    const mediaIds = selectedMediaItems.map(mediaItem => mediaItem.id)
     const updates: any = {}
     let hasUpdates = false
 
@@ -302,23 +331,23 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     }
 
     try {
-      await bulkUpdateImagesMutation.mutateAsync({
-        imageIds,
+      await bulkUpdateMediaMutation.mutateAsync({
+        mediaIds,
         ...updates,
-        onOptimisticUpdate: (imageId: string, imageUpdates: any) => {
+        onOptimisticUpdate: (mediaId: string, mediaUpdates: any) => {
           // Update local state optimistically
-          setOrderedImages(prev => 
-            prev.map(img => 
-              img.id === imageId 
+          setOrderedMedia(prev => 
+            prev.map(mediaItem => 
+              mediaItem.id === mediaId 
                 ? { 
-                    ...img, 
-                    ...imageUpdates,
+                    ...mediaItem, 
+                    ...mediaUpdates,
                     // Handle tag merging for optimistic updates
                     tags: updates.mergeTags && updates.tags 
-                      ? Array.from(new Set([...(img.tags || []), ...updates.tags]))
-                      : imageUpdates.tags || img.tags
+                      ? Array.from(new Set([...(mediaItem.tags || []), ...updates.tags]))
+                      : mediaUpdates.tags || mediaItem.tags
                   }
-                : img
+                : mediaItem
             )
           )
         }
@@ -330,10 +359,10 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
       setBulkEditMode(false)
       clearSelection()
       
-      alert(`Successfully updated ${selectedImages.length} image${selectedImages.length !== 1 ? 's' : ''}.`)
+      alert(`Successfully updated ${selectedMediaItems.length} media item${selectedMediaItems.length !== 1 ? 's' : ''}.`)
     } catch (error) {
-      console.error('Failed to bulk update images:', error)
-      alert('Failed to update images. Please try again.')
+      console.error('Failed to bulk update media:', error)
+      alert('Failed to update media. Please try again.')
     }
   }
 
@@ -448,7 +477,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             <Calendar className="h-3 w-3 mr-1" />
                             {formatDate(gallery.createdAt)}
                           </span>
-                          <span>{images.length} image{images.length !== 1 ? 's' : ''}</span>
+                          <span>{media.length} media item{media.length !== 1 ? 's' : ''}</span>
                         </div>
                       </>
                     )}
@@ -543,16 +572,16 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
 
                   {/* Action Bar */}
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-medium text-gray-900">Images</h3>
+                    <h3 className="text-lg font-medium text-gray-900">Media</h3>
                     <div className="flex items-center space-x-2">
                       {isOwner && (
                         <>
                           <button
-                            onClick={() => setShowImageSelector(true)}
+                            onClick={() => setShowMediaSelector(true)}
                             className="flex items-center space-x-2 px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200"
                           >
                             <Plus className="h-4 w-4" />
-                            <span>Add Images</span>
+                            <span>Add Media</span>
                           </button>
                           <button
                             onClick={() => setReorderMode(!reorderMode)}
@@ -616,17 +645,17 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
                           <span className="text-sm font-medium text-blue-900">
-                            {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                            {selectedMedia.length} image{selectedMedia.length !== 1 ? 's' : ''} selected
                           </span>
                           <div className="flex items-center space-x-2">
                             <button
-                              onClick={handleSelectAllImages}
+                              onClick={handleSelectAllMedia}
                               className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors duration-200"
                             >
                               Select All
                             </button>
                             <button
-                              onClick={handleDeselectAllImages}
+                              onClick={handleDeselectAllMedia}
                               className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors duration-200"
                             >
                               Clear Selection
@@ -654,7 +683,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                   {/* Bulk Edit Form */}
                   {bulkEditMode && showBulkEditForm && (
                     <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                      <h4 className="text-sm font-medium text-green-900 mb-3">Bulk Edit {selectedImages.length} Image{selectedImages.length !== 1 ? 's' : ''}</h4>
+                      <h4 className="text-sm font-medium text-green-900 mb-3">Bulk Edit {selectedMedia.length} Image{selectedMedia.length !== 1 ? 's' : ''}</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-green-800 mb-1">
@@ -665,7 +694,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             type="text"
                             value={bulkEditForm.title}
                             onChange={(e) => setBulkEditForm(prev => ({ ...prev, title: e.target.value }))}
-                            placeholder="Common title for all images"
+                            placeholder="Common title for all media items"
                             className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                           />
                         </div>
@@ -678,7 +707,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             type="text"
                             value={bulkEditForm.description}
                             onChange={(e) => setBulkEditForm(prev => ({ ...prev, description: e.target.value }))}
-                            placeholder="Common description for all images"
+                            placeholder="Common description for all media items"
                             className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                           />
                         </div>
@@ -704,38 +733,39 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                         </button>
                         <button
                           onClick={handleBulkEditSubmit}
-                          disabled={bulkUpdateImagesMutation.isPending || selectedImages.length === 0}
+                          disabled={bulkUpdateMediaMutation.isPending || selectedMedia.length === 0}
                           className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {bulkUpdateImagesMutation.isPending ? 'Updating...' : `Update ${selectedImages.length} Image${selectedImages.length !== 1 ? 's' : ''}`}
+                          {bulkUpdateMediaMutation.isPending ? 'Updating...' : `Update ${selectedMedia.length} Image${selectedMedia.length !== 1 ? 's' : ''}`}
                         </button>
                       </div>
                     </div>
                   )}
 
-                                    {/* Images Grid/List */}
+                                    {/* Media Grid/List */}
                   {viewMode === 'grid' ? (
                     reorderMode ? (
-                      orderedImages.length > 0 ? (
+                      orderedMedia.length > 0 ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                          {orderedImages.map((image: any, index: number) => (
+                          {orderedMedia.map((media: any, index: number) => (
                             <div
-                              key={image.id || `image-${index}`}
+                              key={media.id || `media-${index}`}
                               draggable
-                              onDragStart={(e: React.DragEvent) => handleDragStart(e, image)}
-                              onDragOver={(e: React.DragEvent) => handleDragOver(e, image)}
+                              onDragStart={(e: React.DragEvent) => handleDragStart(e, media)}
+                              onDragOver={(e: React.DragEvent) => handleDragOver(e, media)}
                               onDragLeave={(e: React.DragEvent) => handleDragLeave(e)}
-                              onDrop={(e: React.DragEvent) => handleDrop(e, image)}
+                              onDrop={(e: React.DragEvent) => handleDrop(e, media)}
                               onDragEnd={(e: React.DragEvent) => handleDragEnd()}
                               className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200 cursor-move ${
-                                draggedImage?.id === image.id ? 'opacity-50' : ''
+                                draggedMedia?.id === media.id ? 'opacity-50' : ''
                               } ${
-                                dragOverImage?.id === image.id ? 'ring-2 ring-blue-500' : ''
+                                dragOverMedia?.id === media.id ? 'ring-2 ring-blue-500' : ''
                               }`}
                             >
-                              <LazyImage
-                                src={getImageUrlFromImage(image, true)}
-                                alt={image.altText || 'Gallery image'}
+                              <LazyMedia
+                                src={getMediaUrlFromMedia(media, true)}
+                                mediaType={media.mediaType || "IMAGE"}
+                                alt={media.altText || 'Gallery media x'}
                                 className="w-full h-full object-cover pointer-events-none"
                               />
                               
@@ -747,7 +777,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               </div>
 
                               {/* Cover Image Indicator */}
-                              {gallery.coverImageId === image.id && (
+                              {gallery.coverMediaId === media.id && (
                                 <div className="absolute top-2 right-2 bg-yellow-500 text-white rounded-full p-1">
                                   <Star className="h-3 w-3" />
                                 </div>
@@ -760,34 +790,35 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                           <div className="text-gray-400 mb-4">
                             <ImageIcon className="h-12 w-12 mx-auto" />
                           </div>
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">No images to reorder</h3>
-                          <p className="text-gray-600">Add some images to the gallery first.</p>
+                                              <h3 className="text-lg font-medium text-gray-900 mb-2">No media items to reorder</h3>
+                    <p className="text-gray-600">Add some media items to the gallery first.</p>
                         </div>
                       )
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                        {orderedImages.map((image: any, index: number) => (
+                        {orderedMedia.map((media: any, index: number) => (
                           <motion.div
-                            key={image.id || `image-${index}`}
+                            key={media.id || `media-${index}`}
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200 ${
-                              bulkEditMode && selectedImages.some(img => img.id === image.id) 
+                              bulkEditMode && selectedMedia.some((img: any) => img.id === media.id) 
                                 ? 'ring-2 ring-green-500' 
                                 : ''
                             }`}
                           >
-                            <LazyImage
-                              src={getImageUrlFromImage(image, true)}
-                              alt={image.altText || 'Gallery image'}
+                            <LazyMedia
+                              src={getMediaUrlFromMedia(media, true)}
+                              alt={media.altText || 'Gallery medium'}
                               className={`w-full h-full object-cover ${bulkEditMode ? 'cursor-pointer' : 'cursor-pointer'}`}
                               onClick={() => {
                                 if (bulkEditMode) {
-                                  toggleImage(image)
+                                  toggleMedia(media)
                                 } else {
-                                  setSelectedImage(image)
+                                  setSelectedMedia(media)
                                 }
                               }}
+                              mediaType={media.mediaType || 'IMAGE'}
                             />
                             
                             {/* Bulk Edit Selection Checkbox */}
@@ -796,15 +827,15 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    toggleImage(image)
+                                    toggleMedia(media)
                                   }}
                                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 ${
-                                    selectedImages.some(img => img.id === image.id)
+                                    selectedMedia.some((img: any) => img.id === media.id)
                                       ? 'bg-green-500 border-green-500 text-white'
                                       : 'bg-white border-gray-300 hover:border-green-400'
                                   }`}
                                 >
-                                  {selectedImages.some(img => img.id === image.id) && (
+                                  {selectedMedia.some((img: any) => img.id === media.id) && (
                                     <Check className="h-4 w-4" />
                                   )}
                                 </button>
@@ -812,7 +843,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             )}
                             
                             {/* Cover Image Indicator */}
-                            {gallery.coverImageId === image.id && (
+                            {gallery.coverMediaId === media.id && (
                               <div className="absolute top-2 right-2 bg-yellow-500 text-white rounded-full p-1">
                                 <Star className="h-3 w-3" />
                               </div>
@@ -823,13 +854,13 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
                                 <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                   <button
-                                    onClick={() => setSelectedImage(image)}
+                                    onClick={() => setSelectedMedia(media)}
                                     className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
                                   >
                                     <Eye className="h-4 w-4 text-gray-700" />
                                   </button>
                                   <a
-                                    href={getImageUrlFromImage(image, false)}
+                                    href={getMediaUrlFromMedia(media, false)}
                                     download
                                     className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
                                   >
@@ -838,22 +869,22 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                   {isOwner && (
                                     <>
                                       <button
-                                        onClick={() => handleSetCover(image.id)}
+                                        onClick={() => handleSetCover(media.id)}
                                         className={`p-2 rounded-full shadow-lg transition-colors duration-200 ${
-                                          gallery.coverImageId === image.id
+                                          gallery.coverMediaId === media.id
                                             ? 'bg-yellow-500 text-white'
                                             : 'bg-white text-gray-700 hover:bg-yellow-50'
                                         }`}
                                       >
-                                        {gallery.coverImageId === image.id ? (
+                                        {gallery.coverMediaId === media.id ? (
                                           <StarOff className="h-4 w-4" />
                                         ) : (
                                           <Star className="h-4 w-4" />
                                         )}
                                       </button>
                                       <button
-                                        onClick={() => handleRemoveImage(image.id)}
-                                        disabled={removeImagesMutation.isPending}
+                                        onClick={() => handleRemoveMedia(media.id)}
+                                        disabled={removeMediaMutation.isPending}
                                         className="p-2 bg-white rounded-full shadow-lg hover:bg-red-50 transition-colors duration-200"
                                       >
                                         <Trash2 className="h-4 w-4 text-red-600" />
@@ -869,47 +900,48 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                     )
                                     ) : (
                     reorderMode ? (
-                      orderedImages.length > 0 ? (
+                      orderedMedia.length > 0 ? (
                         <div className="space-y-4">
-                          {orderedImages.map((image: any, index: number) => (
+                          {orderedMedia.map((media: any, index: number) => (
                             <div
-                              key={image.id || `image-${index}`}
+                              key={media.id || `media-${index}`}
                               draggable
-                              onDragStart={(e: React.DragEvent) => handleDragStart(e, image)}
-                              onDragOver={(e: React.DragEvent) => handleDragOver(e, image)}
+                              onDragStart={(e: React.DragEvent) => handleDragStart(e, media)}
+                              onDragOver={(e: React.DragEvent) => handleDragOver(e, media)}
                               onDragLeave={(e: React.DragEvent) => handleDragLeave(e)}
-                              onDrop={(e: React.DragEvent) => handleDrop(e, image)}
+                              onDrop={(e: React.DragEvent) => handleDrop(e, media)}
                               onDragEnd={(e: React.DragEvent) => handleDragEnd()}
                               className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-move ${
-                                draggedImage?.id === image.id ? 'opacity-50' : ''
+                                draggedMedia?.id === media.id ? 'opacity-50' : ''
                               } ${
-                                dragOverImage?.id === image.id ? 'ring-2 ring-blue-500' : ''
+                                dragOverMedia?.id === media.id ? 'ring-2 ring-blue-500' : ''
                               }`}
                             >
                             <div className="flex items-center space-x-4">
                               <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                                <LazyImage
-                                  src={getImageUrlFromImage(image, true)}
-                                  alt={image.altText || 'Gallery image'}
+                                <LazyMedia
+                                  src={getMediaUrlFromMedia(media, true)}
+                                  mediaType={media.mediaType || 'IMAGE'}
+                                  alt={media.altText || 'Gallery media 2'}
                                   className="w-full h-full object-cover"
                                 />
                               </div>
                               
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium text-gray-900 mb-1 truncate">
-                                  {image.altText || image.caption || 'Untitled'}
+                                  {media.altText || media.caption || 'Untitled'}
                                 </h4>
-                                {image.caption && (
+                                {media.caption && (
                                   <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                                    {image.caption}
+                                    {media.caption}
                                   </p>
                                 )}
                                 <div className="flex items-center space-x-4 text-xs text-gray-500">
                                   <span className="flex items-center">
                                     <Calendar className="h-3 w-3 mr-1" />
-                                    {formatDate(image.createdAt)}
+                                    {formatDate(media.createdAt)}
                                   </span>
-                                  {gallery.coverImageId === image.id && (
+                                  {gallery.coverMediaId === media.id && (
                                     <span className="flex items-center text-yellow-600">
                                       <Star className="h-3 w-3 mr-1" />
                                       Cover Image
@@ -930,19 +962,19 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                           <div className="text-gray-400 mb-4">
                             <ImageIcon className="h-12 w-12 mx-auto" />
                           </div>
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">No images to reorder</h3>
-                          <p className="text-gray-600">Add some images to the gallery first.</p>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">No medias to reorder</h3>
+                          <p className="text-gray-600">Add some medias to the gallery first.</p>
                         </div>
                       )
                     ) : (
                       <div className="space-y-4">
-                        {orderedImages.map((image: any, index: number) => (
+                        {orderedMedia.map((media: any, index: number) => (
                           <motion.div
-                            key={image.id || `image-${index}`}
+                            key={media.id || `media-${index}`}
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${
-                              bulkEditMode && selectedImages.some(img => img.id === image.id) 
+                              bulkEditMode && selectedMedia.some((img: any) => img.id === media.id) 
                                 ? 'ring-2 ring-green-500 bg-green-50' 
                                 : ''
                             }`}
@@ -951,29 +983,30 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               {/* Bulk Edit Selection Checkbox */}
                               {bulkEditMode && (
                                 <button
-                                  onClick={() => toggleImage(image)}
+                                  onClick={() => toggleMedia(media)}
                                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 flex-shrink-0 ${
-                                    selectedImages.some(img => img.id === image.id)
+                                    selectedMedia.some((img: any) => img.id === media.id)
                                       ? 'bg-green-500 border-green-500 text-white'
                                       : 'bg-white border-gray-300 hover:border-green-400'
                                   }`}
                                 >
-                                  {selectedImages.some(img => img.id === image.id) && (
+                                  {selectedMedia.some((img: any) => img.id === media.id) && (
                                     <Check className="h-4 w-4" />
                                   )}
                                 </button>
                               )}
                               
                               <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                                <LazyImage
-                                  src={getImageUrlFromImage(image, true)}
-                                  alt={image.altText || 'Gallery image'}
+                                <LazyMedia
+                                  mediaType={media.mediaType || 'IMAGE'}
+                                  src={getMediaUrlFromMedia(media, true)}
+                                  alt={media.altText || 'Gallery media 3'}
                                   className="w-full h-full object-cover cursor-pointer"
                                   onClick={() => {
                                     if (bulkEditMode) {
-                                      toggleImage(image)
+                                      toggleMedia(media)
                                     } else {
-                                      setSelectedImage(image)
+                                      setSelectedMedia(media)
                                     }
                                   }}
                                 />
@@ -981,19 +1014,19 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium text-gray-900 mb-1 truncate">
-                                  {image.altText || image.caption || 'Untitled'}
+                                  {media.altText || media.caption || 'Untitled'}
                                 </h4>
-                                {image.caption && (
+                                {media.caption && (
                                   <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                                    {image.caption}
+                                    {media.caption}
                                   </p>
                                 )}
                                 <div className="flex items-center space-x-4 text-xs text-gray-500">
                                   <span className="flex items-center">
                                     <Calendar className="h-3 w-3 mr-1" />
-                                    {formatDate(image.createdAt)}
+                                    {formatDate(media.createdAt)}
                                   </span>
-                                  {gallery.coverImageId === image.id && (
+                                  {gallery.coverMediaId === media.id && (
                                     <span className="flex items-center text-yellow-600">
                                       <Star className="h-3 w-3 mr-1" />
                                       Cover Image
@@ -1006,13 +1039,13 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 {!bulkEditMode && (
                                   <>
                                     <button
-                                      onClick={() => setSelectedImage(image)}
+                                      onClick={() => setSelectedMedia(media)}
                                       className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                                     >
                                       <Eye className="h-4 w-4" />
                                     </button>
                                     <a
-                                      href={getImageUrlFromImage(image, false)}
+                                      href={getMediaUrlFromMedia(media, false)}
                                       download
                                       className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                                     >
@@ -1021,22 +1054,22 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                     {isOwner && (
                                       <>
                                         <button
-                                          onClick={() => handleSetCover(image.id)}
+                                          onClick={() => handleSetCover(media.id)}
                                           className={`p-2 rounded-lg transition-colors duration-200 ${
-                                            gallery.coverImageId === image.id
+                                            gallery.coverMediaId === media.id
                                               ? 'text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50'
                                               : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                                           }`}
                                         >
-                                          {gallery.coverImageId === image.id ? (
+                                          {gallery.coverMediaId === media.id ? (
                                             <StarOff className="h-4 w-4" />
                                           ) : (
                                             <Star className="h-4 w-4" />
                                           )}
                                         </button>
                                         <button
-                                          onClick={() => handleRemoveImage(image.id)}
-                                          disabled={removeImagesMutation.isPending}
+                                          onClick={() => handleRemoveMedia(media.id)}
+                                          disabled={removeMediaMutation.isPending}
                                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
                                         >
                                           <Trash2 className="h-4 w-4" />
@@ -1054,20 +1087,20 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                   )}
 
                   {/* Empty State */}
-                  {orderedImages.length === 0 && (
+                  {orderedMedia.length === 0 && (
                     <div className="text-center py-12">
                       <div className="text-gray-400 mb-4">
                         <ImageIcon className="h-12 w-12 mx-auto" />
                       </div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No images in this gallery</h3>
-                      <p className="text-gray-600 mb-4">This gallery is empty. Add some images to get started!</p>
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">No media items in this gallery</h3>
+                  <p className="text-gray-600 mb-4">This gallery is empty. Add some media items to get started!</p>
                       {isOwner && (
                         <button
-                          onClick={() => setShowImageSelector(true)}
+                          onClick={() => setShowMediaSelector(true)}
                           className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200 mx-auto"
                         >
                           <Plus className="h-4 w-4" />
-                          <span>Add Images</span>
+                          <span>Add Media</span>
                         </button>
                       )}
                     </div>
@@ -1080,26 +1113,26 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
       </div>
 
       {/* Image Detail Modal */}
-      { selectedImage && (
+      { selectedMedia && (
         <FullScreenWrapper>
-      <ImageDetailModal
-        image={selectedImage ? mapImageData(selectedImage) : null}
-        onClose={() => setSelectedImage(null)}
-        onImageUpdate={() => {
+      <MediaDetailModal
+        media={selectedMedia ? mapMediaData(selectedMedia) : null}
+        onClose={() => setSelectedMedia(null)}
+        onMediaUpdate={() => {
           // The optimistic update will handle this automatically
         }}
-        updateImage={() => {
-          // This would need to be implemented if we want to update images from the gallery view
+        updateMedia={() => {
+          // This would need to be implemented if we want to update media items from the gallery view
         }}
-        allImages={orderedImages.map(image => mapImageData(image))}
+        allMedia={orderedMedia.map(media => mapMediaData(media))}         
         onNavigate={(image: any) => {
           // Debug: Log the raw image data
           console.log('Raw gallery image data:', image)
           
           // Map the backend image data to the format expected by ImageDetailModal
-          const mappedImage = mapImageData(image)
-          console.log('Mapped image:', mappedImage)
-          setSelectedImage(mappedImage)
+          const mappedMedia = mapMediaData(image)
+          console.log('Mapped image:', mappedMedia)
+          setSelectedMedia(mappedMedia)
         }}
       />
       </FullScreenWrapper>
@@ -1107,41 +1140,41 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
 
       {/* Image Selector Modal */}
 
-      <ImageSelectorModal
-        isOpen={showImageSelector}
-        onClose={() => setShowImageSelector(false)}
-        onImagesSelected={async (selectedImages) => {
+      <MediaSelectorModal
+        isOpen={showMediaSelector}
+        onClose={() => setShowMediaSelector(false)}
+        onMediaSelected={async (selectedMedia) => {
           if (!gallery) return
           
           try {
-            const selectedImageIds = selectedImages.map(img => img.id)
-            // Add images to gallery
+            const selectedmediaIds = selectedMedia.map(img => img.id)
+            // Add media items to gallery
             const token = localStorage.getItem('token')
             if (!token) throw new Error('No token found')
             
-            const response = await fetch(`${API_BASE_URL}/galleries/${gallery.id}/images`, {
+            const response = await fetch(`${API_BASE_URL}/galleries/${gallery.id}/media`, {
               method: 'POST',
               headers: getAuthHeaders(token),
-              body: JSON.stringify({ imageIds: selectedImageIds })
+              body: JSON.stringify({ mediaIds: selectedmediaIds })
             })
             
             if (!response.ok) {
-              throw new Error('Failed to add images to gallery')
+              throw new Error('Failed to add media items to gallery')
             }
             
-            // Refresh gallery data to show newly added images
+            // Refresh gallery data to show newly added media items
             if (refetchGallery) {
               await refetchGallery()
             }
             
-            setShowImageSelector(false)
+            setShowMediaSelector(false)
           } catch (error) {
-            console.error('Failed to add images to gallery:', error)
-            alert('Failed to add images to gallery. Please try again.')
+                    console.error('Failed to add media items to gallery:', error)
+        alert('Failed to add media items to gallery. Please try again.')
           }
         }}
         userId={authData?.data?.user?.id || "me"}
-        existingGalleryImages={orderedImages}
+        existingGalleryMedia={orderedMedia}
       />
     </AnimatePresence>
   )

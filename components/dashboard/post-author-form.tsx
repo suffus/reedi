@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Image as ImageIcon, Tag } from 'lucide-react'
+import { Image as ImageIcon, Video, Tag } from 'lucide-react'
 import { useCreatePost } from '../../lib/api-hooks'
-import { ImageSelectorModal } from './image-selector-modal'
-import { getImageUrlFromImage } from '../../lib/api'
-import { LazyImage } from '../lazy-image'
+import { MediaSelectorModal } from './media-selector-modal'
+import { getMediaUrlFromMedia } from '../../lib/api'
+import { LazyMedia } from '../lazy-media'
 
 interface PostAuthorFormProps {
   userId?: string
@@ -14,8 +14,8 @@ interface PostAuthorFormProps {
 
 export function PostAuthorForm({ userId, onPostCreated }: PostAuthorFormProps) {
   const [newPost, setNewPost] = useState('')
-  const [selectedImages, setSelectedImages] = useState<any[]>([])
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false)
+  const [selectedMedia, setSelectedMedia] = useState<any[]>([])
+  const [isMediaModalOpen, setIsMediaModalOpen] = useState(false)
   const [postVisibility, setPostVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
 
   const createPostMutation = useCreatePost()
@@ -28,10 +28,10 @@ export function PostAuthorForm({ userId, onPostCreated }: PostAuthorFormProps) {
       await createPostMutation.mutateAsync({
         content: newPost,
         visibility: postVisibility,
-        imageIds: selectedImages.map(img => img.id)
+        mediaIds: selectedMedia.map(media => media.id)
       })
       setNewPost('')
-      setSelectedImages([])
+      setSelectedMedia([])
       setPostVisibility('PUBLIC') // Reset to default
       onPostCreated?.()
     } catch (error) {
@@ -90,32 +90,33 @@ export function PostAuthorForm({ userId, onPostCreated }: PostAuthorFormProps) {
           </div>
         </div>
         
-        {/* Selected Images Preview */}
-        {selectedImages.length > 0 && (
+        {/* Selected Media Preview */}
+        {selectedMedia.length > 0 && (
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-medium text-gray-700">
-                {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                {selectedMedia.length} media item{selectedMedia.length !== 1 ? 's' : ''} selected
               </h4>
               <button
                 type="button"
-                onClick={() => setSelectedImages([])}
+                onClick={() => setSelectedMedia([])}
                 className="text-sm text-red-600 hover:text-red-800"
               >
                 Clear all
               </button>
             </div>
             <div className="grid grid-cols-4 gap-2">
-              {selectedImages.map((image, index) => (
-                <div key={image.id} className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden">
-                  <LazyImage
-                    src={getImageUrlFromImage(image, true)}
-                    alt={image.caption || image.altText || 'Selected image'}
+              {selectedMedia.map((media, index) => (
+                <div key={media.id} className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden">
+                  <LazyMedia
+                    src={getMediaUrlFromMedia(media, true)}
+                    alt={media.caption || media.altText || 'Selected media'}
                     className="w-full h-full object-cover"
+                    mediaType={media.mediaType || 'IMAGE'}
                   />
                   <button
                     type="button"
-                    onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== index))}
+                    onClick={() => setSelectedMedia(prev => prev.filter((_, i) => i !== index))}
                     className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
                   >
                     ×
@@ -130,8 +131,8 @@ export function PostAuthorForm({ userId, onPostCreated }: PostAuthorFormProps) {
             <button
               type="button"
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-              onClick={() => setIsImageModalOpen(true)}
-              aria-label="Add images"
+              onClick={() => setIsMediaModalOpen(true)}
+              aria-label="Add media"
             >
               <ImageIcon className="h-5 w-5" />
             </button>
@@ -151,12 +152,12 @@ export function PostAuthorForm({ userId, onPostCreated }: PostAuthorFormProps) {
           </button>
         </div>
       </form>
-      {/* Image Selector Modal */}
+      {/* Media Selector Modal */}
       {userId && (
-        <ImageSelectorModal
-          isOpen={isImageModalOpen}
-          onClose={() => setIsImageModalOpen(false)}
-          onImagesSelected={setSelectedImages}
+        <MediaSelectorModal
+          isOpen={isMediaModalOpen}
+          onClose={() => setIsMediaModalOpen(false)}
+          onMediaSelected={setSelectedMedia}
           userId={userId}
         />
       )}

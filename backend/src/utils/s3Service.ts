@@ -82,6 +82,35 @@ export async function processImageForS3(
 }
 
 /**
+ * Upload any file to S3 (generic function for videos, etc.)
+ */
+export async function uploadToS3(
+  buffer: Buffer,
+  originalName: string,
+  mimeType: string,
+  userId: string
+): Promise<string> {
+  const timestamp = Date.now()
+  const fileExtension = originalName.split('.').pop() || 'bin'
+  const key = `uploads/${userId}/${timestamp}.${fileExtension}`
+
+  const cmdArg = {
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Body: buffer,
+    ContentType: mimeType,
+    Metadata: { originalName },
+    ACL: 'public-read' as const, // Make objects publicly readable
+  }
+  
+  const command = new PutObjectCommand(cmdArg)
+  await s3Client.send(command)
+  
+  // Return the S3 key (not URL) - URLs will be generated on-demand
+  return key
+}
+
+/**
  * Upload image to S3
  */
 export async function uploadImageToS3(
@@ -96,7 +125,7 @@ export async function uploadImageToS3(
     Body: buffer,
     ContentType: mimeType,
     Metadata: metadata,
-    ACL: 'public-read', // Make objects publicly readable
+    ACL: 'public-read' as const, // Make objects publicly readable
   }
   const command = new PutObjectCommand(cmdArg)
 

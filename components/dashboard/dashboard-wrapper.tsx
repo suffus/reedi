@@ -7,7 +7,7 @@ import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus } fro
 import { PersonalFeed } from './personal-feed'
 import { UserGallery } from './user-gallery'
 import { ProfileEditor } from './profile-editor'
-import { ImageUploader } from './image-uploader'
+import { MediaUploader } from './media-uploader'
 import FriendRequests from './friend-requests'
 import FriendsList from './friends-list'
 import { useAuth } from '../../lib/api-hooks'
@@ -28,7 +28,7 @@ interface UserData {
 export function DashboardWrapper() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'feed' | 'gallery' | 'profile' | 'friends' | 'requests'>('feed')
-  const [showImageUploader, setShowImageUploader] = useState(false)
+  const [showMediaUploader, setShowMediaUploader] = useState(false)
   const [isClient, setIsClient] = useState(false)
 
   const { data: authData, isLoading, error } = useAuth()
@@ -121,11 +121,11 @@ export function DashboardWrapper() {
             {/* User Menu */}
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => setShowImageUploader(true)}
+                onClick={() => setShowMediaUploader(true)}
                 className="btn-primary flex items-center space-x-2"
               >
                 <Plus className="h-4 w-4" />
-                <span>Upload Image</span>
+                <span>Upload Media</span>
               </button>
               
               <div className="relative group">
@@ -306,12 +306,12 @@ export function DashboardWrapper() {
         </AnimatePresence>
       </main>
 
-      {/* Image Uploader Modal */}
+      {/* Media Uploader Modal */}
       <AnimatePresence>
-        {showImageUploader && (
-          <ImageUploader
+        {showMediaUploader && (
+          <MediaUploader
             userId={user.id}
-            onClose={() => setShowImageUploader(false)}
+            onClose={() => setShowMediaUploader(false)}
             onUploadComplete={handleUploadComplete}
           />
         )}
