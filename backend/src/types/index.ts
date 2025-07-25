@@ -1,5 +1,5 @@
 import { Request } from 'express'
-import { User, Post, Comment, Image, Gallery, Reaction, Notification } from '@prisma/client'
+import { User, Post, Comment, Media, Gallery, Reaction, Notification } from '@prisma/client'
 
 // Extended Request interface with user
 export interface AuthenticatedRequest extends Request {
@@ -60,13 +60,34 @@ export interface UpdateCommentRequest {
   content: string
 }
 
-// Image types
-export interface CreateImageRequest {
+// Media types
+export interface CreateMediaRequest {
   url: string
   altText?: string
   caption?: string
   postId?: string
   galleryId?: string
+  mediaType?: 'IMAGE' | 'VIDEO'
+}
+
+// Video processing types
+export interface VideoProcessingRequest {
+  mediaId: string
+  s3Key: string
+  userId: string
+  originalFilename: string
+  mimeType: string
+}
+
+export interface VideoProcessingResult {
+  duration: number
+  codec: string
+  bitrate: number
+  framerate: number
+  videoUrl: string
+  videoS3Key: string
+  thumbnailUrl: string
+  thumbnailS3Key: string
 }
 
 // Gallery types
@@ -116,7 +137,7 @@ export type PostWithDetails = Post & {
   author: User
   comments: Comment[]
   reactions: Reaction[]
-  images: Image[]
+  media: Media[]
   hashtags: { name: string }[]
   _count: {
     comments: number

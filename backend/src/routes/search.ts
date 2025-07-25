@@ -6,8 +6,8 @@ import { AuthenticatedRequest } from '@/types'
 
 const router = Router()
 
-// Search images by tags
-router.get('/images/tags', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+// Search media by tags
+router.get('/media/tags', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { tags, page = 1, limit = 20 } = req.query
   const userId = req.user?.id
 
@@ -54,7 +54,7 @@ router.get('/images/tags', optionalAuthMiddleware, asyncHandler(async (req: Auth
       rel.senderId === userId ? rel.receiverId : rel.senderId
     )
 
-    // Add FRIENDS_ONLY visibility for friends' images
+    // Add FRIENDS_ONLY visibility for friends' media
     if (friendIds.length > 0) {
       visibilityFilter.push({
         AND: [
@@ -64,7 +64,7 @@ router.get('/images/tags', optionalAuthMiddleware, asyncHandler(async (req: Auth
       })
     }
 
-    // Add user's own images (all visibility levels)
+    // Add user's own media (all visibility levels)
     visibilityFilter.push({ authorId: userId })
   }
 
@@ -78,8 +78,8 @@ router.get('/images/tags', optionalAuthMiddleware, asyncHandler(async (req: Auth
     OR: visibilityFilter
   }
 
-  const [images, total] = await Promise.all([
-    prisma.image.findMany({
+  const [media, total] = await Promise.all([
+    prisma.media.findMany({
       where,
       skip: offset,
       take: Number(limit),
@@ -95,6 +95,14 @@ router.get('/images/tags', optionalAuthMiddleware, asyncHandler(async (req: Auth
         size: true,
         mimeType: true,
         tags: true,
+        mediaType: true,
+        processingStatus: true,
+        duration: true,
+        codec: true,
+        bitrate: true,
+        framerate: true,
+        videoUrl: true,
+        videoS3Key: true,
         createdAt: true,
         updatedAt: true,
         authorId: true,
@@ -108,13 +116,13 @@ router.get('/images/tags', optionalAuthMiddleware, asyncHandler(async (req: Auth
         }
       }
     }),
-    prisma.image.count({ where })
+    prisma.media.count({ where })
   ])
 
   res.json({
     success: true,
     data: {
-      images,
+      media,
       tags: tagArray,
       pagination: {
         page: Number(page),

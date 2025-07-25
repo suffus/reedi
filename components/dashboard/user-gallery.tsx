@@ -3,15 +3,16 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter } from 'lucide-react'
-import { useUserImages, useDeleteImage, useMyGalleries, useGallery } from '../../lib/api-hooks'
-import { ImageDetailModal } from './image-detail-modal'
+import { useUserMedia, useDeleteMedia, useMyGalleries, useGallery } from '../../lib/api-hooks'
+import { MediaDetailModal } from './media-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { GalleryDetailModal } from './gallery-detail-modal'
-import { getImageUrl, getImageUrlFromImage } from '@/lib/api'
-import { LazyImage } from '../lazy-image'
-import { GalleryImage } from '@/lib/types'
-import { mapImageData } from '@/lib/image-utils'
+import { getMediaUrl, getMediaUrlFromMedia } from '@/lib/api'
+import { LazyMedia } from '../lazy-media'
+import { MediaGrid } from '../media-grid'
+import { Media } from '@/lib/types'
+import { mapMediaData } from '@/lib/media-utils'
 import { TagInput } from '../tag-input'
 
 
@@ -20,7 +21,7 @@ interface UserGalleryProps {
 }
 
 export function UserGallery({ userId }: UserGalleryProps) {
-  const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null)
+  const [selectedMedia, setSelectedMedia] = useState<Media | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isNewGalleryModalOpen, setIsNewGalleryModalOpen] = useState(false)
   const [activeView, setActiveView] = useState<'images' | 'galleries'>('images')
@@ -38,8 +39,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
     hasMore, 
     isLoadingMore,
     nextPageSize,
-    updateImage
-  } = useUserImages(userId)
+    updateMedia
+  } = useUserMedia(userId)
 
   const { data: galleriesData, isLoading: galleriesLoading } = useMyGalleries()
   const galleries = galleriesData?.data?.galleries || []
@@ -48,56 +49,56 @@ export function UserGallery({ userId }: UserGalleryProps) {
     selectedGallery?.id || ''
   )
 
-  const deleteImageMutation = useDeleteImage()
+  const deleteMediaMutation = useDeleteMedia()
 
   const handleGalleryClick = (gallery: any) => {
     setSelectedGallery(gallery)
     setIsGalleryDetailModalOpen(true)
   }
 
-  // Map the raw images to our frontend format and use backend serve endpoints
-  const images = (data?.data?.images || []).map((image: any) => {
-    const mapped = mapImageData(image)
+  // Map the raw media to our frontend format and use backend serve endpoints
+  const media = (data?.data?.media || []).map((mediaItem: any) => {
+    const mapped = mapMediaData(mediaItem)
     return {
       ...mapped,
-      // Keep the original S3 keys for the ImageDetailModal
-      s3Key: image.s3Key || image.url,
-      thumbnailS3Key: image.thumbnailS3Key || image.thumbnail || image.url,
-      // Use getImageUrlFromImage to construct URLs pointing to backend serve endpoints
-      url: getImageUrlFromImage(mapped, false),
-      thumbnail: getImageUrlFromImage(mapped, true), // Use thumbnail endpoint
+      // Keep the original S3 keys for the MediaDetailModal
+      s3Key: mediaItem.s3Key || mediaItem.url,
+      thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+      // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
+      url: getMediaUrlFromMedia(mapped, false),
+      thumbnail: getMediaUrlFromMedia(mapped, true), // Use thumbnail endpoint
     }
   })
 
-  // Filter images based on selected tags
-  const filteredImages = useMemo(() => {
+  // Filter media based on selected tags
+  const filteredMedia = useMemo(() => {
     if (filterTags.length === 0) {
-      return images
+      return media
     }
     
-    return images.filter((image: any) => {
-      // Check if the image has all the selected tags
+    return media.filter((mediaItem: any) => {
+      // Check if the media has all the selected tags
       return filterTags.every(tag => 
-        image.tags && Array.isArray(image.tags) && image.tags.some((imageTag: string) => 
-          imageTag && typeof imageTag === 'string' && imageTag.toLowerCase().includes(tag.toLowerCase())
+        mediaItem.tags && Array.isArray(mediaItem.tags) && mediaItem.tags.some((mediaTag: string) => 
+          mediaTag && typeof mediaTag === 'string' && mediaTag.toLowerCase().includes(tag.toLowerCase())
         )
       )
     })
-  }, [images, filterTags])
+  }, [media, filterTags])
 
-  const totalImages = data?.data?.pagination?.total || 0
-  const filteredTotalImages = filteredImages.length
+  const totalMedia = data?.data?.pagination?.total || 0
+  const filteredTotalMedia = filteredMedia.length
 
   // Create ghost placeholders for predictive loading
-  // Show ghosts when we have more images to load, not just when currently loading
+  // Show ghosts when we have more media to load, not just when currently loading
   const ghostPlaceholders = hasMore && nextPageSize > 0 ? Array.from({ length: 1 }, (_, i) => ({
     id: `ghost-${i}`,
     isGhost: true,
     index: i
   })) : []
 
-  // Combine real images with ghost placeholders
-  const displayImages = [...filteredImages, ...ghostPlaceholders]
+  // Combine real media with ghost placeholders
+  const displayMedia = [...filteredMedia, ...ghostPlaceholders]
   
   // Intersection Observer for infinite scroll - trigger when any ghost placeholder is visible
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
@@ -119,7 +120,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
     
     console.log('Setting up observer:', {
       ghostElementsCount: ghostElements.length,
-      displayImagesLength: displayImages.length,
+      displayMediaLength: displayMedia.length,
       hasMore,
       nextPageSize
     })
@@ -135,15 +136,15 @@ export function UserGallery({ userId }: UserGalleryProps) {
     ghostElements.forEach(element => observer.observe(element))
 
     return () => observer.disconnect()
-  }, [handleObserver, displayImages.length]) // Re-run when displayImages changes
+  }, [handleObserver, displayMedia.length]) // Re-run when displayMedia changes
 
-  const handleDeleteImage = async (imageId: string) => {
-    if (!confirm('Are you sure you want to delete this image?')) return
+  const handleDeleteMedia = async (mediaId: string) => {
+    if (!confirm('Are you sure you want to delete this media?')) return
 
     try {
-      await deleteImageMutation.mutateAsync(imageId)
+      await deleteMediaMutation.mutateAsync(mediaId)
     } catch (error) {
-      console.error('Failed to delete image:', error)
+      console.error('Failed to delete media:', error)
     }
   }
 
@@ -195,15 +196,15 @@ export function UserGallery({ userId }: UserGalleryProps) {
           <p className="text-gray-600 mt-1">
             {activeView === 'images' ? (
               <>
-                {filteredTotalImages} {(filteredTotalImages === 1 ? 'image' : 'images')} in your collection
+                {filteredTotalMedia} {(filteredTotalMedia === 1 ? 'media' : 'media')} in your collection
                 {filterTags.length > 0 && (
                   <span className="text-gray-500">
-                    {' '}(filtered from {totalImages} total)
+                    {' '}(filtered from {totalMedia} total)
                   </span>
                 )}
-                {filterTags.length === 0 && images.length > 0 && images.length < totalImages && (
+                {filterTags.length === 0 && media.length > 0 && media.length < totalMedia && (
                   <span className="text-gray-500">
-                    {' '}(showing {images.length} of {totalImages})
+                    {' '}(showing {media.length} of {totalMedia})
                   </span>
                 )}
               </>
@@ -227,7 +228,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
               }`}
             >
               <Camera className="h-4 w-4 inline mr-1" />
-              Images
+              Media
             </button>
             <button
               onClick={() => setActiveView('galleries')}
@@ -253,7 +254,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
             </button>
           )}
 
-          {/* View Mode Toggle (only for images) */}
+          {/* View Mode Toggle (only for media) */}
           {activeView === 'images' && (
             <>
               <button
@@ -346,257 +347,61 @@ export function UserGallery({ userId }: UserGalleryProps) {
       {/* Content */}
       {activeView === 'images' ? (
         <>
-          {/* Images Grid/List */}
-          {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-6">
-          {(displayImages ?? []).map((image: any, index: number) => {
-            // Handle ghost placeholders
-            if (image.isGhost) {
-              return (
-                <motion.div
-                  key={image.id}
-                  data-ghost="true"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-xl border-4 border-dashed border-blue-400 overflow-hidden animate-pulse relative"
-                  style={{ minHeight: '300px' }}
-                >
-                  <div className="relative aspect-square overflow-hidden">
-                    <div className="w-full h-full bg-gradient-to-br from-blue-100 to-blue-200 flex flex-col items-center justify-center">
-                      <div className="text-blue-600 text-xl font-bold mb-2">Loading Image...</div>
-                      <div className="text-blue-500 text-sm">Predictive Loading</div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4">
-                    <div className="h-4 bg-blue-200 rounded mb-2 animate-pulse"></div>
-                    <div className="h-3 bg-blue-200 rounded mb-2 w-3/4 animate-pulse"></div>
-                    <div className="flex items-center justify-between">
-                      <div className="h-3 bg-blue-200 rounded w-1/3 animate-pulse"></div>
-                      <div className="h-3 bg-blue-200 rounded w-1/4 animate-pulse"></div>
-                    </div>
-                  </div>
-                  
-                  {/* Debug indicator */}
-                  <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                    GHOST
-                  </div>
-                  <div className="absolute bottom-2 left-2 bg-blue-400 text-white text-xs px-2 py-1 rounded">
-                    {image.index + 1}
-                  </div>
-                </motion.div>
-              )
-            }
+          {/* Media Grid */}
+          <MediaGrid
+            media={filteredMedia}
+            viewMode={viewMode}
+            selectedMedia={[]}
+            onMediaClick={(media) => setSelectedMedia(media)}
+            showActions={true}
+            onViewDetails={(media) => setSelectedMedia(media)}
+            onDownload={(media) => {
+              const link = document.createElement('a')
+              link.href = getMediaUrlFromMedia(media, false)
+              link.download = media.altText || 'media'
+              link.click()
+            }}
+            onDelete={(media) => handleDeleteMedia(media.id)}
+            isDeleting={deleteMediaMutation.isPending}
+            showMediaInfo={true}
+            showDate={true}
+            showFileSize={true}
+            formatFileSize={formatFileSize}
+            formatDate={formatDate}
+          />
 
-            // Handle real images
-            return (
-              <motion.div
-                key={image.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow duration-200"
+          {/* Manual Load More Button (fallback) - only show if intersection observer fails */}
+          {hasMore && !isLoadingMore && ghostPlaceholders.length === 0 && (
+            <div className="flex justify-center pt-6">
+              <button
+                onClick={loadMore}
+                className="btn-secondary flex items-center space-x-2 px-8 py-3"
               >
-                <div className="relative aspect-square overflow-hidden">
-                  <LazyImage
-                    src={getImageUrlFromImage(image, true)}
-                    alt={image.title || 'Gallery image'}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  
-                  {/* Overlay Actions */}
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
-                    <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <button
-                        onClick={() => setSelectedImage(image)}
-                        className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                      >
-                        <Eye className="h-4 w-4 text-gray-700" />
-                      </button>
-                      <a
-                        href={getImageUrl(image.url)}
-                        download
-                        className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                      >
-                        <Download className="h-4 w-4 text-gray-700" />
-                      </a>
-                      <button
-                        onClick={() => handleDeleteImage(image.id)}
-                        disabled={deleteImageMutation.isPending}
-                        className="p-2 bg-white rounded-full shadow-lg hover:bg-red-50 transition-colors duration-200"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4">
-                  <h3 className="font-medium text-gray-900 mb-1 truncate">
-                    {image.title || 'Untitled'}
-                  </h3>
-                  {image.description && (
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                      {image.description}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span className="flex items-center">
-                      <Calendar className="h-3 w-3 mr-1" />
-                      {formatDate(image.createdAt)}
-                    </span>
-                    {image.metadata?.size && (
-                      <span>{formatFileSize(image.metadata.size)}</span>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
-          
+                <span>Load More Media</span>
+              </button>
+            </div>
+          )}
 
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {(displayImages ?? []).map((image: any, index: number) => {
-            // Handle ghost placeholders
-            if (image.isGhost) {
-              return (
-                <motion.div
-                  key={image.id}
-                  data-ghost="true"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg shadow-xl border-4 border-dashed border-blue-400 p-4 animate-pulse relative"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-200 to-blue-300 rounded-lg flex-shrink-0 flex items-center justify-center">
-                      <div className="text-blue-600 text-lg font-bold">...</div>
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-blue-200 rounded w-3/4 animate-pulse"></div>
-                      <div className="h-3 bg-blue-200 rounded w-1/2 animate-pulse"></div>
-                      <div className="h-3 bg-blue-200 rounded w-1/3 animate-pulse"></div>
-                    </div>
-                  </div>
-                  
-                  {/* Debug indicator */}
-                  <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                    GHOST
-                  </div>
-                  <div className="absolute bottom-2 left-2 bg-blue-400 text-white text-xs px-2 py-1 rounded">
-                    {image.index + 1}
-                  </div>
-                </motion.div>
-              )
-            }
+          {/* Empty State */}
+          {media.length === 0 && !isLoading && !isFetching && (
+            <div className="text-center py-12">
+              <div className="text-gray-400 mb-4">
+                <Camera className="h-12 w-12 mx-auto" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No media yet</h3>
+              <p className="text-gray-600">Start building your gallery by uploading some media!</p>
+            </div>
+          )}
 
-            // Handle real images
-            return (
-              <motion.div
-                key={image.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                    <LazyImage
-                      src={getImageUrlFromImage(image, true)}
-                      alt={image.title || 'Gallery image'}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-gray-900 mb-1 truncate">
-                      {image.title || 'Untitled'}
-                    </h3>
-                    {image.description && (
-                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                        {image.description}
-                      </p>
-                    )}
-                    <div className="flex items-center space-x-4 text-xs text-gray-500">
-                      <span className="flex items-center">
-                        <Calendar className="h-3 w-3 mr-1" />
-                        {formatDate(image.createdAt)}
-                      </span>
-                      {image.metadata?.size && (
-                        <span>{formatFileSize(image.metadata.size)}</span>
-                      )}
-                      {image.metadata?.width && image.metadata?.height && (
-                        <span>{image.metadata.width} × {image.metadata.height}</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setSelectedImage(image)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <a
-                      href={getImageUrl(image.url)}
-                      download
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                    >
-                      <Download className="h-4 w-4" />
-                    </a>
-                    <button
-                      onClick={() => handleDeleteImage(image.id)}
-                      disabled={deleteImageMutation.isPending}
-                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
-          
-
-        </div>
-      )}
-
-      {/* Manual Load More Button (fallback) - only show if intersection observer fails */}
-      {hasMore && !isLoadingMore && ghostPlaceholders.length === 0 && (
-        <div className="flex justify-center pt-6">
-          <button
-            onClick={loadMore}
-            className="btn-secondary flex items-center space-x-2 px-8 py-3"
-          >
-            <span>Load More Images</span>
-          </button>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {images.length === 0 && !isLoading && !isFetching && (
-        <div className="text-center py-12">
-          <div className="text-gray-400 mb-4">
-            <Camera className="h-12 w-12 mx-auto" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No images yet</h3>
-          <p className="text-gray-600">Start building your gallery by uploading some images!</p>
-        </div>
-      )}
-
-      {/* Refetching State */}
-      {isFetching && images.length > 0 && (
-        <div className="text-center py-8">
-          <div className="flex items-center justify-center space-x-2 text-gray-600">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Updating gallery...</span>
-          </div>
-        </div>
-      )}
+          {/* Refetching State */}
+          {isFetching && media.length > 0 && (
+            <div className="text-center py-8">
+              <div className="flex items-center justify-center space-x-2 text-gray-600">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Updating gallery...</span>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -614,11 +419,12 @@ export function UserGallery({ userId }: UserGalleryProps) {
                 }}
               >
                 <div className="relative aspect-video overflow-hidden">
-                  {gallery.coverImage ? (
-                    <LazyImage
-                      src={getImageUrlFromImage(gallery.coverImage, true)}
-                      alt={gallery.coverImage.altText || 'Gallery cover'}
+                  {gallery.coverMedia ? (
+                    <LazyMedia
+                      src={getMediaUrlFromMedia(gallery.coverMedia, true)}
+                      alt={gallery.coverMedia.altText || 'Gallery cover'}
                       className="w-full h-full object-cover"
+                      mediaType={gallery.coverMedia.mediaType || 'IMAGE'}
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
@@ -694,18 +500,17 @@ export function UserGallery({ userId }: UserGalleryProps) {
         </>
       )}
 
-      {/* Image Detail Modal */}
-      { selectedImage && (
+      {/* Media Detail Modal */}
+      { selectedMedia && (
         <FullScreenWrapper>
-      <ImageDetailModal
-        image={selectedImage}
-        onClose={() => setSelectedImage(null)}
-        onImageUpdate={() => {
+      <MediaDetailModal
+        media={selectedMedia}
+        onClose={() => setSelectedMedia(null)}
+        onMediaUpdate={() => {
           // The optimistic update will handle this automatically
         }}
-        updateImage={updateImage}
-        allImages={images}
-        onNavigate={(image: any) => setSelectedImage(image)}
+        allMedia={media}
+        onNavigate={(media: any) => setSelectedMedia(media)}
       />
       </FullScreenWrapper>
       )}

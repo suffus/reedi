@@ -72,9 +72,9 @@ export function ProfileEditor({ user, onUpdate }: ProfileEditorProps) {
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+    // Validate file type - accept both images and videos for avatar
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      alert('Please select an image or video file')
       return
     }
 
@@ -128,7 +128,7 @@ export function ProfileEditor({ user, onUpdate }: ProfileEditorProps) {
                 <input
                   id="avatar-upload"
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*"
                   onChange={handleAvatarUpload}
                   className="hidden"
                   disabled={uploadAvatarMutation.isPending}
@@ -144,7 +144,7 @@ export function ProfileEditor({ user, onUpdate }: ProfileEditorProps) {
               <h3 className="text-lg font-medium text-gray-900">{user.name}</h3>
               <p className="text-gray-600">@{user.username || 'username'}</p>
               <p className="text-sm text-gray-500 mt-1">
-                Click the camera icon to upload a new avatar
+                Click the camera icon to upload a new avatar (images or videos)
               </p>
             </div>
           </div>

@@ -74,16 +74,16 @@ router.get('/post/:postId', asyncHandler(async (req: Request, res: Response) => 
   })
 }))
 
-// Get comments for an image
-router.get('/image/:imageId', asyncHandler(async (req: Request, res: Response) => {
-  const { imageId } = req.params
+// Get comments for media
+router.get('/media/:mediaId', asyncHandler(async (req: Request, res: Response) => {
+  const { mediaId } = req.params
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
 
   const [comments, total] = await Promise.all([
     prisma.comment.findMany({
       where: { 
-        imageId,
+        mediaId,
         parentId: null // Only top-level comments
       },
       include: {
@@ -120,7 +120,7 @@ router.get('/image/:imageId', asyncHandler(async (req: Request, res: Response) =
     }),
     prisma.comment.count({
       where: { 
-        imageId,
+        mediaId,
         parentId: null
       }
     })
@@ -145,7 +145,7 @@ router.get('/image/:imageId', asyncHandler(async (req: Request, res: Response) =
 // Create a comment
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { content, postId, imageId, parentId } = req.body
+  const { content, postId, mediaId, parentId } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -155,19 +155,19 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     return
   }
 
-  // Validate that either postId or imageId is provided, but not both
-  if (!postId && !imageId) {
+  // Validate that either postId or mediaId is provided, but not both
+  if (!postId && !mediaId) {
     res.status(400).json({
       success: false,
-      error: 'Either postId or imageId is required'
+      error: 'Either postId or mediaId is required'
     })
     return
   }
 
-  if (postId && imageId) {
+  if (postId && mediaId) {
     res.status(400).json({
       success: false,
-      error: 'Cannot comment on both post and image simultaneously'
+      error: 'Cannot comment on both post and media simultaneously'
     })
     return
   }
@@ -213,32 +213,32 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     }
   }
 
-  if (imageId) {
-    const image = await prisma.image.findUnique({
-      where: { id: imageId },
+  if (mediaId) {
+    const media = await prisma.media.findUnique({
+      where: { id: mediaId },
       include: {
         author: true
       }
     })
 
-    if (!image) {
+    if (!media) {
       res.status(404).json({
         success: false,
-        error: 'Image not found'
+        error: 'Media not found'
       })
       return
     }
 
     // Allow commenting if:
-    // 1. User is the image author
-    // 2. User is a friend of the image author
-    // 3. Image is public (no privacy check for images currently)
-    const isAuthor = image.authorId === userId
+    // 1. User is the media author
+    // 2. User is a friend of the media author
+    // 3. Media is public (no privacy check for media currently)
+    const isAuthor = media.authorId === userId
     const isFriend = await prisma.friendRequest.findFirst({
       where: {
         OR: [
-          { senderId: userId, receiverId: image.authorId, status: 'ACCEPTED' },
-          { senderId: image.authorId, receiverId: userId, status: 'ACCEPTED' }
+          { senderId: userId, receiverId: media.authorId, status: 'ACCEPTED' },
+          { senderId: media.authorId, receiverId: userId, status: 'ACCEPTED' }
         ]
       }
     })
@@ -246,7 +246,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     if (!isAuthor && !isFriend) {
       res.status(403).json({
         success: false,
-        error: 'You can only comment on your own images or friends\' images'
+        error: 'You can only comment on your own media or friends\' media'
       })
       return
     }
@@ -256,7 +256,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     data: {
       content,
       postId,
-      imageId,
+              mediaId,
       parentId,
       authorId: userId
     },

@@ -39,6 +39,7 @@ router.get('/user/:userId', (0, errorHandler_1.asyncHandler)(async (req, res) =>
                 id: true,
                 s3Key: true,
                 thumbnailS3Key: true,
+                originalFilename: true,
                 altText: true,
                 caption: true,
                 width: true,
@@ -215,6 +216,7 @@ router.post('/upload', auth_1.authMiddleware, upload.single('image'), (0, errorH
                 thumbnail: processedImage.thumbnailPath,
                 s3Key: processedImage.s3Key,
                 thumbnailS3Key: processedImage.thumbnailS3Key,
+                originalFilename: req.file.originalname,
                 altText: req.body.title || req.body.altText || 'Uploaded image',
                 caption: req.body.description || req.body.caption || '',
                 tags: tags,
@@ -271,7 +273,7 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
 router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const userId = req.user?.id;
     const { id } = req.params;
-    const { altText, caption, title, description, tags } = req.body;
+    const { altText, caption, title, description, tags, mergeTags } = req.body;
     if (!userId) {
         res.status(401).json({
             success: false,
@@ -296,15 +298,33 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
         });
         return;
     }
-    const newAltText = title || altText || null;
-    const newCaption = description || caption || null;
+    const updateData = {};
+    if (title !== undefined) {
+        updateData.altText = title;
+    }
+    else if (altText !== undefined) {
+        updateData.altText = altText;
+    }
+    if (description !== undefined) {
+        updateData.caption = description;
+    }
+    else if (caption !== undefined) {
+        updateData.caption = caption;
+    }
+    if (tags !== undefined) {
+        if (mergeTags && Array.isArray(tags)) {
+            const existingTags = image.tags || [];
+            const newTags = tags.filter(tag => tag && tag.trim().length > 0);
+            const mergedTags = [...new Set([...existingTags, ...newTags])];
+            updateData.tags = mergedTags;
+        }
+        else {
+            updateData.tags = tags;
+        }
+    }
     const updatedImage = await index_1.prisma.image.update({
         where: { id },
-        data: {
-            altText: newAltText,
-            caption: newCaption,
-            tags: tags || undefined
-        }
+        data: updateData
     });
     res.json({
         success: true,

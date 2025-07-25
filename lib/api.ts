@@ -2,6 +2,9 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api'
 export const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8088'
 
+//console.log('API_BASE_URL:', API_BASE_URL)
+//console.log('BACKEND_BASE_URL:', BACKEND_BASE_URL)
+
 // Image serving configuration
 export const IMAGE_BASE_URL = process.env.NEXT_PUBLIC_IMAGE_BASE_URL || BACKEND_BASE_URL
 
@@ -46,12 +49,15 @@ export const API_ENDPOINTS = {
     DELETE: (id: string) => `${API_BASE_URL}/comments/${id}`,
   },
   
-  // Images
-  IMAGES: {
-    USER: (userId: string) => `${API_BASE_URL}/images/user/${userId}`,
-    PUBLIC_USER: (identifier: string) => `${API_BASE_URL}/images/user/${identifier}/public`,
-    UPLOAD: `${API_BASE_URL}/images`,
-    DELETE: (id: string) => `${API_BASE_URL}/images/${id}`,
+  // Media
+  MEDIA: {
+    USER: (userId: string) => `${API_BASE_URL}/media/user/${userId}`,
+    PUBLIC_USER: (identifier: string) => `${API_BASE_URL}/media/user/${identifier}/public`,
+    UPLOAD: `${API_BASE_URL}/media/upload`,
+    DELETE: (id: string) => `${API_BASE_URL}/media/${id}`,
+    UPDATE: (id: string) => `${API_BASE_URL}/media/${id}`,
+    BULK_UPDATE: `${API_BASE_URL}/media/bulk/update`,
+    SEARCH_TAGS: `${API_BASE_URL}/media/search/tags`,
   },
   
   // Galleries
@@ -128,6 +134,35 @@ export const getImageUrlFromImage = (image: any, useThumbnail: boolean = false):
   // Fallback to the old getImageUrl function for backward compatibility
   const path = useThumbnail ? (image.thumbnail || image.url) : image.url
   return getImageUrl(path)
+}
+
+// Helper function to get media URL from media object or path
+export const getMediaUrlFromMedia = (media: any, useThumbnail: boolean = false): string => {
+  //console.log('getMediaUrlFromMedia called with:', { media, useThumbnail })
+  
+  if (!media) {
+    console.log('Media is null/undefined, returning empty string')
+    return ''
+  }
+  
+  // If media has an ID, use the new backend serving endpoint
+  if (media.id) {
+    const endpoint = useThumbnail ? '/thumbnail' : ''
+    const url = `${API_BASE_URL}/media/serve/${media.id}${endpoint}`
+    // console.log('Generated URL with ID:', url)
+    return url
+  }
+  
+  // Fallback to the old getImageUrl function for backward compatibility
+  const path = useThumbnail ? (media.thumbnail || media.url) : media.url
+  const fallbackUrl = getImageUrl(path)
+  console.log('Generated fallback URL:', fallbackUrl)
+  return fallbackUrl
+}
+
+// Helper function to get media URL (alias for backward compatibility)
+export const getMediaUrl = (mediaPath: string): string => {
+  return getImageUrl(mediaPath)
 }
 
 // Helper function to handle API responses

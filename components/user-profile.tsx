@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, Clock, User } from 'lucide-react'
-import { API_BASE_URL, getAuthHeaders, getImageUrlFromImage } from '@/lib/api'
-import { usePublicUserPosts, usePublicUserImages, useAuth } from '@/lib/api-hooks'
-import { LazyImage } from './lazy-image'
-import { ImageGrid } from './image-grid'
-import { ImageDetailModal } from './dashboard/image-detail-modal'
-import { mapImageData } from '@/lib/image-utils'
+import { API_BASE_URL, getAuthHeaders, getMediaUrlFromMedia } from '@/lib/api'
+import { usePublicUserPosts, usePublicUserMedia, useAuth } from '@/lib/api-hooks'
+import { LazyMedia } from './lazy-media'
+import { MediaGrid } from './media-grid'
+import { MediaDetailModal } from './dashboard/media-detail-modal'
+import { mapMediaData } from '@/lib/media-utils'
 
 interface User {
   id: string
@@ -40,10 +40,10 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'posts' | 'images'>('posts')
-  const [selectedImageForDetail, setSelectedImageForDetail] = useState<any>(null)
-  const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false)
-  const [currentPostImages, setCurrentPostImages] = useState<any[]>([])
+  const [activeTab, setActiveTab] = useState<'posts' | 'media'>('posts')
+  const [selectedMediaForDetail, setSelectedMediaForDetail] = useState<any>(null)
+  const [isMediaDetailModalOpen, setIsMediaDetailModalOpen] = useState(false)
+  const [currentPostMedia, setCurrentPostMedia] = useState<any[]>([])
 
   const identifier = params?.identifier as string
 
@@ -53,10 +53,10 @@ export default function UserProfile() {
 
   // Use the new visibility-aware hooks
   const { data: postsData, isLoading: postsLoading } = usePublicUserPosts(identifier)
-  const { data: imagesData, isLoading: imagesLoading } = usePublicUserImages(identifier)
+  const { data: mediaData, isLoading: mediaLoading } = usePublicUserMedia(identifier)
 
   const posts = postsData?.data?.posts || []
-  const images = imagesData?.data?.images || []
+  const media = mediaData?.data?.media || []
 
   useEffect(() => {
     if (identifier) {
@@ -292,65 +292,65 @@ export default function UserProfile() {
     })
   }
 
-  const handleImageClick = (image: any, postImages?: any[]) => {
-    // Map the image data to the format expected by ImageDetailModal
-    const mappedImage = mapImageData(image)
+  const handleMediaClick = (mediaItem: any, postMedia?: any[]) => {
+    // Map the media data to the format expected by MediaDetailModal
+    const mappedMedia = mapMediaData(mediaItem)
     
-    // Map all post images for navigation
-    if (postImages && postImages.length > 0) {
-      const mappedPostImages = postImages.map(img => mapImageData(img))
-      setCurrentPostImages(mappedPostImages)
+    // Map all post media for navigation
+    if (postMedia && postMedia.length > 0) {
+      const mappedPostMedia = postMedia.map(media => mapMediaData(media))
+      setCurrentPostMedia(mappedPostMedia)
     } else {
-      setCurrentPostImages([])
+      setCurrentPostMedia([])
     }
     
-    setSelectedImageForDetail(mappedImage)
-    setIsImageDetailModalOpen(true)
+    setSelectedMediaForDetail(mappedMedia)
+    setIsMediaDetailModalOpen(true)
   }
 
   // Helper component for post image layout (simplified version for public viewing)
-  function PostImagesDisplay({ 
-    images, 
-    onImageClick 
+  function PostMediaDisplay({ 
+    media, 
+    onMediaClick 
   }: { 
-    images: any[], 
-    onImageClick: (image: any, postImages?: any[]) => void
+    media: any[], 
+    onMediaClick: (media: any, postMedia?: any[]) => void
   }) {
-    if (!images || images.length === 0) return null;
+    if (!media || media.length === 0) return null;
     
-    if (images.length === 1) {
-      const img = images[0];
+    if (media.length === 1) {
+      const img = media[0];
       return (
         <div className="mb-4">
-          <LazyImage
-            src={getImageUrlFromImage(img, false)}
-            alt={img.altText || img.caption || 'Post image'}
+          <LazyMedia
+            src={getMediaUrlFromMedia(img, false)}
+            alt={img.altText || img.caption || 'Post media'}
             className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
             style={{
               height: 'auto',
               width: '100%',
               display: 'block'
             }}
-            onClick={() => onImageClick(img, images)}
-            showProgressiveEffect={true}
+            onClick={() => onMediaClick(img, media)}
+            mediaType={img.mediaType || 'IMAGE'}
           />
         </div>
       );
     }
     
-    if (images.length === 2 || images.length === 3) {
+    if (media.length === 2 || media.length === 3) {
       return (
         <div className="mb-4">
-          <div className={`grid grid-cols-${images.length} gap-2`}>
-            {images.map((img, idx) => (
+          <div className={`grid grid-cols-${media.length} gap-2`}>
+            {media.map((img: any, idx: number) => (
               <div key={img.id}>
-                <LazyImage
-                  src={getImageUrlFromImage(img, false)}
-                  alt={img.altText || img.caption || `Post image ${idx + 1}`}
+                <LazyMedia
+                  src={getMediaUrlFromMedia(img, false)}
+                  alt={img.altText || img.caption || `Post media ${idx + 1}`}
                   className="w-full rounded-lg object-contain max-h-72 cursor-pointer hover:opacity-90 transition-opacity"
                   style={{ aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
-                  onClick={() => onImageClick(img, images)}
-                  showProgressiveEffect={true}
+                  onClick={() => onMediaClick(img, media)}
+                  mediaType={img.mediaType || 'IMAGE'}
                 />
               </div>
             ))}
@@ -359,10 +359,10 @@ export default function UserProfile() {
       );
     }
     
-    // 4+ images: Layout based on main image aspect ratio
-    const [main, ...thumbs] = images;
+    // 4+ media items: Layout based on main media aspect ratio
+    const [main, ...thumbs] = media;
     
-    // Calculate aspect ratio for main image
+    // Calculate aspect ratio for main media
     const mainAspectRatio = main.width && main.height ? main.width / main.height : 1;
     const isPortrait = mainAspectRatio < 1;
     
@@ -372,9 +372,9 @@ export default function UserProfile() {
         <div className="mb-4 flex gap-2">
           {/* Main image container - 80% width */}
           <div className="w-4/5 flex justify-center">
-            <LazyImage
-              src={getImageUrlFromImage(main, false)}
-              alt={main.altText || main.caption || 'Main post image'}
+            <LazyMedia
+              src={getMediaUrlFromMedia(main, false)}
+              alt={main.altText || main.caption || 'Main post media'}
               className="rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
               style={{
                 width: '100%',
@@ -382,25 +382,25 @@ export default function UserProfile() {
                 height: 'auto',
                 aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined
               }}
-              onClick={() => onImageClick(main, images)}
-              showProgressiveEffect={true}
+              onClick={() => onMediaClick(main, media)}
+              mediaType={main.mediaType || 'IMAGE'}
             />
           </div>
           
           {/* Thumbnails - 17.5% of post width, vertical stack */}
           <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
-            {thumbs.map((img, idx) => (
+            {thumbs.map((img: any, idx: number) => (
               <div key={img.id}>
-                <LazyImage
-                  src={getImageUrlFromImage(img, false)}
+                <LazyMedia
+                  src={getMediaUrlFromMedia(img, false)}
                   alt={img.altText || img.caption || `Thumbnail ${idx + 2}`}
                   className="rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
                   style={{
                     width: '100%',
                     aspectRatio: '1 / 1'
                   }}
-                  onClick={() => onImageClick(img, images)}
-                  showProgressiveEffect={true}
+                  onClick={() => onMediaClick(img, media)}
+                  mediaType={img.mediaType || 'IMAGE'}
                 />
               </div>
             ))}
@@ -413,33 +413,33 @@ export default function UserProfile() {
         <div className="mb-4">
           {/* Main image - full width */}
           <div className="mb-2">
-            <LazyImage
-              src={getImageUrlFromImage(main, false)}
-              alt={main.altText || main.caption || 'Main post image'}
+            <LazyMedia
+              src={getMediaUrlFromMedia(main, false)}
+              alt={main.altText || main.caption || 'Main post media'}
               className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
               style={{ aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
-              onClick={() => onImageClick(main, images)}
-              showProgressiveEffect={true}
+              onClick={() => onMediaClick(main, media)}
+              mediaType={main.mediaType || 'IMAGE'}
             />
           </div>
           
           {/* Thumbnails - horizontal row at 17.5% of post width */}
           <div className="flex gap-2 overflow-x-auto">
-            {thumbs.map((img, idx) => (
+            {thumbs.map((img: any, idx: number) => (
               <div
                 key={img.id}
                 className="flex-shrink-0"
                 style={{ width: '17.5%' }}
               >
-                <LazyImage
-                  src={getImageUrlFromImage(img, false)}
+                <LazyMedia
+                  src={getMediaUrlFromMedia(img, false)}
                   alt={img.altText || img.caption || `Thumbnail ${idx + 2}`}
                   className="w-full rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
                   style={{
                     aspectRatio: '1 / 1'
                   }}
-                  onClick={() => onImageClick(img, images)}
-                  showProgressiveEffect={true}
+                  onClick={() => onMediaClick(img, media)}
+                  mediaType={img.mediaType || 'IMAGE'}
                 />
               </div>
             ))}
@@ -556,14 +556,14 @@ export default function UserProfile() {
                 Posts ({posts.length})
               </button>
               <button
-                onClick={() => setActiveTab('images')}
+                onClick={() => setActiveTab('media')}
                 className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
-                  activeTab === 'images'
+                  activeTab === 'media'
                     ? 'text-primary-600 border-b-2 border-primary-600'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                Images ({images.length})
+                Media ({media.length})
               </button>
             </div>
 
@@ -618,11 +618,11 @@ export default function UserProfile() {
                         <div className="p-4">
                           <p className="text-gray-900 mb-4">{post.content}</p>
                           
-                          {/* Post Images */}
-                          {post.images && post.images.length > 0 && (
-                            <PostImagesDisplay 
-                              images={post.images} 
-                              onImageClick={handleImageClick}
+                          {/* Post Media */}
+                          {post.media && post.media.length > 0 && (
+                            <PostMediaDisplay 
+                              media={post.media} 
+                              onMediaClick={handleMediaClick}
                             />
                           )}
                         </div>
@@ -655,23 +655,23 @@ export default function UserProfile() {
               </div>
             )}
 
-            {/* Images Tab */}
-            {activeTab === 'images' && (
+            {/* Media Tab */}
+            {activeTab === 'media' && (
               <div className="p-6">
-                {imagesLoading ? (
+                {mediaLoading ? (
                   <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                   </div>
-                ) : images.length === 0 ? (
+                ) : media.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <p>No public images available</p>
+                    <p>No public media available</p>
                   </div>
                 ) : (
-                  <ImageGrid
-                    images={images}
+                  <MediaGrid
+                    media={media}
                     viewMode="grid"
-                    selectedImages={[]}
-                    onImageClick={handleImageClick}
+                    selectedMedia={[]}
+                    onMediaClick={handleMediaClick}
                     showTags={false}
                     className="gap-4"
                   />
@@ -682,23 +682,23 @@ export default function UserProfile() {
         </div>
       </div>
 
-      {/* Image Detail Modal */}
-      {selectedImageForDetail && (
-        <ImageDetailModal
-          image={selectedImageForDetail}
+      {/* Media Detail Modal */}
+      {selectedMediaForDetail && (
+        <MediaDetailModal
+          media={selectedMediaForDetail}
           onClose={() => {
-            setIsImageDetailModalOpen(false)
-            setSelectedImageForDetail(null)
-            setCurrentPostImages([])
+            setIsMediaDetailModalOpen(false)
+            setSelectedMediaForDetail(null)
+            setCurrentPostMedia([])
           }}
-          onImageUpdate={() => {
+          onMediaUpdate={() => {
             // No updates needed for public profile viewing
           }}
-          updateImage={() => {
+          updateMedia={() => {
             // No updates needed for public profile viewing
           }}
-          allImages={currentPostImages}
-          onNavigate={(image: any) => setSelectedImageForDetail(image)}
+          allMedia={currentPostMedia}
+          onNavigate={(media: any) => setSelectedMediaForDetail(media)}
         />
       )}
     </div>

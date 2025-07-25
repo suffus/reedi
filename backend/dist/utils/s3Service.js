@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processImageForS3 = processImageForS3;
+exports.uploadToS3 = uploadToS3;
 exports.uploadImageToS3 = uploadImageToS3;
 exports.uploadImageWithThumbnail = uploadImageWithThumbnail;
 exports.deleteImageFromS3 = deleteImageFromS3;
@@ -14,7 +15,9 @@ exports.getPublicUrl = getPublicUrl;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const sharp_1 = __importDefault(require("sharp"));
-const s3Client = new client_s3_1.S3Client({
+const dotenv_1 = require("dotenv");
+(0, dotenv_1.config)();
+const s3Args = {
     region: process.env.IDRIVE_REGION || 'us-east-1',
     endpoint: process.env.IDRIVE_ENDPOINT,
     credentials: {
@@ -22,7 +25,9 @@ const s3Client = new client_s3_1.S3Client({
         secretAccessKey: process.env.IDRIVE_SECRET_ACCESS_KEY,
     },
     forcePathStyle: true,
-});
+};
+console.log('s3Args', JSON.stringify(s3Args, null, 2));
+const s3Client = new client_s3_1.S3Client(s3Args);
 const BUCKET_NAME = process.env.IDRIVE_BUCKET_NAME;
 async function processImageForS3(buffer, originalName, mimeType) {
     const originalImage = (0, sharp_1.default)(buffer);
@@ -53,15 +58,33 @@ async function processImageForS3(buffer, originalName, mimeType) {
         size: progressiveBuffer.length,
     };
 }
+async function uploadToS3(buffer, originalName, mimeType, userId) {
+    const timestamp = Date.now();
+    const fileExtension = originalName.split('.').pop() || 'bin';
+    const key = `uploads/${userId}/${timestamp}.${fileExtension}`;
+    const cmdArg = {
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+        Metadata: { originalName },
+        ACL: 'public-read',
+    };
+    const command = new client_s3_1.PutObjectCommand(cmdArg);
+    await s3Client.send(command);
+    return key;
+}
 async function uploadImageToS3(buffer, key, mimeType, metadata) {
-    const command = new client_s3_1.PutObjectCommand({
+    const cmdArg = {
         Bucket: BUCKET_NAME,
         Key: key,
         Body: buffer,
         ContentType: mimeType,
         Metadata: metadata,
         ACL: 'public-read',
-    });
+    };
+    const command = new client_s3_1.PutObjectCommand(cmdArg);
+    console.log('command', cmdArg);
     await s3Client.send(command);
     return key;
 }

@@ -41,8 +41,8 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
                         reactions: true
                     }
                 },
-                images: {
-                    include: { image: true },
+                media: {
+                    include: { media: true },
                     orderBy: { order: 'asc' }
                 }
             },
@@ -57,14 +57,14 @@ router.get('/', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandler)(
             }
         })
     ]);
-    const postsWithOrderedImages = posts.map(post => ({
+    const postsWithOrderedMedia = posts.map(post => ({
         ...post,
-        images: post.images.map(pi => pi.image)
+        media: post.media.map(pm => pm.media)
     }));
     res.json({
         success: true,
         data: {
-            posts: postsWithOrderedImages,
+            posts: postsWithOrderedMedia,
             pagination: {
                 page: Number(page),
                 limit: Number(limit),
@@ -169,8 +169,8 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
                         reactions: true
                     }
                 },
-                images: {
-                    include: { image: true },
+                media: {
+                    include: { media: true },
                     orderBy: { order: 'asc' }
                 }
             },
@@ -234,14 +234,14 @@ router.get('/feed', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(asyn
             }
         })
     ]);
-    const postsWithOrderedImages = posts.map(post => ({
+    const postsWithOrderedMedia = posts.map(post => ({
         ...post,
-        images: post.images.map(pi => pi.image)
+        media: post.media.map(pm => pm.media)
     }));
     res.json({
         success: true,
         data: {
-            posts: postsWithOrderedImages,
+            posts: postsWithOrderedMedia,
             pagination: {
                 page: Number(page),
                 limit: Number(limit),
@@ -264,17 +264,17 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         return;
     }
     if (imageIds && imageIds.length > 0) {
-        const userImages = await index_1.prisma.image.findMany({
+        const userMedia = await index_1.prisma.media.findMany({
             where: {
                 id: { in: imageIds },
                 authorId: userId
             },
             select: { id: true }
         });
-        if (userImages.length !== imageIds.length) {
+        if (userMedia.length !== imageIds.length) {
             res.status(400).json({
                 success: false,
-                error: 'Some images do not belong to you or do not exist'
+                error: 'Some media do not belong to you or do not exist'
             });
             return;
         }
@@ -306,10 +306,10 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
             }
         });
         if (imageIds && imageIds.length > 0) {
-            await tx.postImage.createMany({
-                data: imageIds.map((imageId, index) => ({
+            await tx.postMedia.createMany({
+                data: imageIds.map((mediaId, index) => ({
                     postId: post.id,
-                    imageId,
+                    mediaId,
                     order: index
                 }))
             });
@@ -326,8 +326,8 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
                     }
                 },
                 hashtags: true,
-                images: {
-                    include: { image: true },
+                media: {
+                    include: { media: true },
                     orderBy: { order: 'asc' }
                 }
             }
@@ -336,13 +336,13 @@ router.post('/', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (
         maxWait: 5000,
         timeout: 10000,
     });
-    const postWithOrderedImages = {
+    const postWithOrderedMedia = {
         ...postWithImages,
-        images: postWithImages?.images.map(pi => pi.image) || []
+        media: postWithImages?.media.map(pm => pm.media) || []
     };
     res.status(201).json({
         success: true,
-        data: { post: postWithOrderedImages },
+        data: { post: postWithOrderedMedia },
         message: 'Post created successfully'
     });
 }));
@@ -374,8 +374,8 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
                 orderBy: { createdAt: 'asc' }
             },
             reactions: true,
-            images: {
-                include: { image: true },
+            media: {
+                include: { media: true },
                 orderBy: { order: 'asc' }
             },
             hashtags: true
@@ -409,13 +409,13 @@ router.get('/:id', auth_1.optionalAuthMiddleware, (0, errorHandler_1.asyncHandle
         });
         return;
     }
-    const postWithOrderedImages = {
+    const postWithOrderedMedia = {
         ...post,
-        images: post.images.map(pi => pi.image)
+        media: post.media.map(pm => pm.media)
     };
     res.json({
         success: true,
-        data: { post: postWithOrderedImages }
+        data: { post: postWithOrderedMedia }
     });
 }));
 router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async (req, res) => {
@@ -447,17 +447,17 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
         return;
     }
     if (imageIds && imageIds.length > 0) {
-        const userImages = await index_1.prisma.image.findMany({
+        const userMedia = await index_1.prisma.media.findMany({
             where: {
                 id: { in: imageIds },
                 authorId: userId
             },
             select: { id: true }
         });
-        if (userImages.length !== imageIds.length) {
+        if (userMedia.length !== imageIds.length) {
             res.status(400).json({
                 success: false,
-                error: 'Some images do not belong to you or do not exist'
+                error: 'Some media do not belong to you or do not exist'
             });
             return;
         }
@@ -489,14 +489,14 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
         }
     });
     if (imageIds) {
-        await index_1.prisma.postImage.deleteMany({
+        await index_1.prisma.postMedia.deleteMany({
             where: { postId: id }
         });
         if (imageIds.length > 0) {
-            await index_1.prisma.postImage.createMany({
-                data: imageIds.map((imageId, index) => ({
+            await index_1.prisma.postMedia.createMany({
+                data: imageIds.map((mediaId, index) => ({
                     postId: id,
-                    imageId,
+                    mediaId,
                     order: index
                 }))
             });
@@ -514,15 +514,15 @@ router.put('/:id', auth_1.authMiddleware, (0, errorHandler_1.asyncHandler)(async
                 }
             },
             hashtags: true,
-            images: {
-                include: { image: true },
+            media: {
+                include: { media: true },
                 orderBy: { order: 'asc' }
             }
         }
     });
     const postWithOrderedImages = {
         ...postWithImages,
-        images: postWithImages?.images.map(pi => pi.image) || []
+        media: postWithImages?.media.map(pm => pm.media) || []
     };
     res.json({
         success: true,
@@ -703,8 +703,8 @@ router.put('/:id/images/reorder', auth_1.authMiddleware, (0, errorHandler_1.asyn
     const post = await index_1.prisma.post.findUnique({
         where: { id },
         include: {
-            images: {
-                include: { image: true },
+            media: {
+                include: { media: true },
                 orderBy: { order: 'asc' }
             }
         }
@@ -723,21 +723,21 @@ router.put('/:id/images/reorder', auth_1.authMiddleware, (0, errorHandler_1.asyn
         });
         return;
     }
-    const postImageIds = post.images.map(pi => pi.image.id);
-    const isValidOrder = imageIds.every((imageId) => postImageIds.includes(imageId));
-    const hasAllImages = postImageIds.every(imageId => imageIds.includes(imageId));
-    if (!isValidOrder || !hasAllImages) {
+    const postMediaIds = post.media.map(pm => pm.media.id);
+    const isValidOrder = imageIds.every((mediaId) => postMediaIds.includes(mediaId));
+    const hasAllMedia = postMediaIds.every(mediaId => imageIds.includes(mediaId));
+    if (!isValidOrder || !hasAllMedia) {
         res.status(400).json({
             success: false,
-            error: 'Invalid image order provided'
+            error: 'Invalid media order provided'
         });
         return;
     }
     for (let i = 0; i < imageIds.length; i++) {
-        await index_1.prisma.postImage.updateMany({
+        await index_1.prisma.postMedia.updateMany({
             where: {
                 postId: id,
-                imageId: imageIds[i]
+                mediaId: imageIds[i]
             },
             data: {
                 order: i
@@ -797,19 +797,19 @@ router.patch('/:id/status', auth_1.authMiddleware, (0, errorHandler_1.asyncHandl
                     avatar: true
                 }
             },
-            images: {
-                include: { image: true },
+            media: {
+                include: { media: true },
                 orderBy: { order: 'asc' }
             }
         }
     });
-    const postWithOrderedImages = {
+    const postWithOrderedMedia = {
         ...updatedPost,
-        images: updatedPost.images.map(pi => pi.image)
+        media: updatedPost.media.map(pm => pm.media)
     };
     res.json({
         success: true,
-        data: { post: postWithOrderedImages },
+        data: { post: postWithOrderedMedia },
         message: 'Post status updated successfully'
     });
 }));
@@ -861,19 +861,19 @@ router.patch('/:id/visibility', auth_1.authMiddleware, (0, errorHandler_1.asyncH
                     avatar: true
                 }
             },
-            images: {
-                include: { image: true },
+            media: {
+                include: { media: true },
                 orderBy: { order: 'asc' }
             }
         }
     });
-    const postWithOrderedImages = {
+    const postWithOrderedMedia = {
         ...updatedPost,
-        images: updatedPost.images.map(pi => pi.image)
+        media: updatedPost.media.map(pm => pm.media)
     };
     res.json({
         success: true,
-        data: { post: postWithOrderedImages },
+        data: { post: postWithOrderedMedia },
         message: 'Post visibility updated successfully'
     });
 }));
@@ -957,8 +957,8 @@ router.get('/user/:userId/public', auth_1.optionalAuthMiddleware, (0, errorHandl
                         reactions: true
                     }
                 },
-                images: {
-                    include: { image: true },
+                media: {
+                    include: { media: true },
                     orderBy: { order: 'asc' }
                 }
             },
@@ -971,7 +971,7 @@ router.get('/user/:userId/public', auth_1.optionalAuthMiddleware, (0, errorHandl
     console.log('Found posts:', posts.length, 'Total:', total);
     const postsWithOrderedImages = posts.map(post => ({
         ...post,
-        images: (post.images || []).map((pi) => pi.image)
+        media: (post.media || []).map((pm) => pm.media)
     }));
     res.json({
         success: true,
@@ -1006,9 +1006,9 @@ router.get('/public', (0, errorHandler_1.asyncHandler)(async (req, res) => {
                         avatar: true
                     }
                 },
-                images: {
+                media: {
                     include: {
-                        image: true
+                        media: true
                     }
                 },
                 hashtags: true,
@@ -1032,7 +1032,7 @@ router.get('/public', (0, errorHandler_1.asyncHandler)(async (req, res) => {
     ]);
     const formattedPosts = posts.map(post => ({
         ...post,
-        images: post.images.map(pi => pi.image)
+        media: post.media.map(pi => pi.media)
     }));
     res.json({
         success: true,
