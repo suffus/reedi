@@ -665,6 +665,7 @@ export const useUpdateMedia = () => {
     },
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
+      console.log('Invalidating media queries...')
       queryClient.invalidateQueries({ queryKey: ['media'] })
     }
   })

@@ -2,18 +2,20 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter } from 'lucide-react'
+import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter, CheckSquare, Square, Edit3, MoreHorizontal } from 'lucide-react'
 import { useUserMedia, useDeleteMedia, useMyGalleries, useGallery } from '../../lib/api-hooks'
 import { MediaDetailModal } from './media-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { GalleryDetailModal } from './gallery-detail-modal'
+import { BulkEditModal } from './bulk-edit-modal'
 import { getMediaUrl, getMediaUrlFromMedia } from '@/lib/api'
 import { LazyMedia } from '../lazy-media'
 import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
-import { mapMediaData } from '@/lib/media-utils'
+import { mapMediaData, getBestThumbnailUrl } from '@/lib/media-utils'
 import { TagInput } from '../tag-input'
+import { InfiniteScrollContainer } from '../infinite-scroll-container'
 
 
 interface UserGalleryProps {
@@ -29,6 +31,11 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const [isGalleryDetailModalOpen, setIsGalleryDetailModalOpen] = useState(false)
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Bulk selection state
+  const [isBulkSelectMode, setIsBulkSelectMode] = useState(false)
+  const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set())
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false)
 
   const { 
     data, 
@@ -39,7 +46,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
     hasMore, 
     isLoadingMore,
     nextPageSize,
-    updateMedia
+    updateMedia,
+    reset
   } = useUserMedia(userId)
 
   const { data: galleriesData, isLoading: galleriesLoading } = useMyGalleries()
@@ -59,6 +67,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
   // Map the raw media to our frontend format and use backend serve endpoints
   const media = (data?.data?.media || []).map((mediaItem: any) => {
     const mapped = mapMediaData(mediaItem)
+    const bestThumbnail = getBestThumbnailUrl(mapped)
+    
     return {
       ...mapped,
       // Keep the original S3 keys for the MediaDetailModal
@@ -66,7 +76,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
       thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
       // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
       url: getMediaUrlFromMedia(mapped, false),
-      thumbnail: getMediaUrlFromMedia(mapped, true), // Use thumbnail endpoint
+      thumbnail: bestThumbnail || getMediaUrlFromMedia(mapped, true), // Use best thumbnail or fallback
     }
   })
 
@@ -89,55 +99,6 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const totalMedia = data?.data?.pagination?.total || 0
   const filteredTotalMedia = filteredMedia.length
 
-  // Create ghost placeholders for predictive loading
-  // Show ghosts when we have more media to load, not just when currently loading
-  const ghostPlaceholders = hasMore && nextPageSize > 0 ? Array.from({ length: 1 }, (_, i) => ({
-    id: `ghost-${i}`,
-    isGhost: true,
-    index: i
-  })) : []
-
-  // Combine real media with ghost placeholders
-  const displayMedia = [...filteredMedia, ...ghostPlaceholders]
-  
-  // Intersection Observer for infinite scroll - trigger when any ghost placeholder is visible
-  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
-    const hasVisibleGhost = entries.some(entry => 
-      entry.isIntersecting && 
-      entry.target.getAttribute('data-ghost') === 'true'
-    )
-    
-    // Trigger loading when any ghost is visible and we're not already loading
-    if (hasVisibleGhost && hasMore && !isFetching && !isLoadingMore) {
-      console.log('Loading more images...')
-      loadMore()
-    }
-  }, [hasMore, isFetching, isLoadingMore, loadMore])
-
-  useEffect(() => {
-    // Observe all ghost placeholder elements
-    const ghostElements = document.querySelectorAll('[data-ghost="true"]')
-    
-    console.log('Setting up observer:', {
-      ghostElementsCount: ghostElements.length,
-      displayMediaLength: displayMedia.length,
-      hasMore,
-      nextPageSize
-    })
-    
-    if (ghostElements.length === 0) return
-
-    const observer = new IntersectionObserver(handleObserver, {
-      root: null,
-      rootMargin: '100px', // Start loading when ghost is 100px from viewport
-      threshold: 0.1
-    })
-
-    ghostElements.forEach(element => observer.observe(element))
-
-    return () => observer.disconnect()
-  }, [handleObserver, displayMedia.length]) // Re-run when displayMedia changes
-
   const handleDeleteMedia = async (mediaId: string) => {
     if (!confirm('Are you sure you want to delete this media?')) return
 
@@ -147,6 +108,60 @@ export function UserGallery({ userId }: UserGalleryProps) {
       console.error('Failed to delete media:', error)
     }
   }
+
+  // Bulk selection handlers
+  const handleBulkSelectToggle = () => {
+    setIsBulkSelectMode(!isBulkSelectMode)
+    if (isBulkSelectMode) {
+      setSelectedMediaIds(new Set())
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (selectedMediaIds.size === filteredMedia.length) {
+      setSelectedMediaIds(new Set())
+    } else {
+      setSelectedMediaIds(new Set(filteredMedia.map(m => m.id)))
+    }
+  }
+
+  const handleMediaSelect = (media: Media) => {
+    const newSelectedIds = new Set(selectedMediaIds)
+    if (newSelectedIds.has(media.id)) {
+      newSelectedIds.delete(media.id)
+    } else {
+      newSelectedIds.add(media.id)
+    }
+    setSelectedMediaIds(newSelectedIds)
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedMediaIds.size === 0) return
+    
+    const count = selectedMediaIds.size
+    if (!confirm(`Are you sure you want to delete ${count} ${count === 1 ? 'media item' : 'media items'}?`)) return
+
+    try {
+      // Delete all selected media
+      const deletePromises = Array.from(selectedMediaIds).map(id => 
+        deleteMediaMutation.mutateAsync(id)
+      )
+      await Promise.all(deletePromises)
+      
+      // Clear selection
+      setSelectedMediaIds(new Set())
+      setIsBulkSelectMode(false)
+    } catch (error) {
+      console.error('Failed to delete media:', error)
+    }
+  }
+
+  const handleBulkEdit = () => {
+    if (selectedMediaIds.size === 0) return
+    setIsBulkEditModalOpen(true)
+  }
+
+  const selectedMediaItems = filteredMedia.filter(m => selectedMediaIds.has(m.id))
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes'
@@ -217,6 +232,44 @@ export function UserGallery({ userId }: UserGalleryProps) {
         </div>
         
         <div className="flex items-center space-x-2">
+          {/* Bulk Actions Toolbar */}
+          {activeView === 'images' && isBulkSelectMode && (
+            <div className="flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <span className="text-sm text-blue-700 font-medium">
+                {selectedMediaIds.size} selected
+              </span>
+              <button
+                onClick={handleSelectAll}
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                {selectedMediaIds.size === filteredMedia.length ? 'Deselect all' : 'Select all'}
+              </button>
+              <div className="h-4 w-px bg-blue-300"></div>
+              <button
+                onClick={handleBulkEdit}
+                disabled={selectedMediaIds.size === 0}
+                className="flex items-center space-x-1 px-2 py-1 text-sm text-blue-700 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Edit3 className="h-3 w-3" />
+                <span>Edit</span>
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={selectedMediaIds.size === 0}
+                className="flex items-center space-x-1 px-2 py-1 text-sm text-red-700 hover:text-red-800 hover:bg-red-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="h-3 w-3" />
+                <span>Delete</span>
+              </button>
+              <button
+                onClick={handleBulkSelectToggle}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
           {/* View Toggle */}
           <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
             <button
@@ -301,6 +354,19 @@ export function UserGallery({ userId }: UserGalleryProps) {
               >
                 <Filter className="h-4 w-4" />
               </button>
+
+              {/* Bulk Select Toggle Button */}
+              <button
+                onClick={handleBulkSelectToggle}
+                className={`p-2 rounded-lg transition-colors duration-200 ${
+                  isBulkSelectMode
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Bulk select"
+              >
+                {isBulkSelectMode ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+              </button>
             </>
           )}
         </div>
@@ -347,40 +413,38 @@ export function UserGallery({ userId }: UserGalleryProps) {
       {/* Content */}
       {activeView === 'images' ? (
         <>
-          {/* Media Grid */}
-          <MediaGrid
-            media={filteredMedia}
-            viewMode={viewMode}
-            selectedMedia={[]}
-            onMediaClick={(media) => setSelectedMedia(media)}
-            showActions={true}
-            onViewDetails={(media) => setSelectedMedia(media)}
-            onDownload={(media) => {
-              const link = document.createElement('a')
-              link.href = getMediaUrlFromMedia(media, false)
-              link.download = media.altText || 'media'
-              link.click()
-            }}
-            onDelete={(media) => handleDeleteMedia(media.id)}
-            isDeleting={deleteMediaMutation.isPending}
-            showMediaInfo={true}
-            showDate={true}
-            showFileSize={true}
-            formatFileSize={formatFileSize}
-            formatDate={formatDate}
-          />
+          {/* Media Grid with Infinite Scroll */}
+          <InfiniteScrollContainer
+            hasMore={hasMore}
+            isLoading={isLoadingMore}
+            onLoadMore={loadMore}
+          >
+            <MediaGrid
+              media={filteredMedia}
+              viewMode={viewMode}
+              selectedMedia={selectedMediaItems}
+              onMediaClick={(media) => setSelectedMedia(media)}
+              onMediaSelect={handleMediaSelect}
+              isSelectable={isBulkSelectMode}
+              showActions={!isBulkSelectMode}
+              onViewDetails={(media) => setSelectedMedia(media)}
+              onDownload={(media) => {
+                const link = document.createElement('a')
+                link.href = getMediaUrlFromMedia(media, false)
+                link.download = media.altText || 'media'
+                link.click()
+              }}
+              onDelete={(media) => handleDeleteMedia(media.id)}
+              isDeleting={deleteMediaMutation.isPending}
+              showMediaInfo={true}
+              showDate={true}
+              showFileSize={true}
+              formatFileSize={formatFileSize}
+              formatDate={formatDate}
+            />
+          </InfiniteScrollContainer>
 
-          {/* Manual Load More Button (fallback) - only show if intersection observer fails */}
-          {hasMore && !isLoadingMore && ghostPlaceholders.length === 0 && (
-            <div className="flex justify-center pt-6">
-              <button
-                onClick={loadMore}
-                className="btn-secondary flex items-center space-x-2 px-8 py-3"
-              >
-                <span>Load More Media</span>
-              </button>
-            </div>
-          )}
+
 
           {/* Empty State */}
           {media.length === 0 && !isLoading && !isFetching && (
@@ -507,7 +571,16 @@ export function UserGallery({ userId }: UserGalleryProps) {
         media={selectedMedia}
         onClose={() => setSelectedMedia(null)}
         onMediaUpdate={() => {
-          // The optimistic update will handle this automatically
+          // The updateMedia function from useUserMedia will handle optimistic updates
+        }}
+        updateMedia={(mediaId: string, updates: Partial<any>) => {
+          // Use the updateMedia function from the hook to update the media in the cache
+          updateMedia(mediaId, updates)
+          
+          // Also update the selected media if it's the same one
+          if (selectedMedia && selectedMedia.id === mediaId) {
+            setSelectedMedia({ ...selectedMedia, ...updates })
+          }
         }}
         allMedia={media}
         onNavigate={(media: any) => setSelectedMedia(media)}
@@ -534,6 +607,22 @@ export function UserGallery({ userId }: UserGalleryProps) {
         galleryId={selectedGallery?.id || ''}
         onGalleryDeleted={() => {
           // The query will automatically refetch
+        }}
+      />
+
+      {/* Bulk Edit Modal */}
+      <BulkEditModal
+        isOpen={isBulkEditModalOpen}
+        onClose={() => setIsBulkEditModalOpen(false)}
+        selectedMedia={selectedMediaItems}
+        onSuccess={() => {
+          // Clear selection after successful update
+          setSelectedMediaIds(new Set())
+          setIsBulkSelectMode(false)
+          
+          // Reset the media data to force a fresh fetch
+          // This will ensure the media detail modal shows updated data
+          reset()
         }}
       />
     </div>

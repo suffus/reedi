@@ -178,14 +178,7 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
           {...restProps}
         />
         
-        {/* Video play overlay when not playing */}
-        {!isVideoPlaying && !showVideoControls && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
-            <div className="bg-black bg-opacity-50 rounded-full p-3">
-              <Play className="h-6 w-6 text-white fill-white" />
-            </div>
-          </div>
-        )}
+        {/* Video play overlay when not playing - REMOVED since we have video indicator */}
         
         {/* Video type indicator */}
         <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">

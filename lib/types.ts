@@ -21,6 +21,11 @@ export interface Media {
   framerate?: number | null
   videoUrl?: string | null
   videoS3Key?: string | null
+  // Video processing fields
+  videoProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+  videoThumbnails?: any[] | null
+  videoVersions?: any[] | null
+  videoMetadata?: any | null
   createdAt: string
   updatedAt: string
   authorId: string
