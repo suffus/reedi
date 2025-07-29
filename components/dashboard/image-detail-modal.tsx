@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, FileText, Image as ImageIcon, HardDrive, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, Play, Pause, FileText, Image as ImageIcon, HardDrive, PanelLeftClose, PanelLeftOpen, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMediaComments, useCreateComment, useAuth, useUpdateMedia } from '@/lib/api-hooks'
 import { getMediaUrlFromMedia } from '@/lib/api'
@@ -43,6 +43,32 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [localTitle, setLocalTitle] = useState(media?.altText || '')
   const [localDescription, setLocalDescription] = useState(media?.caption || '')
   const [localTags, setLocalTags] = useState<string[]>(media?.tags || [])
+  
+  // Unsaved changes tracking
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null)
+  
+
+  
+  // Update local state when media prop changes (for navigation)
+  useEffect(() => {
+    setLocalTitle(media?.altText || '')
+    setLocalDescription(media?.caption || '')
+    setLocalTags(media?.tags || [])
+    // Reset edit state when navigating to a new media
+    setIsEditing(false)
+    setEditTitle('')
+    setEditDescription('')
+    setEditTags([])
+    // Reset unsaved changes tracking
+    setHasUnsavedChanges(false)
+    setShowUnsavedChangesDialog(false)
+    setPendingNavigation(null)
+    // Reset image loading state
+    setIsCurrentImageLoaded(false)
+    setIsSlideshowWaitingForLoad(false)
+  }, [media?.id, media?.altText, media?.caption, media?.tags])
   const containerRef = useRef<HTMLDivElement>(null)
   
   // Slideshow state
@@ -69,34 +95,60 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const hasNext = canNavigate && currentIndex !== -1 && currentIndex < allMedia.length - 1
   const hasPrev = canNavigate && currentIndex !== -1 && currentIndex > 0
 
+  // Navigation with unsaved changes handling
+  const handleNavigationWithUnsavedChanges = useCallback((navigationFunction: () => void) => {
+    if (hasUnsavedChanges) {
+      setShowUnsavedChangesDialog(true)
+      setPendingNavigation(() => navigationFunction)
+    } else {
+      navigationFunction()
+    }
+  }, [hasUnsavedChanges])
+
+  const handleConfirmNavigation = useCallback(() => {
+    setShowUnsavedChangesDialog(false)
+    if (pendingNavigation) {
+      pendingNavigation()
+      setPendingNavigation(null)
+    }
+  }, [pendingNavigation])
+
+  const handleCancelNavigation = useCallback(() => {
+    setShowUnsavedChangesDialog(false)
+    setPendingNavigation(null)
+  }, [])
+
   const handleNext = useCallback(() => {
     if (!canNavigate || !hasNext) return
     const nextIndex = currentIndex + 1
-    onNavigate(allMedia[nextIndex])
-  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia])
+    handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[nextIndex]))
+  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
 
   const handlePrev = useCallback(() => {
     if (!canNavigate || !hasPrev) return
     const prevIndex = currentIndex - 1
-    onNavigate(allMedia[prevIndex])
-  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia])
+    handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[prevIndex]))
+  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
 
   const handleFirst = useCallback(() => {
     if (!canNavigate) return
-    onNavigate(allMedia[0])
-  }, [canNavigate, onNavigate, allMedia])
+    handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[0]))
+  }, [canNavigate, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
 
   const handleLast = useCallback(() => {
     if (!canNavigate) return
-    onNavigate(allMedia[allMedia.length - 1])
-  }, [canNavigate, onNavigate, allMedia])
+    handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[allMedia.length - 1]))
+  }, [canNavigate, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
 
   // Slideshow handlers
   const startSlideshow = useCallback(() => {
     if (!canNavigate || !allMedia || allMedia.length <= 1) return
     
+    console.log('Slideshow: Starting slideshow')
     setIsSlideshowActive(true)
+    
     const advanceToNext = () => {
+      console.log('Slideshow: Initial advance')
       if (hasNext) {
         handleNext()
         setIsSlideshowWaitingForLoad(true)
@@ -106,11 +158,8 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       }
     }
     
-    const scheduleNext = () => {
-      slideshowIntervalRef.current = setTimeout(advanceToNext, slideshowSpeed)
-    }
-    
-    scheduleNext()
+    // Start the slideshow
+    slideshowIntervalRef.current = setTimeout(advanceToNext, slideshowSpeed)
   }, [canNavigate, allMedia, hasNext, handleNext, handleFirst, slideshowSpeed])
 
   const stopSlideshow = useCallback(() => {
@@ -140,15 +189,99 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
   // Handle image load for slideshow
   const handleImageLoad = useCallback(() => {
+    console.log('Slideshow: Image loaded')
     setIsCurrentImageLoaded(true)
     setIsSlideshowWaitingForLoad(false)
   }, [])
+
+  // Continue slideshow after image loads
+  useEffect(() => {
+    if (isSlideshowActive && isCurrentImageLoaded && !isSlideshowWaitingForLoad) {
+      console.log('Slideshow: Image loaded, scheduling next advance')
+      // Clear any existing timeout
+      if (slideshowIntervalRef.current) {
+        clearTimeout(slideshowIntervalRef.current)
+      }
+      
+      // Schedule the next advance after the current image has loaded
+      slideshowIntervalRef.current = setTimeout(() => {
+        if (isSlideshowActive) {
+          console.log('Slideshow: Advancing to next image')
+          if (hasNext) {
+            handleNext()
+            setIsSlideshowWaitingForLoad(true)
+          } else {
+            handleFirst()
+            setIsSlideshowWaitingForLoad(true)
+          }
+        }
+      }, slideshowSpeed)
+    }
+  }, [isSlideshowActive, isCurrentImageLoaded, isSlideshowWaitingForLoad, hasNext, handleNext, handleFirst, slideshowSpeed])
 
   // Reset slideshow state when media changes
   useEffect(() => {
     setIsCurrentImageLoaded(false)
     setIsSlideshowWaitingForLoad(false)
   }, [media.id])
+
+  // Slideshow speed control functions
+  const formatSlideshowSpeed = (speed: number) => {
+    if (speed < 1000) {
+      return `${speed}ms`
+    } else {
+      return `${Math.round(speed / 1000)}s`
+    }
+  }
+
+  // Logarithmic scale for slideshow speed
+  // Convert slider value (0-100) to speed (3000-60000ms)
+  const sliderToSpeed = (sliderValue: number) => {
+    // Use logarithmic scale: 3s to 60s
+    const minSpeed = 3000 // 3 seconds
+    const maxSpeed = 60000 // 60 seconds
+    const logMin = Math.log(minSpeed)
+    const logMax = Math.log(maxSpeed)
+    const logValue = logMin + (logMax - logMin) * (sliderValue / 100)
+    return Math.round(Math.exp(logValue))
+  }
+
+  // Convert speed to slider value
+  const speedToSlider = (speed: number) => {
+    const minSpeed = 3000
+    const maxSpeed = 60000
+    const logMin = Math.log(minSpeed)
+    const logMax = Math.log(maxSpeed)
+    const logSpeed = Math.log(speed)
+    return Math.round(((logSpeed - logMin) / (logMax - logMin)) * 100)
+  }
+
+  const handleSlideshowSpeedChange = (sliderValue: number) => {
+    const newSpeed = sliderToSpeed(sliderValue)
+    setSlideshowSpeed(newSpeed)
+    console.log('Slideshow speed changed to:', newSpeed, 'ms')
+    
+    // If slideshow is active, restart it with the new speed
+    if (isSlideshowActive) {
+      // Clear existing timeout
+      if (slideshowIntervalRef.current) {
+        clearTimeout(slideshowIntervalRef.current)
+      }
+      
+      // Restart slideshow with new speed
+      slideshowIntervalRef.current = setTimeout(() => {
+        if (isSlideshowActive) {
+          if (hasNext) {
+            handleNext()
+            setIsSlideshowWaitingForLoad(true)
+          } else {
+            handleFirst()
+            setIsSlideshowWaitingForLoad(true)
+          }
+        }
+      }, newSpeed)
+    }
+  }
 
   const toggleCropMode = () => {
     console.log('toggleCropMode called, current isCropMode:', isCropMode)
@@ -187,6 +320,19 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     // Don't reset crop mode here - let toggleCropMode handle it
   }
 
+  const handleClose = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setShowUnsavedChangesDialog(true)
+      setPendingNavigation(() => () => {
+        resetView()
+        onClose()
+      })
+    } else {
+      resetView()
+      onClose()
+    }
+  }, [hasUnsavedChanges, resetView, onClose])
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -201,7 +347,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       if (isTyping) return
       
       if (e.key === 'Escape') {
-        onClose()
+        handleClose()
       } else if (e.key === 'ArrowRight' && hasNext) {
         handleNext()
       } else if (e.key === 'ArrowLeft' && hasPrev) {
@@ -260,18 +406,46 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }
 
+  // Track changes in edit fields
+  const handleEditTitleChange = (value: string) => {
+    setEditTitle(value)
+    // Only check for changes if we're in editing mode
+    if (isEditing) {
+      const hasChanges = value !== localTitle || editDescription !== localDescription || JSON.stringify(editTags) !== JSON.stringify(localTags)
+      setHasUnsavedChanges(hasChanges)
+    }
+  }
+
+  const handleEditDescriptionChange = (value: string) => {
+    setEditDescription(value)
+    // Only check for changes if we're in editing mode
+    if (isEditing) {
+      setHasUnsavedChanges(editTitle !== localTitle || value !== localDescription || JSON.stringify(editTags) !== JSON.stringify(localTags))
+    }
+  }
+
+  const handleEditTagsChange = (tags: string[]) => {
+    setEditTags(tags)
+    // Only check for changes if we're in editing mode
+    if (isEditing) {
+      setHasUnsavedChanges(editTitle !== localTitle || editDescription !== localDescription || JSON.stringify(tags) !== JSON.stringify(localTags))
+    }
+  }
+
   const handleStartEdit = () => {
     setEditTitle(localTitle)
     setEditDescription(localDescription)
     setEditTags([...localTags])
     setIsEditing(true)
+    setHasUnsavedChanges(false)
   }
 
   const handleCancelEdit = () => {
     setIsEditing(false)
-    setEditTitle(localTitle)
-    setEditDescription(localDescription)
-    setEditTags([...localTags])
+    setEditTitle('')
+    setEditDescription('')
+    setEditTags([])
+    setHasUnsavedChanges(false)
   }
 
   const handleSaveEdit = async () => {
@@ -287,6 +461,16 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       setLocalDescription(editDescription)
       setLocalTags([...editTags])
       setIsEditing(false)
+      setHasUnsavedChanges(false)
+      
+      // Update the media prop if updateMedia function is provided
+      if (updateMedia) {
+        updateMedia(media.id, {
+          altText: editTitle,
+          caption: editDescription,
+          tags: editTags
+        })
+      }
       
       if (onMediaUpdate) {
         onMediaUpdate()
@@ -428,18 +612,18 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     e.preventDefault()
     
     const delta = e.deltaY > 0 ? 0.9 : 1.1
-    const newZoom = Math.max(0.1, Math.min(5, zoom * delta))
+    const newZoom = Math.max(1.0, Math.min(8, zoom * delta))
     
-    // Zoom towards mouse position
+    // Zoom towards the center of the viewport
     const rect = containerRef.current?.getBoundingClientRect()
     if (rect) {
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
+      const centerX = rect.width / 2
+      const centerY = rect.height / 2
       
       const scaleFactor = newZoom / zoom
       setPan(prev => ({
-        x: mouseX - (mouseX - prev.x) * scaleFactor,
-        y: mouseY - (mouseY - prev.y) * scaleFactor
+        x: (prev.x) * scaleFactor,
+        y: (prev.y) * scaleFactor
       }))
     }
     
@@ -479,13 +663,15 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         <div className="flex-1 flex flex-col bg-black">
           {/* Close Button */}
           <motion.button
-            onClick={() => {resetView(); onClose()}}
+            onClick={handleClose}
             className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
             animate={{ opacity: controlsVisible ? 1 : 0 }}
             transition={{ duration: 0.3 }}
           >
             <X className="h-5 w-5" />
           </motion.button>
+          
+
 
           {/* Image Container */}
           <motion.div 
@@ -691,20 +877,20 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                     <input
                       type="text"
                       value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
+                      onChange={(e) => handleEditTitleChange(e.target.value)}
                       placeholder="Image title..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
                     />
                     <textarea
                       value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
+                      onChange={(e) => handleEditDescriptionChange(e.target.value)}
                       placeholder="Image description..."
                       rows={3}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
                     />
                     <TagInput
                       tags={editTags}
-                      onTagsChange={setEditTags}
+                      onTagsChange={handleEditTagsChange}
                       placeholder="Add tags..."
                       className="w-full"
                     />
@@ -771,6 +957,38 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                     <Edit2 className="h-4 w-4" />
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Slideshow Speed Control */}
+          {isSlideshowActive && canNavigate && allMedia && allMedia.length > 1 && (
+            <div className="p-4 border-b border-gray-200 bg-blue-50">
+              <div className="flex items-center space-x-2 mb-3">
+                <Clock className="h-4 w-4 text-blue-600" />
+                <h4 className="text-sm font-medium text-gray-900">Slideshow Speed</h4>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">3s</span>
+                  <span className="text-xs text-gray-600">60s</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={speedToSlider(slideshowSpeed)}
+                  onChange={(e) => handleSlideshowSpeedChange(parseInt(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  style={{
+                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${speedToSlider(slideshowSpeed)}%, #e5e7eb ${speedToSlider(slideshowSpeed)}%, #e5e7eb 100%)`
+                  }}
+                />
+                <div className="text-center">
+                  <span className="text-sm font-medium text-blue-600">
+                    {formatSlideshowSpeed(slideshowSpeed)}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -850,6 +1068,49 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
           </div>
         </motion.div>
       </motion.div>
+
+            {/* Unsaved Changes Dialog */}
+      <AnimatePresence>
+        {showUnsavedChangesDialog && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Unsaved Changes
+              </h3>
+              <p className="text-gray-600 mb-6">
+                You have unsaved changes to this media. Do you want to save them before continuing?
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleCancelNavigation}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmNavigation}
+                  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200"
+                >
+                  Discard Changes
+                </button>
+                <button
+                  onClick={async () => {
+                    await handleSaveEdit()
+                    if (pendingNavigation) {
+                      pendingNavigation()
+                      setPendingNavigation(null)
+                    }
+                    setShowUnsavedChangesDialog(false)
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                >
+                  Save & Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
     </AnimatePresence>
   )
 } 

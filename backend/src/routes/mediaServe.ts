@@ -4,8 +4,69 @@ import { asyncHandler } from '@/middleware/errorHandler'
 import { optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 import { getImageFromS3 } from '@/utils/s3Service'
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 
 const router = Router()
+
+// Initialize S3 client for streaming
+const s3Client = new S3Client({
+  region: process.env.IDRIVE_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.IDRIVE_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.IDRIVE_SECRET_ACCESS_KEY || ''
+  },
+  endpoint: process.env.IDRIVE_ENDPOINT,
+  forcePathStyle: true
+})
+
+// Function to stream video from S3
+async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Request, res: Response) {
+  try {
+    const bucket = process.env.IDRIVE_BUCKET_NAME || ''
+    
+    // Get the range header from the request
+    const range = req.headers.range
+    
+    // Prepare the S3 request
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: s3Key,
+      ...(range && { Range: range })
+    })
+    
+    // Get the object from S3
+    const response = await s3Client.send(command)
+    
+    if (!response.Body) {
+      throw new Error('No body in S3 response')
+    }
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', mimeType || 'video/mp4')
+    res.setHeader('Accept-Ranges', 'bytes')
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    
+    // Handle range requests
+    if (range && response.ContentRange) {
+      res.status(206)
+      res.setHeader('Content-Range', response.ContentRange)
+      res.setHeader('Content-Length', response.ContentLength?.toString() || '0')
+    } else {
+      res.setHeader('Content-Length', response.ContentLength?.toString() || '0')
+    }
+    
+    // Stream the video data directly to the response
+    const stream = response.Body as any
+    stream.pipe(res)
+    
+  } catch (error) {
+    console.error('Error streaming video from S3:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error streaming video'
+    })
+  }
+}
 
 // Add CORS headers for all media serve requests
 router.use((req: Request, res: Response, next) => {
@@ -134,31 +195,18 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
       return
     }
 
-    // Get media from S3
-    const mediaBuffer = await getImageFromS3(s3Key)
-
-    // Set appropriate headers
-    res.setHeader('Content-Type', media.mimeType || 'application/octet-stream')
-    res.setHeader('Content-Length', mediaBuffer.length)
-    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
-    res.setHeader('Accept-Ranges', 'bytes')
-
-    // Handle range requests for video streaming
-    const range = req.headers.range
-    if (range && media.mediaType === 'VIDEO') {
-      const parts = range.replace(/bytes=/, '').split('-')
-      const start = parseInt(parts[0], 10)
-      const end = parts[1] ? parseInt(parts[1], 10) : mediaBuffer.length - 1
-      const chunksize = (end - start) + 1
-
-      res.status(206)
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${mediaBuffer.length}`)
-      res.setHeader('Content-Length', chunksize.toString())
-      res.setHeader('Accept-Ranges', 'bytes')
-
-      res.end(mediaBuffer.slice(start, end + 1))
+    // For videos, use streaming approach
+    if (media.mediaType === 'VIDEO') {
+      await streamVideoFromS3(s3Key, media.mimeType, req, res)
     } else {
-      // Send full file
+      // For images, use the existing approach
+      const mediaBuffer = await getImageFromS3(s3Key)
+      
+      // Set appropriate headers
+      res.setHeader('Content-Type', media.mimeType || 'application/octet-stream')
+      res.setHeader('Content-Length', mediaBuffer.length)
+      res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+      
       res.end(mediaBuffer)
     }
 
@@ -191,6 +239,7 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     select: {
       id: true,
       thumbnailS3Key: true,
+      videoThumbnails: true,
       mimeType: true,
       mediaType: true,
       processingStatus: true
@@ -216,7 +265,23 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
   }
 
   try {
-    if (!media.thumbnailS3Key) {
+    let thumbnailS3Key: string | null = null
+
+    // For videos, check processed thumbnails first
+    if (media.mediaType === 'VIDEO' && media.videoThumbnails) {
+      const videoThumbnails = media.videoThumbnails as any[]
+      if (videoThumbnails && videoThumbnails.length > 0) {
+        // Use the first thumbnail (or could implement logic to pick the best one)
+        thumbnailS3Key = videoThumbnails[0].s3_key || videoThumbnails[0].s3Key
+      }
+    }
+
+    // Fall back to original thumbnailS3Key if no processed thumbnails
+    if (!thumbnailS3Key) {
+      thumbnailS3Key = media.thumbnailS3Key
+    }
+
+    if (!thumbnailS3Key) {
       res.status(404).json({
         success: false,
         error: 'Thumbnail not found'
@@ -225,7 +290,7 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     }
 
     // Get thumbnail from S3
-    const thumbnailBuffer = await getImageFromS3(media.thumbnailS3Key)
+    const thumbnailBuffer = await getImageFromS3(thumbnailS3Key)
 
     // Set appropriate headers
     res.setHeader('Content-Type', 'image/jpeg')
@@ -236,6 +301,90 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
 
   } catch (error) {
     console.error('Error serving thumbnail:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error serving thumbnail'
+    })
+  }
+}))
+
+// Serve processed video thumbnail
+router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id, s3Key } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this media
+  const canView = await canViewMedia(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  const media = await prisma.media.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      processingStatus: true,
+      videoThumbnails: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  if (media.mediaType !== 'VIDEO') {
+    res.status(400).json({
+      success: false,
+      error: 'This endpoint is for video thumbnails only'
+    })
+    return
+  }
+
+  if (media.processingStatus !== 'COMPLETED') {
+    res.status(202).json({
+      success: false,
+      error: 'Video is still processing',
+      processingStatus: media.processingStatus
+    })
+    return
+  }
+
+  try {
+    // Validate that the requested s3Key is actually a thumbnail for this video
+    const videoThumbnails = media.videoThumbnails as any[]
+    const isValidThumbnail = videoThumbnails && videoThumbnails.some((thumb: any) => 
+      (thumb.s3_key || thumb.s3Key) === s3Key
+    )
+
+    if (!isValidThumbnail) {
+      res.status(404).json({
+        success: false,
+        error: 'Thumbnail not found for this video'
+      })
+      return
+    }
+
+    // Get thumbnail from S3
+    const thumbnailBuffer = await getImageFromS3(s3Key)
+
+    // Set appropriate headers
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Content-Length', thumbnailBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+
+    res.end(thumbnailBuffer)
+
+  } catch (error) {
+    console.error('Error serving processed thumbnail:', error)
     res.status(500).json({
       success: false,
       error: 'Error serving thumbnail'
@@ -307,38 +456,91 @@ router.get('/:id/stream', optionalAuthMiddleware, asyncHandler(async (req: Authe
       return
     }
 
-    // Get video from S3
-    const videoBuffer = await getImageFromS3(s3Key)
-
-    // Set appropriate headers for video streaming
-    res.setHeader('Content-Type', media.mimeType || 'video/mp4')
-    res.setHeader('Content-Length', videoBuffer.length)
-    res.setHeader('Accept-Ranges', 'bytes')
-    res.setHeader('Cache-Control', 'public, max-age=31536000')
-
-    // Handle range requests for video streaming
-    const range = req.headers.range
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-')
-      const start = parseInt(parts[0], 10)
-      const end = parts[1] ? parseInt(parts[1], 10) : videoBuffer.length - 1
-      const chunksize = (end - start) + 1
-
-      res.status(206)
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${videoBuffer.length}`)
-      res.setHeader('Content-Length', chunksize.toString())
-
-      res.end(videoBuffer.slice(start, end + 1))
-    } else {
-      // Send full video
-      res.end(videoBuffer)
-    }
+    // Use the streaming function for better performance
+    await streamVideoFromS3(s3Key, media.mimeType, req, res)
 
   } catch (error) {
     console.error('Error streaming video:', error)
     res.status(500).json({
       success: false,
       error: 'Error streaming video'
+    })
+  }
+}))
+
+// Serve processed video thumbnails
+router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id, s3Key } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this media
+  const canView = await canViewMedia(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  const media = await prisma.media.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      videoThumbnails: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  if (media.mediaType !== 'VIDEO') {
+    res.status(400).json({
+      success: false,
+      error: 'This endpoint is for video thumbnails only'
+    })
+    return
+  }
+
+  // Verify that the requested S3 key is actually a thumbnail for this video
+  const thumbnails = media.videoThumbnails as any[]
+  const thumbnailExists = thumbnails && Array.isArray(thumbnails) && 
+    thumbnails.some(thumb => {
+      const thumbS3Key = thumb.s3Key || thumb.s3_key
+      return thumbS3Key === decodeURIComponent(s3Key)
+    })
+
+  if (!thumbnailExists) {
+    res.status(404).json({
+      success: false,
+      error: 'Thumbnail not found'
+    })
+    return
+  }
+
+  try {
+    // Get thumbnail from S3
+    const thumbnailBuffer = await getImageFromS3(decodeURIComponent(s3Key))
+
+    // Set appropriate headers for image serving
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Content-Length', thumbnailBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000')
+    res.setHeader('Accept-Ranges', 'bytes')
+
+    res.end(thumbnailBuffer)
+
+  } catch (error) {
+    console.error('Error serving processed thumbnail:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error serving thumbnail'
     })
   }
 }))

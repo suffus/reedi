@@ -11,18 +11,42 @@ const router = Router()
 
 // Configure multer for file uploads (support both images and videos)
 const storage = multer.memoryStorage()
+
+// Supported video formats
+const SUPPORTED_VIDEO_MIME_TYPES = [
+  'video/mp4',
+  'video/webm', 
+  'video/quicktime', // MOV
+  'video/x-msvideo',  // AVI
+  'video/avi',        // Alternative AVI MIME type
+  'video/mpeg',       // MPEG-1
+  'video/mp2',        // MPEG-2
+  'video/mp2t'        // MPEG-2 Transport Stream
+]
+
 const upload = multer({ 
   storage,
   limits: {
     fileSize: 500 * 1024 * 1024, // 500MB limit for videos
   },
   fileFilter: (req, file, cb) => {
-    // Accept both images and videos
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+    // Accept images
+    if (file.mimetype.startsWith('image/')) {
       cb(null, true)
-    } else {
-      cb(new Error('Only image and video files are allowed'))
+      return
     }
+    
+    // Accept only supported video formats
+    if (file.mimetype.startsWith('video/')) {
+      if (SUPPORTED_VIDEO_MIME_TYPES.includes(file.mimetype)) {
+        cb(null, true)
+      } else {
+        cb(new Error(`Unsupported video format. Supported formats: MP4, WebM, MOV, AVI, MPEG-1, MPEG-2. Received: ${file.mimetype}`))
+      }
+      return
+    }
+    
+    cb(new Error('Only image and video files are allowed'))
   }
 })
 
@@ -232,14 +256,26 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
       }
     })
 
-    // TODO: Queue video processing job
-    // await videoProcessingQueue.add('process-video', {
-    //   mediaId: media.id,
-    //   s3Key: s3Key,
-    //   userId: userId,
-    //   originalFilename: req.file.originalname,
-    //   mimeType: req.file.mimetype
-    // })
+    // Queue video processing job
+    const videoProcessingService = req.app.locals.videoProcessingService
+    if (videoProcessingService) {
+      try {
+        await videoProcessingService.createProcessingJob(
+          media.id,
+          userId,
+          s3Key,
+          req.file.originalname,
+          true, // request progress updates
+          5 // progress interval
+        )
+        console.log(`Video processing job queued for media ${media.id}`)
+      } catch (error) {
+        console.error(`Failed to queue video processing job for media ${media.id}:`, error)
+        // Don't fail the upload, just log the error
+      }
+    } else {
+      console.warn('Video processing service not available, skipping video processing')
+    }
 
   } else {
     // For images, process immediately (existing flow)
@@ -417,7 +453,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
   const userId = req.user?.id
-  const { title, description, altText, caption, tags, visibility } = req.body
+  const { title, description, altText, caption, tags, visibility, mergeTags } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -429,7 +465,7 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 
   const media = await prisma.media.findUnique({
     where: { id },
-    select: { authorId: true }
+    select: { authorId: true, tags: true }
   })
 
   if (!media) {
@@ -448,14 +484,30 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     return
   }
 
+  // Handle tag merging logic
+  let finalTags = tags
+  if (tags !== undefined && mergeTags && Array.isArray(tags)) {
+    const existingTags = media.tags || []
+    const newTags = tags.filter(tag => tag && tag.trim().length > 0)
+    finalTags = [...new Set([...existingTags, ...newTags])]
+  }
+
   const updatedMedia = await prisma.media.update({
     where: { id },
     data: {
       altText: title || altText,
       caption: description || caption,
-      tags: tags || undefined,
+      tags: finalTags || undefined,
       visibility
     }
+  })
+
+  console.log('Media updated in database:', {
+    id: updatedMedia.id,
+    altText: updatedMedia.altText,
+    caption: updatedMedia.caption,
+    tags: updatedMedia.tags,
+    mergeTags: mergeTags
   })
 
   res.json({

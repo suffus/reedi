@@ -35,7 +35,7 @@ interface GalleryDetailModalProps {
 }
 
 export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDeleted }: GalleryDetailModalProps) {
-  const [selectedMedia, setSelectedMedia] = useState<any>(null)
+  const [selectedMediaForDetail, setSelectedMediaForDetail] = useState<any>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', description: '', visibility: 'PUBLIC' as const })
@@ -645,7 +645,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
                           <span className="text-sm font-medium text-blue-900">
-                            {selectedMedia.length} image{selectedMedia.length !== 1 ? 's' : ''} selected
+                            {selectedMediaItems.length} image{selectedMediaItems.length !== 1 ? 's' : ''} selected
                           </span>
                           <div className="flex items-center space-x-2">
                             <button
@@ -683,7 +683,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                   {/* Bulk Edit Form */}
                   {bulkEditMode && showBulkEditForm && (
                     <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                      <h4 className="text-sm font-medium text-green-900 mb-3">Bulk Edit {selectedMedia.length} Image{selectedMedia.length !== 1 ? 's' : ''}</h4>
+                                              <h4 className="text-sm font-medium text-green-900 mb-3">Bulk Edit {selectedMediaItems.length} Image{selectedMediaItems.length !== 1 ? 's' : ''}</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-green-800 mb-1">
@@ -733,10 +733,10 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                         </button>
                         <button
                           onClick={handleBulkEditSubmit}
-                          disabled={bulkUpdateMediaMutation.isPending || selectedMedia.length === 0}
+                          disabled={bulkUpdateMediaMutation.isPending || selectedMediaItems.length === 0}
                           className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {bulkUpdateMediaMutation.isPending ? 'Updating...' : `Update ${selectedMedia.length} Image${selectedMedia.length !== 1 ? 's' : ''}`}
+                          {bulkUpdateMediaMutation.isPending ? 'Updating...' : `Update ${selectedMediaItems.length} Image${selectedMediaItems.length !== 1 ? 's' : ''}`}
                         </button>
                       </div>
                     </div>
@@ -802,7 +802,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200 ${
-                              bulkEditMode && selectedMedia.some((img: any) => img.id === media.id) 
+                              bulkEditMode && selectedMediaItems.some((img: any) => img.id === media.id) 
                                 ? 'ring-2 ring-green-500' 
                                 : ''
                             }`}
@@ -815,7 +815,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 if (bulkEditMode) {
                                   toggleMedia(media)
                                 } else {
-                                  setSelectedMedia(media)
+                                  setSelectedMediaForDetail(media)
                                 }
                               }}
                               mediaType={media.mediaType || 'IMAGE'}
@@ -830,12 +830,12 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                     toggleMedia(media)
                                   }}
                                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 ${
-                                    selectedMedia.some((img: any) => img.id === media.id)
+                                    selectedMediaItems.some((img: any) => img.id === media.id)
                                       ? 'bg-green-500 border-green-500 text-white'
                                       : 'bg-white border-gray-300 hover:border-green-400'
                                   }`}
                                 >
-                                  {selectedMedia.some((img: any) => img.id === media.id) && (
+                                  {selectedMediaItems.some((img: any) => img.id === media.id) && (
                                     <Check className="h-4 w-4" />
                                   )}
                                 </button>
@@ -854,7 +854,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
                                 <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                   <button
-                                    onClick={() => setSelectedMedia(media)}
+                                    onClick={() => setSelectedMediaForDetail(media)}
                                     className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
                                   >
                                     <Eye className="h-4 w-4 text-gray-700" />
@@ -974,7 +974,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${
-                              bulkEditMode && selectedMedia.some((img: any) => img.id === media.id) 
+                              bulkEditMode && selectedMediaItems.some((img: any) => img.id === media.id) 
                                 ? 'ring-2 ring-green-500 bg-green-50' 
                                 : ''
                             }`}
@@ -985,12 +985,12 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 <button
                                   onClick={() => toggleMedia(media)}
                                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 flex-shrink-0 ${
-                                    selectedMedia.some((img: any) => img.id === media.id)
+                                    selectedMediaItems.some((img: any) => img.id === media.id)
                                       ? 'bg-green-500 border-green-500 text-white'
                                       : 'bg-white border-gray-300 hover:border-green-400'
                                   }`}
                                 >
-                                  {selectedMedia.some((img: any) => img.id === media.id) && (
+                                  {selectedMediaItems.some((img: any) => img.id === media.id) && (
                                     <Check className="h-4 w-4" />
                                   )}
                                 </button>
@@ -1006,7 +1006,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                     if (bulkEditMode) {
                                       toggleMedia(media)
                                     } else {
-                                      setSelectedMedia(media)
+                                      setSelectedMediaForDetail(media)
                                     }
                                   }}
                                 />
@@ -1039,7 +1039,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 {!bulkEditMode && (
                                   <>
                                     <button
-                                      onClick={() => setSelectedMedia(media)}
+                                      onClick={() => setSelectedMediaForDetail(media)}
                                       className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                                     >
                                       <Eye className="h-4 w-4" />
@@ -1113,11 +1113,11 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
       </div>
 
       {/* Image Detail Modal */}
-      { selectedMedia && (
+      { selectedMediaForDetail && (
         <FullScreenWrapper>
       <MediaDetailModal
-        media={selectedMedia ? mapMediaData(selectedMedia) : null}
-        onClose={() => setSelectedMedia(null)}
+        media={selectedMediaForDetail ? mapMediaData(selectedMediaForDetail) : null}
+        onClose={() => setSelectedMediaForDetail(null)}
         onMediaUpdate={() => {
           // The optimistic update will handle this automatically
         }}
@@ -1132,7 +1132,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
           // Map the backend image data to the format expected by ImageDetailModal
           const mappedMedia = mapMediaData(image)
           console.log('Mapped image:', mappedMedia)
-          setSelectedMedia(mappedMedia)
+          setSelectedMediaForDetail(mappedMedia)
         }}
       />
       </FullScreenWrapper>

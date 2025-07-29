@@ -10,6 +10,7 @@ import { PostMenu } from './post-menu'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { PostAuthorForm } from './post-author-form'
 import { getMediaUrl, getMediaUrlFromMedia } from '../../lib/api'
+import { getBestThumbnailUrl } from '../../lib/media-utils'
 import { LazyMedia } from '../lazy-media'
 
 interface Post {
@@ -161,7 +162,7 @@ export function PersonalFeed() {
   const userId = authData?.data?.user?.id
   const user = authData?.data?.user
 
-  const { data: postsData, isLoading } = usePostsFeed()
+  const { data: postsData, isLoading, refetch: refetchPosts } = usePostsFeed()
   const postReactionMutation = usePostReaction()
   const createCommentMutation = useCreateComment()
   const reorderMediaMutation = useReorderPostMedia()
@@ -244,19 +245,19 @@ export function PersonalFeed() {
           thumbnailS3Key: data.data.media.thumbnailS3Key || data.data.media.thumbnail || data.data.media.url,
           url: data.data.media.s3Key || data.data.media.url, // Keep for backward compatibility
           thumbnail: data.data.media.thumbnailS3Key || data.data.media.thumbnail || data.data.media.url, // Keep for backward compatibility
-          title: data.data.media.altText || data.data.media.title,
-          description: data.data.media.caption || data.data.media.description,
+          altText: data.data.media.altText,
+          caption: data.data.media.caption,
           createdAt: data.data.media.createdAt,
           authorId: data.data.media.authorId,
           tags: data.data.media.tags || [],
           mediaType: data.data.media.mediaType || 'IMAGE',
           processingStatus: data.data.media.processingStatus || 'COMPLETED',
-          metadata: {
-            width: data.data.media.width || 0,
-            height: data.data.media.height || 0,
-            size: data.data.media.size || 0,
-            format: data.data.media.mimeType || 'unknown'
-          }
+          width: data.data.media.width || null,
+          height: data.data.media.height || null,
+          size: data.data.media.size || null,
+          mimeType: data.data.media.mimeType || null,
+          visibility: data.data.media.visibility || 'PUBLIC',
+          updatedAt: data.data.media.updatedAt
         }
         
         // Set post context for navigation
@@ -268,19 +269,19 @@ export function PersonalFeed() {
             thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
             url: mediaItem.s3Key || mediaItem.url,
             thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
-            title: mediaItem.altText || mediaItem.title,
-            description: mediaItem.caption || mediaItem.description,
+            altText: mediaItem.altText,
+            caption: mediaItem.caption,
             createdAt: mediaItem.createdAt,
             authorId: mediaItem.authorId,
             tags: mediaItem.tags || [],
             mediaType: mediaItem.mediaType || 'IMAGE',
             processingStatus: mediaItem.processingStatus || 'COMPLETED',
-            metadata: {
-              width: mediaItem.width || 0,
-              height: mediaItem.height || 0,
-              size: mediaItem.size || 0,
-              format: mediaItem.mimeType || 'unknown'
-            }
+            width: mediaItem.width || null,
+            height: mediaItem.height || null,
+            size: mediaItem.size || null,
+            mimeType: mediaItem.mimeType || null,
+            visibility: mediaItem.visibility || 'PUBLIC',
+            updatedAt: mediaItem.updatedAt
           })))
         }
         
@@ -297,19 +298,19 @@ export function PersonalFeed() {
         thumbnailS3Key: media.thumbnailS3Key || media.thumbnail || media.url,
         url: media.s3Key || media.url,
         thumbnail: media.thumbnailS3Key || media.thumbnail || media.url,
-        title: media.altText || media.title,
-        description: media.caption || media.description,
+        altText: media.altText,
+        caption: media.caption,
         createdAt: media.createdAt,
         authorId: media.authorId,
         tags: media.tags || [],
         mediaType: media.mediaType || 'IMAGE',
         processingStatus: media.processingStatus || 'COMPLETED',
-        metadata: {
-          width: media.width || 0,
-          height: media.height || 0,
-          size: media.size || 0,
-          format: media.mimeType || 'unknown'
-        }
+        width: media.width || null,
+        height: media.height || null,
+        size: media.size || null,
+        mimeType: media.mimeType || null,
+        visibility: media.visibility || 'PUBLIC',
+        updatedAt: media.updatedAt
       }
       
       // Set post context for navigation
@@ -321,19 +322,19 @@ export function PersonalFeed() {
           thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
           url: mediaItem.s3Key || mediaItem.url,
           thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
-          title: mediaItem.altText || mediaItem.title,
-          description: mediaItem.caption || mediaItem.description,
+          altText: mediaItem.altText,
+          caption: mediaItem.caption,
           createdAt: mediaItem.createdAt,
           authorId: mediaItem.authorId,
           tags: mediaItem.tags || [],
           mediaType: mediaItem.mediaType || 'IMAGE',
           processingStatus: mediaItem.processingStatus || 'COMPLETED',
-          metadata: {
-            width: mediaItem.width || 0,
-            height: mediaItem.height || 0,
-            size: mediaItem.size || 0,
-            format: mediaItem.mimeType || 'unknown'
-          }
+          width: mediaItem.width || null,
+          height: mediaItem.height || null,
+          size: mediaItem.size || null,
+          mimeType: mediaItem.mimeType || null,
+          visibility: mediaItem.visibility || 'PUBLIC',
+          updatedAt: mediaItem.updatedAt
         })))
       }
       
@@ -425,16 +426,36 @@ export function PersonalFeed() {
       }
     }
     
-    const handleDragEnd = () => {
-      setDraggedMedia(null)
-      setDragOverIndex(null)
-      setIsDragging(false)
+      const handleDragEnd = () => {
+    setDraggedMedia(null)
+    setDragOverIndex(null)
+    setIsDragging(false)
+  }
+
+  // Helper function to get the best media URL for display
+  const getBestMediaUrl = (mediaItem: any, useThumbnail: boolean = false) => {
+    if (typeof mediaItem === 'string') {
+      return getMediaUrl(mediaItem)
     }
+    
+    if (useThumbnail) {
+      // For thumbnails, try to use processed video thumbnails first
+      const bestThumbnail = getBestThumbnailUrl(mediaItem)
+      if (bestThumbnail) {
+        return bestThumbnail
+      }
+      // Fall back to regular thumbnail endpoint
+      return getMediaUrlFromMedia(mediaItem, true)
+    }
+    
+    return getMediaUrlFromMedia(mediaItem, false)
+  }
 
     
     if (reorderedMedia.length === 1) {
       const mediaItem = reorderedMedia[0];
-      const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
+      const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
+      const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
       return (
         <div className="mb-4 relative">
           {showReorderHint && (
@@ -475,7 +496,8 @@ export function PersonalFeed() {
           )}
           <div className={`grid grid-cols-${reorderedMedia.length} gap-2`}>
           {reorderedMedia.map((mediaItem, idx) => {
-              const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
+              const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
+              const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
                               return (
                   <div
                     key={typeof mediaItem === 'string' ? idx : mediaItem.id}
@@ -512,7 +534,8 @@ export function PersonalFeed() {
     
     // 4+ media items: Layout based on main media aspect ratio
     const [main, ...thumbs] = reorderedMedia;
-    const mainMediaUrl = typeof main === 'string' ? getMediaUrl(main) : getMediaUrlFromMedia(main, false);
+    const isMainVideo = typeof main !== 'string' && main.mediaType === 'VIDEO';
+    const mainMediaUrl = getBestMediaUrl(main, isMainVideo);
     
     // Calculate aspect ratio for main media
     const mainAspectRatio = typeof main === 'string' ? 1 : (main.width && main.height ? main.width / main.height : 1);
@@ -563,7 +586,8 @@ export function PersonalFeed() {
           {/* Thumbnails - 17.5% of post width, vertical stack */}
           <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
             {thumbs.map((mediaItem, idx) => {
-              const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
+              const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
+              const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
               const actualIndex = idx + 1; // +1 because main media is at index 0
               return (
                 <div
@@ -883,10 +907,23 @@ export function PersonalFeed() {
           }}
           onMediaUpdate={() => {
             // Refresh posts data when media is updated
-            // This will be handled by the MediaDetailModal internally
+            refetchPosts()
           }}
-          updateMedia={() => {
-            // This will be handled by the MediaDetailModal internally
+          updateMedia={(mediaId: string, updates: Partial<any>) => {
+            // Update the media in the current post media array
+            if (currentPostMedia && currentPostMedia.length > 0) {
+              const updatedMedia = currentPostMedia.map(media => 
+                media.id === mediaId 
+                  ? { ...media, ...updates }
+                  : media
+              )
+              setCurrentPostMedia(updatedMedia)
+              
+              // Also update the selected media if it's the same one
+              if (selectedMediaForDetail && selectedMediaForDetail.id === mediaId) {
+                setSelectedMediaForDetail({ ...selectedMediaForDetail, ...updates })
+              }
+            }
           }}
           allMedia={currentPostMedia}
           onNavigate={(media: any) => setSelectedMediaForDetail(media)}

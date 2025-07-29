@@ -95,10 +95,37 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
   }
 
   const handleFiles = (files: File[]) => {
-    // Filter for both images and videos
-    const mediaFiles = files.filter(file => 
-      file.type.startsWith('image/') || file.type.startsWith('video/')
-    )
+    // Supported video formats
+    const SUPPORTED_VIDEO_TYPES = [
+      'video/mp4',
+      'video/webm', 
+      'video/quicktime', // MOV
+      'video/x-msvideo',  // AVI
+      'video/avi',        // Alternative AVI MIME type
+      'video/mpeg',       // MPEG-1
+      'video/mp2',        // MPEG-2
+      'video/mp2t'        // MPEG-2 Transport Stream
+    ]
+    
+    // Filter for both images and supported videos
+    const mediaFiles = files.filter(file => {
+      if (file.type.startsWith('image/')) {
+        return true
+      }
+      
+      if (file.type.startsWith('video/')) {
+        if (SUPPORTED_VIDEO_TYPES.includes(file.type)) {
+          return true
+        } else {
+          // Show error for unsupported video formats
+          console.error(`Unsupported video format: ${file.type}. Supported formats: MP4, WebM, MOV, AVI`)
+          alert(`Unsupported video format: ${file.name}. Supported formats: MP4, WebM, MOV, AVI, MPEG-1, MPEG-2`)
+          return false
+        }
+      }
+      
+      return false
+    })
     
     // Sort files by filename to ensure proper order (e.g., DSC_5689.JPG before DSC_5690.JPG)
     const sortedFiles = mediaFiles.sort((a, b) => {
@@ -119,6 +146,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
         // For videos, create a video element to get thumbnail
         const video = document.createElement('video')
         video.preload = 'metadata'
+        
         video.onloadedmetadata = () => {
           // Create a canvas to capture the first frame
           const canvas = document.createElement('canvas')
@@ -141,6 +169,12 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
             setUploadFiles(prev => [...prev, newFile])
           }
         }
+        
+        video.onerror = () => {
+          console.error(`Failed to load video: ${file.name}`)
+          alert(`Failed to load video: ${file.name}. This format may not be supported by your browser.`)
+        }
+        
         video.src = URL.createObjectURL(file)
       } else {
         // For images, use FileReader as before

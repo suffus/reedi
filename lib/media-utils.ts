@@ -24,6 +24,11 @@ export function mapMediaData(rawMedia: any): Media {
     framerate: rawMedia.framerate || null,
     videoUrl: rawMedia.videoUrl || null,
     videoS3Key: rawMedia.videoS3Key || null,
+    // Video processing fields
+    videoProcessingStatus: rawMedia.videoProcessingStatus || null,
+    videoThumbnails: rawMedia.videoThumbnails || null,
+    videoVersions: rawMedia.videoVersions || null,
+    videoMetadata: rawMedia.videoMetadata || null,
     createdAt: rawMedia.createdAt,
     updatedAt: rawMedia.updatedAt,
     authorId: rawMedia.authorId
@@ -32,4 +37,13 @@ export function mapMediaData(rawMedia: any): Media {
 
 export function mapMediaArray(rawMediaArray: any[]): Media[] {
   return rawMediaArray.map(mapMediaData)
+}
+
+/**
+ * Get the best thumbnail URL for a media item
+ * For videos, prioritize processed thumbnails over the original thumbnail
+ */
+export function getBestThumbnailUrl(media: Media): string | null {
+  // Use the main thumbnail endpoint which now handles both image and video thumbnails
+  return `/api/media/serve/${media.id}/thumbnail`
 } 

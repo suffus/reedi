@@ -147,20 +147,15 @@ export function MediaGrid({
                 className={`w-full h-full object-cover ${isMediaInGallery(mediaItem.id) ? 'filter brightness-50' : ''} group-hover:scale-105 transition-transform duration-300`}
               />
               
-              {/* Video Play Icon */}
+              {/* Video Play Icon - REMOVED since we have video indicator */}
+              
+              {/* Media Type Indicator - Only show for videos */}
               {mediaItem.mediaType === 'VIDEO' && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="bg-black bg-opacity-50 rounded-full p-2">
-                    <Play className="h-6 w-6 text-white fill-white" />
-                  </div>
+                <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
+                  {getMediaIcon(mediaItem.mediaType)}
+                  <span>{getMediaTypeLabel(mediaItem.mediaType)}</span>
                 </div>
               )}
-              
-              {/* Media Type Indicator */}
-              <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
-                {getMediaIcon(mediaItem.mediaType)}
-                <span>{getMediaTypeLabel(mediaItem.mediaType)}</span>
-              </div>
               
               {/* Cover Media Indicator */}
               {showCoverIndicator && coverMediaId === mediaItem.id && (
@@ -290,11 +285,7 @@ export function MediaGrid({
                   mediaType={mediaItem.mediaType}
                   className="w-full h-full object-cover"
                 />
-                {mediaItem.mediaType === 'VIDEO' && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
-                    <Play className="h-4 w-4 text-white fill-white" />
-                  </div>
-                )}
+                {/* Video Play Icon - REMOVED since we have video indicator */}
               </div>
               
               {/* Media Info */}
@@ -304,9 +295,11 @@ export function MediaGrid({
                   <h3 className="text-sm font-medium text-gray-900 truncate">
                     {mediaItem.altText || 'Untitled'}
                   </h3>
-                  <span className="text-xs text-gray-500">
-                    ({getMediaTypeLabel(mediaItem.mediaType)})
-                  </span>
+                  {mediaItem.mediaType === 'VIDEO' && (
+                    <span className="text-xs text-gray-500">
+                      ({getMediaTypeLabel(mediaItem.mediaType)})
+                    </span>
+                  )}
                 </div>
                 
                 {mediaItem.caption && (

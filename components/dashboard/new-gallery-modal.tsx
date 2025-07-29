@@ -8,6 +8,9 @@ import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { getMediaUrlFromMedia } from '@/lib/api'
+import { InfiniteScrollContainer } from '../infinite-scroll-container'
+import { TagInput } from '../tag-input'
+import { Filter } from 'lucide-react'
 
 interface NewGalleryModalProps {
   isOpen: boolean
@@ -22,6 +25,8 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
   const [galleryVisibility, setGalleryVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [filterTags, setFilterTags] = useState<string[]>([])
+  const [showFilters, setShowFilters] = useState(false)
 
   // Media selection state
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
@@ -46,6 +51,16 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
       url: getMediaUrlFromMedia(mapped, false),
       thumbnail: getMediaUrlFromMedia(mapped, true),
     }
+  })
+
+  // Filter media based on selected tags
+  const filteredMedia = filterTags.length === 0 ? galleryMedia : galleryMedia.filter((mediaItem: any) => {
+    // Check if the media has all the selected tags
+    return filterTags.every(tag => 
+      mediaItem.tags && Array.isArray(mediaItem.tags) && mediaItem.tags.some((mediaTag: string) => 
+        mediaTag && typeof mediaTag === 'string' && mediaTag.toLowerCase().includes(tag.toLowerCase())
+      )
+    )
   })
 
   const handleCreateGallery = async () => {
@@ -203,30 +218,81 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                       {selectedMedia.length} media item{selectedMedia.length !== 1 ? 's' : ''} selected
                     </p>
                   </div>
+                  <div className="flex items-center space-x-2">
+                    {/* Filter Toggle Button */}
+                    <button
+                      onClick={() => setShowFilters(!showFilters)}
+                      className={`p-2 rounded-lg transition-colors duration-200 ${
+                        showFilters
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                      }`}
+                      title={filterTags.length > 0 ? `${filterTags.length} filter(s) active` : 'Filter by tags'}
+                    >
+                      <Filter className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Use our reusable MediaGrid component */}
-                <MediaGrid
-                  media={galleryMedia}
-                  viewMode={viewMode}
-                  selectedMedia={selectedMedia}
-                  onMediaSelect={(media) => {
-                    setSelectedMedia(prev => {
-                      const isSelected = prev.some(m => m.id === media.id)
-                      if (isSelected) {
-                        return prev.filter(m => m.id !== media.id)
-                      } else {
-                        return [...prev, media]
-                      }
-                    })
-                  }}
-                  isSelectable={true}
-                  showActions={false}
-                  showMediaInfo={true}
-                  showDate={true}
-                  showTags={true}
-                  showViewModeToggle={true}
-                />
+                {/* Filter Section */}
+                {showFilters && (
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium text-gray-700 flex items-center">
+                        <Filter className="h-4 w-4 mr-2" />
+                        Filter by Tags
+                      </h3>
+                      {filterTags.length > 0 && (
+                        <button
+                          onClick={() => setFilterTags([])}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Clear filters
+                        </button>
+                      )}
+                    </div>
+                    <TagInput
+                      tags={filterTags}
+                      onTagsChange={setFilterTags}
+                      placeholder="Enter tags to filter by (comma-separated)..."
+                      className="w-full"
+                    />
+                    {filterTags.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Showing media that contain all selected tags
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Use our reusable MediaGrid component with infinite scroll */}
+                <InfiniteScrollContainer
+                  hasMore={hasMore}
+                  isLoading={isLoadingMore}
+                  onLoadMore={loadMore}
+                >
+                  <MediaGrid
+                    media={filteredMedia}
+                    viewMode={viewMode}
+                    selectedMedia={selectedMedia}
+                    onMediaSelect={(media) => {
+                      setSelectedMedia(prev => {
+                        const isSelected = prev.some(m => m.id === media.id)
+                        if (isSelected) {
+                          return prev.filter(m => m.id !== media.id)
+                        } else {
+                          return [...prev, media]
+                        }
+                      })
+                    }}
+                    isSelectable={true}
+                    showActions={false}
+                    showMediaInfo={true}
+                    showDate={true}
+                    showTags={true}
+                    showViewModeToggle={true}
+                  />
+                </InfiniteScrollContainer>
               </div>
             </div>
 

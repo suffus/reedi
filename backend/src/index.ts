@@ -17,6 +17,11 @@ import mediaServeRoutes from '@/routes/mediaServe'
 import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
 import friendRoutes from '@/routes/friends'
+import videoProcessingRoutes from '@/routes/videoProcessing'
+
+// Import services
+import { VideoProcessingService } from '@/services/videoProcessingService'
+import { RabbitMQService } from '@/services/rabbitmqService'
 
 // Import middleware
 import { errorHandler } from '@/middleware/errorHandler'
@@ -39,6 +44,9 @@ export const prisma = new PrismaClient({
 // Create Express app
 const app = express()
 const PORT = process.env.PORT || 8088
+
+// Add video processing service to app context
+app.locals.videoProcessingService = null
 
 // Rate limiting
 const limiter = rateLimit({
@@ -99,6 +107,7 @@ app.use('/api/media', authMiddleware, mediaRoutes)
 app.use('/api/galleries', authMiddleware, galleryRoutes)
 app.use('/api/search', searchRoutes)
 app.use('/api/friends', friendRoutes)
+app.use('/api/video-processing', videoProcessingRoutes)
 
 // Error handling middleware
 app.use(errorHandler)
@@ -131,12 +140,27 @@ setInterval(async () => {
   }
 }, 30000) // Check every 30 seconds
 
+// Initialize video processing service
+let videoProcessingService: VideoProcessingService | null = null
+
 // Start server
 async function startServer() {
   try {
     // Test database connection
     await prisma.$connect()
     console.log('✅ Database connected successfully')
+
+    // Initialize video processing service
+    try {
+      const rabbitmqService = new RabbitMQService()
+      videoProcessingService = new VideoProcessingService(prisma, rabbitmqService)
+      await videoProcessingService.start()
+      app.locals.videoProcessingService = videoProcessingService
+      console.log('✅ Video processing service started')
+    } catch (error) {
+      console.warn('⚠️ Video processing service failed to start:', error)
+      console.warn('⚠️ Video processing will be disabled')
+    }
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`)
@@ -152,12 +176,18 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down gracefully...')
+  if (videoProcessingService) {
+    await videoProcessingService.stop()
+  }
   await prisma.$disconnect()
   process.exit(0)
 })
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down gracefully...')
+  if (videoProcessingService) {
+    await videoProcessingService.stop()
+  }
   await prisma.$disconnect()
   process.exit(0)
 })
