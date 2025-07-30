@@ -1,0 +1,36 @@
+# Use Node.js 18 Alpine as base image
+FROM node:18-alpine
+
+# Install system dependencies including FFmpeg
+RUN apk add --no-cache \
+    ffmpeg \
+    ffmpeg-dev \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/cache/apk/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm ci && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p logs output
+
+# Expose port
+EXPOSE 8044
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:8044/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })" || exit 1
+
+# Start the application in development mode
+CMD ["npm", "run", "dev"] 
