@@ -7,6 +7,7 @@ import { getMediaUrlFromMedia } from '@/lib/api'
 import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
+import { useSlideshow } from '@/lib/hooks/use-slideshow'
 
 interface VideoDetailModalProps {
   media: Media | null
@@ -75,6 +76,8 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [videoQuality, setVideoQuality] = useState('auto')
+  const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 })
+  const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 })
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -87,7 +90,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   // Check if current user is the media owner
   const isOwner = authData?.data?.user?.id === media.authorId
 
-  // Navigation logic
+  // Slideshow functionality
+  const slideshow = useSlideshow({
+    allMedia: allMedia || [],
+    currentMedia: media,
+    onNavigate: onNavigate || (() => {}),
+    slideshowSpeed: 3000
+  })
+
+  // Navigation logic (for compatibility with existing code)
   const canNavigate = allMedia && allMedia.length > 1 && onNavigate
   const currentIndex = canNavigate ? allMedia.findIndex(m => m.id === media.id) : -1
   const hasNext = canNavigate && currentIndex !== -1 && currentIndex < allMedia.length - 1
@@ -171,6 +182,20 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration)
+      setVideoDimensions({
+        width: videoRef.current.videoWidth,
+        height: videoRef.current.videoHeight
+      })
+      // Notify slideshow that media has loaded
+      slideshow.handleMediaLoad()
+      
+      // Auto-play video if slideshow is active
+      if (slideshow.isSlideshowActive) {
+        videoRef.current.play().catch(error => {
+          console.log('Auto-play failed:', error)
+          // Auto-play might fail due to browser policies, that's okay
+        })
+      }
     }
   }
 
@@ -217,14 +242,58 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }
 
-  // Listen for fullscreen changes
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
+  // Calculate proper fullscreen scaling based on aspect ratios
+  const getFullscreenStyle = (): React.CSSProperties => {
+    if (!isFullscreen || videoDimensions.width === 0 || videoDimensions.height === 0) {
+      return {}
     }
 
+    const videoAspectRatio = videoDimensions.width / videoDimensions.height
+    const screenAspectRatio = window.innerWidth / window.innerHeight
+
+    if (videoAspectRatio < screenAspectRatio) {
+      // Video is more portrait than screen - fit to height
+      return {
+        width: 'auto',
+        height: '100vh',
+        objectFit: 'contain' as const
+      }
+    } else {
+      // Video is more landscape than screen - fit to width
+      return {
+        width: '100vw',
+        height: 'auto',
+        objectFit: 'contain' as const
+      }
+    }
+  }
+
+  // Update screen dimensions and listen for fullscreen changes
+  useEffect(() => {
+    const updateScreenDimensions = () => {
+      setScreenDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      })
+    }
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+      // Update screen dimensions when fullscreen changes
+      setTimeout(updateScreenDimensions, 100)
+    }
+
+    // Initial screen dimensions
+    updateScreenDimensions()
+
+    // Listen for window resize and fullscreen changes
+    window.addEventListener('resize', updateScreenDimensions)
     document.addEventListener('fullscreenchange', handleFullscreenChange)
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    
+    return () => {
+      window.removeEventListener('resize', updateScreenDimensions)
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    }
   }, [])
 
   const formatTime = (time: number) => {
@@ -248,10 +317,10 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       
       if (e.key === 'Escape') {
         handleClose()
-      } else if (e.key === 'ArrowRight' && hasNext) {
-        handleNext()
-      } else if (e.key === 'ArrowLeft' && hasPrev) {
-        handlePrev()
+      } else if (e.key === 'ArrowRight' && slideshow.hasNext) {
+        slideshow.handleNext()
+      } else if (e.key === 'ArrowLeft' && slideshow.hasPrev) {
+        slideshow.handlePrev()
       } else if (e.key === ' ') {
         e.preventDefault()
         handleTogglePlay()
@@ -259,12 +328,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         handleFullscreen()
       } else if (e.key === 'm' || e.key === 'M') {
         handleToggleMute()
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault()
+        slideshow.toggleSlideshow()
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, hasNext, hasPrev, handleNext, handlePrev, handleTogglePlay, handleFullscreen, handleToggleMute])
+  }, [onClose, slideshow.hasNext, slideshow.hasPrev, slideshow.handleNext, slideshow.handlePrev, slideshow.toggleSlideshow, handleTogglePlay, handleFullscreen, handleToggleMute])
 
   // Auto-hide controls
   useEffect(() => {
@@ -405,6 +477,23 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const isProcessing = media.processingStatus !== 'COMPLETED'
   const processingStatus = media.processingStatus || 'PENDING'
 
+  // Auto-play video when navigating to it (if slideshow is active)
+  useEffect(() => {
+    if (videoRef.current && slideshow.isSlideshowActive && !isProcessing) {
+      // Small delay to ensure video is ready
+      const timer = setTimeout(() => {
+        if (videoRef.current && slideshow.isSlideshowActive) {
+          videoRef.current.play().catch(error => {
+            console.log('Auto-play failed:', error)
+            // Auto-play might fail due to browser policies, that's okay
+          })
+        }
+      }, 100)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [media?.id, slideshow.isSlideshowActive, isProcessing])
+
   // Get status message and icon
   const getProcessingInfo = () => {
     switch (processingStatus) {
@@ -461,11 +550,11 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             <>
               {/* Previous Button */}
               <motion.button
-                onClick={handlePrev}
+                onClick={slideshow.handlePrev}
                 className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
-                  !hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                  !slideshow.hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
                 }`}
-                disabled={!hasPrev}
+                disabled={!slideshow.hasPrev}
                 title="Previous video (←)"
                 animate={{ opacity: controlsVisible ? 1 : 0 }}
                 transition={{ duration: 0.3 }}
@@ -475,11 +564,11 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
               {/* Next Button */}
               <motion.button
-                onClick={handleNext}
+                onClick={slideshow.handleNext}
                 className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
-                  !hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                  !slideshow.hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
                 }`}
-                disabled={!hasNext}
+                disabled={!slideshow.hasNext}
                 title="Next video (→)"
                 animate={{ opacity: controlsVisible ? 1 : 0 }}
                 transition={{ duration: 0.3 }}
@@ -493,7 +582,51 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 animate={{ opacity: controlsVisible ? 1 : 0 }}
                 transition={{ duration: 0.3 }}
               >
-                {currentIndex + 1} / {allMedia.length}
+                {slideshow.currentIndex + 1} / {allMedia.length}
+              </motion.div>
+
+              {/* Slideshow Controls */}
+              <motion.div 
+                className="absolute bottom-20 right-4 z-10 flex items-center space-x-2"
+                animate={{ opacity: controlsVisible ? 1 : 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {/* Slideshow Toggle */}
+                <button
+                  onClick={slideshow.toggleSlideshow}
+                  className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+                  title={slideshow.isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
+                >
+                  {slideshow.isSlideshowActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </button>
+
+                {/* Slideshow Speed Control */}
+                {slideshow.isSlideshowActive && (
+                  <div className="flex items-center space-x-2 bg-black bg-opacity-50 px-3 py-1 rounded-full">
+                    <span className="text-white text-xs">Speed:</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}
+                      onChange={(e) => {
+                        const sliderValue = parseInt(e.target.value)
+                        const newSpeed = 1000 + (sliderValue / 100) * 59000 // 1s to 60s
+                        slideshow.updateSlideshowSpeed(newSpeed)
+                      }}
+                      className="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+                      style={{
+                        background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}%, #6b7280 ${Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}%, #6b7280 100%)`
+                      }}
+                    />
+                    <span className="text-white text-xs">
+                      {slideshow.currentSlideshowSpeed < 1000 
+                        ? `${slideshow.currentSlideshowSpeed}ms` 
+                        : `${Math.round(slideshow.currentSlideshowSpeed / 1000)}s`
+                      }
+                    </span>
+                  </div>
+                )}
               </motion.div>
             </>
           )}
@@ -547,17 +680,17 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                     : 'max-w-full max-h-full object-contain'
                 }`}
                 style={{
-                  ...(isFullscreen && {
-                    width: '100vw',
-                    height: '100vh',
-                    objectFit: 'cover'
-                  })
+                  ...(isFullscreen && getFullscreenStyle())
                 }}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                onEnded={() => setIsPlaying(false)}
+                onEnded={() => {
+                  setIsPlaying(false)
+                  // Notify slideshow that video ended
+                  slideshow.handleVideoEnd()
+                }}
                 onClick={handleTogglePlay}
               >
                 <source src={getMediaUrlFromMedia(media, false)} type="video/mp4" />

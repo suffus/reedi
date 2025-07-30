@@ -8,6 +8,7 @@ import { LazyMedia } from '../lazy-media'
 import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
+import { useSlideshow } from '@/lib/hooks/use-slideshow'
 
 interface ImageDetailModalProps {
   media: Media | null
@@ -65,18 +66,10 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setHasUnsavedChanges(false)
     setShowUnsavedChangesDialog(false)
     setPendingNavigation(null)
-    // Reset image loading state
-    setIsCurrentImageLoaded(false)
-    setIsSlideshowWaitingForLoad(false)
   }, [media?.id, media?.altText, media?.caption, media?.tags])
   const containerRef = useRef<HTMLDivElement>(null)
   
-  // Slideshow state
-  const [isSlideshowActive, setIsSlideshowActive] = useState(false)
-  const [slideshowSpeed, setSlideshowSpeed] = useState(3000) // milliseconds
-  const slideshowIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [isCurrentImageLoaded, setIsCurrentImageLoaded] = useState(false)
-  const [isSlideshowWaitingForLoad, setIsSlideshowWaitingForLoad] = useState(false)
+  // UI state
   const [isPanelMinimized, setIsPanelMinimized] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -89,7 +82,15 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   // Check if current user is the media owner
   const isOwner = authData?.data?.user?.id === media.authorId
 
-  // Navigation logic
+  // Slideshow functionality
+  const slideshow = useSlideshow({
+    allMedia: allMedia || [],
+    currentMedia: media,
+    onNavigate: onNavigate || (() => {}),
+    slideshowSpeed: 3000
+  })
+
+  // Navigation logic (for compatibility with existing code)
   const canNavigate = allMedia && allMedia.length > 1 && onNavigate
   const currentIndex = canNavigate ? allMedia.findIndex(m => m.id === media.id) : -1
   const hasNext = canNavigate && currentIndex !== -1 && currentIndex < allMedia.length - 1
@@ -140,90 +141,11 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[allMedia.length - 1]))
   }, [canNavigate, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
 
-  // Slideshow handlers
-  const startSlideshow = useCallback(() => {
-    if (!canNavigate || !allMedia || allMedia.length <= 1) return
-    
-    console.log('Slideshow: Starting slideshow')
-    setIsSlideshowActive(true)
-    
-    const advanceToNext = () => {
-      console.log('Slideshow: Initial advance')
-      if (hasNext) {
-        handleNext()
-        setIsSlideshowWaitingForLoad(true)
-      } else {
-        handleFirst()
-        setIsSlideshowWaitingForLoad(true)
-      }
-    }
-    
-    // Start the slideshow
-    slideshowIntervalRef.current = setTimeout(advanceToNext, slideshowSpeed)
-  }, [canNavigate, allMedia, hasNext, handleNext, handleFirst, slideshowSpeed])
-
-  const stopSlideshow = useCallback(() => {
-    setIsSlideshowActive(false)
-    if (slideshowIntervalRef.current) {
-      clearTimeout(slideshowIntervalRef.current)
-      slideshowIntervalRef.current = null
-    }
-  }, [])
-
-  const toggleSlideshow = useCallback(() => {
-    if (isSlideshowActive) {
-      stopSlideshow()
-    } else {
-      startSlideshow()
-    }
-  }, [isSlideshowActive, startSlideshow, stopSlideshow])
-
-  // Clean up slideshow on unmount
-  useEffect(() => {
-    return () => {
-      if (slideshowIntervalRef.current) {
-        clearTimeout(slideshowIntervalRef.current)
-      }
-    }
-  }, [])
-
   // Handle image load for slideshow
   const handleImageLoad = useCallback(() => {
     console.log('Slideshow: Image loaded')
-    setIsCurrentImageLoaded(true)
-    setIsSlideshowWaitingForLoad(false)
-  }, [])
-
-  // Continue slideshow after image loads
-  useEffect(() => {
-    if (isSlideshowActive && isCurrentImageLoaded && !isSlideshowWaitingForLoad) {
-      console.log('Slideshow: Image loaded, scheduling next advance')
-      // Clear any existing timeout
-      if (slideshowIntervalRef.current) {
-        clearTimeout(slideshowIntervalRef.current)
-      }
-      
-      // Schedule the next advance after the current image has loaded
-      slideshowIntervalRef.current = setTimeout(() => {
-        if (isSlideshowActive) {
-          console.log('Slideshow: Advancing to next image')
-          if (hasNext) {
-            handleNext()
-            setIsSlideshowWaitingForLoad(true)
-          } else {
-            handleFirst()
-            setIsSlideshowWaitingForLoad(true)
-          }
-        }
-      }, slideshowSpeed)
-    }
-  }, [isSlideshowActive, isCurrentImageLoaded, isSlideshowWaitingForLoad, hasNext, handleNext, handleFirst, slideshowSpeed])
-
-  // Reset slideshow state when media changes
-  useEffect(() => {
-    setIsCurrentImageLoaded(false)
-    setIsSlideshowWaitingForLoad(false)
-  }, [media.id])
+    slideshow.handleMediaLoad()
+  }, [slideshow])
 
   // Slideshow speed control functions
   const formatSlideshowSpeed = (speed: number) => {
@@ -258,29 +180,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
   const handleSlideshowSpeedChange = (sliderValue: number) => {
     const newSpeed = sliderToSpeed(sliderValue)
-    setSlideshowSpeed(newSpeed)
-    console.log('Slideshow speed changed to:', newSpeed, 'ms')
-    
-    // If slideshow is active, restart it with the new speed
-    if (isSlideshowActive) {
-      // Clear existing timeout
-      if (slideshowIntervalRef.current) {
-        clearTimeout(slideshowIntervalRef.current)
-      }
-      
-      // Restart slideshow with new speed
-      slideshowIntervalRef.current = setTimeout(() => {
-        if (isSlideshowActive) {
-          if (hasNext) {
-            handleNext()
-            setIsSlideshowWaitingForLoad(true)
-          } else {
-            handleFirst()
-            setIsSlideshowWaitingForLoad(true)
-          }
-        }
-      }, newSpeed)
-    }
+    slideshow.updateSlideshowSpeed(newSpeed)
   }
 
   const toggleCropMode = () => {
@@ -358,7 +258,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         handleLast()
       } else if (e.key === ' ') {
         e.preventDefault()
-        toggleSlideshow()
+        slideshow.toggleSlideshow()
       } else if (e.key === 'c' || e.key === 'C') {
         toggleCropMode()
       } else if (e.key === 'r' || e.key === 'R') {
@@ -368,7 +268,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, hasNext, hasPrev, handleNext, handlePrev, handleFirst, handleLast, toggleSlideshow, toggleCropMode, resetView])
+  }, [onClose, hasNext, hasPrev, handleNext, handlePrev, handleFirst, handleLast, slideshow.toggleSlideshow, toggleCropMode, resetView])
 
   // Auto-hide controls
   useEffect(() => {
@@ -683,7 +583,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             onMouseLeave={handleMouseUp}
             onWheel={handleWheel}
             animate={{ 
-              cursor: isSlideshowActive && !controlsVisible ? 'none' : 'default'
+              cursor: slideshow.isSlideshowActive && !controlsVisible ? 'none' : 'default'
             }}
             transition={{ duration: 0.3 }}
           >
@@ -739,18 +639,18 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               {canNavigate && allMedia && allMedia.length > 1 && (
                 <>
                   <button
-                    onClick={toggleSlideshow}
+                    onClick={slideshow.toggleSlideshow}
                     className={`p-2 rounded-full transition-all duration-200 pointer-events-auto ${
-                      isSlideshowActive 
+                      slideshow.isSlideshowActive 
                         ? 'bg-green-600 hover:bg-green-700 text-white' 
                         : 'bg-black bg-opacity-50 hover:bg-opacity-70 text-white'
                     }`}
-                    title={isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
+                    title={slideshow.isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
                   >
-                    {isSlideshowActive ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                    {slideshow.isSlideshowActive ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
                   </button>
                   {/* Loading indicator */}
-                  {isSlideshowActive && isSlideshowWaitingForLoad && !isCurrentImageLoaded && (
+                  {slideshow.isSlideshowActive && slideshow.isWaitingForMediaLoad && !slideshow.isCurrentMediaLoaded && (
                     <div className="p-2 bg-yellow-600 text-white rounded-full animate-pulse pointer-events-auto" title="Waiting for image to load...">
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     </div>
@@ -811,7 +711,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 width: 'auto',
                 height: 'auto',
                 transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-                cursor: isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'))
+                cursor: slideshow.isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'))
               }}
               onLoad={handleImageLoad}
             />
@@ -962,7 +862,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
           )}
 
           {/* Slideshow Speed Control */}
-          {isSlideshowActive && canNavigate && allMedia && allMedia.length > 1 && (
+                        {slideshow.isSlideshowActive && canNavigate && allMedia && allMedia.length > 1 && (
             <div className="p-4 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center space-x-2 mb-3">
                 <Clock className="h-4 w-4 text-blue-600" />
@@ -977,16 +877,16 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                   type="range"
                   min="0"
                   max="100"
-                  value={speedToSlider(slideshowSpeed)}
+                  value={speedToSlider(slideshow.currentSlideshowSpeed)}
                   onChange={(e) => handleSlideshowSpeedChange(parseInt(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                   style={{
-                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${speedToSlider(slideshowSpeed)}%, #e5e7eb ${speedToSlider(slideshowSpeed)}%, #e5e7eb 100%)`
+                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${speedToSlider(slideshow.currentSlideshowSpeed)}%, #e5e7eb ${speedToSlider(slideshow.currentSlideshowSpeed)}%, #e5e7eb 100%)`
                   }}
                 />
                 <div className="text-center">
                   <span className="text-sm font-medium text-blue-600">
-                    {formatSlideshowSpeed(slideshowSpeed)}
+                    {formatSlideshowSpeed(slideshow.currentSlideshowSpeed)}
                   </span>
                 </div>
               </div>

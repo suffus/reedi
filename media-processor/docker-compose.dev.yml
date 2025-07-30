@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  media-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: reedi-media-processor-dev
+    ports:
+      - "8044:8044"
+    environment:
+      # RabbitMQ Configuration
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      
+      # IDRIVE S3 Configuration
+      - IDRIVE_REGION=${IDRIVE_REGION:-us-east-1}
+      - IDRIVE_ENDPOINT=${IDRIVE_ENDPOINT}
+      - IDRIVE_ACCESS_KEY_ID=${IDRIVE_ACCESS_KEY_ID}
+      - IDRIVE_SECRET_ACCESS_KEY=${IDRIVE_SECRET_ACCESS_KEY}
+      - IDRIVE_BUCKET_NAME=${IDRIVE_BUCKET_NAME}
+      
+      # API Backend Configuration
+      - API_BASE_URL=${API_BASE_URL:-http://host.docker.internal:8088}
+      - API_WEBHOOK_SECRET=${API_WEBHOOK_SECRET}
+      
+      # Processing Configuration
+      - MAX_CONCURRENT_JOBS=${MAX_CONCURRENT_JOBS:-3}
+      - VIDEO_MAX_DURATION=${VIDEO_MAX_DURATION:-300}
+      - VIDEO_MAX_FILE_SIZE=${VIDEO_MAX_FILE_SIZE:-500000000}
+      - IMAGE_MAX_FILE_SIZE=${IMAGE_MAX_FILE_SIZE:-50000000}
+      
+      # FFmpeg Configuration
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+      - FFPROBE_PATH=/usr/bin/ffprobe
+      
+      # Video Processing Settings
+      - VIDEO_QUALITIES=${VIDEO_QUALITIES:-1080p,720p,480p}
+      - VIDEO_BITRATES=${VIDEO_BITRATES:-5000k,2500k,1000k}
+      - THUMBNAIL_TIME=${THUMBNAIL_TIME:-00:00:05}
+      
+      # Image Processing Settings
+      - IMAGE_QUALITIES=${IMAGE_QUALITIES:-original,large,medium,small}
+      - IMAGE_SIZES=${IMAGE_SIZES:-1920x1080,1280x720,800x600,400x300}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - LOG_FILE=logs/media-processor.log
+      
+      # Health Check
+      - HEALTH_CHECK_PORT=8044
+      
+      # Development settings
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - /app/node_modules
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - reedi-network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: reedi-rabbitmq-dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_dev_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - reedi-network
+
+volumes:
+  rabbitmq_dev_data:
+
+networks:
+  reedi-network:
+    driver: bridge 
