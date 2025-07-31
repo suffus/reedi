@@ -44,6 +44,12 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
   const [mediaVisibility, setMediaVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
   const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null)
+  // Track the last applied shared metadata to detect changes
+  const [lastAppliedSharedMetadata, setLastAppliedSharedMetadata] = useState<{
+    title: string
+    description: string
+    tags: string[]
+  }>({ title: '', description: '', tags: [] })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addMoreFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -95,6 +101,9 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
   }
 
   const handleFiles = (files: File[]) => {
+    // Reset last applied metadata when new files are added
+    setLastAppliedSharedMetadata({ title: '', description: '', tags: [] })
+    
     // Supported video formats
     const SUPPORTED_VIDEO_TYPES = [
       'video/mp4',
@@ -203,6 +212,9 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
       delete newProgress[index]
       return newProgress
     })
+    
+    // Reset last applied metadata when files are removed (context changes)
+    setLastAppliedSharedMetadata({ title: '', description: '', tags: [] })
   }
 
   const updateFile = (index: number, updates: Partial<UploadFile>) => {
@@ -241,11 +253,31 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
       description: sharedDescription || file.description,
       tags: Array.from(new Set([...file.tags, ...sharedTags]))
     })))
+    
+    // Clear the shared metadata fields after applying
+    setSharedTitle('')
+    setSharedDescription('')
+    setSharedTags([])
+    
+    // Update the last applied metadata state to reflect the cleared state
+    setLastAppliedSharedMetadata({
+      title: '',
+      description: '',
+      tags: []
+    })
   }
 
   // Check if there's unsaved shared metadata
   const hasUnsavedSharedMetadata = () => {
-    return sharedTitle.trim() !== '' || sharedDescription.trim() !== '' || sharedTags.length > 0
+    // Check if current shared metadata differs from what was last applied
+    const currentTitle = sharedTitle.trim()
+    const currentDescription = sharedDescription.trim()
+    const currentTags = [...sharedTags].sort()
+    const lastAppliedTags = [...lastAppliedSharedMetadata.tags].sort()
+    
+    return currentTitle !== lastAppliedSharedMetadata.title ||
+           currentDescription !== lastAppliedSharedMetadata.description ||
+           JSON.stringify(currentTags) !== JSON.stringify(lastAppliedTags)
   }
 
   // Handle upload with potential warning
@@ -276,6 +308,13 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
     setSharedTitle('')
     setSharedDescription('')
     setSharedTags([])
+    
+    // Update the last applied metadata state to reflect the cleared state
+    setLastAppliedSharedMetadata({
+      title: '',
+      description: '',
+      tags: []
+    })
     
     // Upload with updated files
     handleUploadWithFiles(updatedFiles)

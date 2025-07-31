@@ -545,4 +545,198 @@ router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandl
   }
 }))
 
+// Get available video qualities for a media item
+router.get('/:id/qualities', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this media
+  const canView = await canViewMedia(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  const media = await prisma.media.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      processingStatus: true,
+      videoVersions: true,
+      videoS3Key: true,
+      s3Key: true,
+      mimeType: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  if (media.mediaType !== 'VIDEO') {
+    res.status(400).json({
+      success: false,
+      error: 'This endpoint is for video media only'
+    })
+    return
+  }
+
+  if (media.processingStatus !== 'COMPLETED') {
+    res.status(202).json({
+      success: false,
+      error: 'Video is still processing',
+      processingStatus: media.processingStatus
+    })
+    return
+  }
+
+  try {
+    const qualities: Array<{
+      quality: string
+      width: number
+      height: number
+      bitrate: string
+      url: string
+      fileSize: number
+    }> = []
+
+    // Add original quality if available
+    if (media.videoS3Key || media.s3Key) {
+      qualities.push({
+        quality: 'original',
+        width: 0, // Will be filled by frontend when video loads
+        height: 0,
+        bitrate: 'auto',
+        url: `${req.protocol}://${req.get('host')}/api/media/serve/${media.id}`,
+        fileSize: 0
+      })
+    }
+
+    // Add processed qualities if available
+    if (media.videoVersions && Array.isArray(media.videoVersions)) {
+      for (const version of media.videoVersions as any[]) {
+        // Handle both snake_case and camelCase field names
+        const s3Key = version.s3Key || version.s3_key
+        const quality = version.quality
+        const width = version.width
+        const height = version.height
+        const bitrate = version.bitrate || 'auto'
+        const fileSize = version.fileSize || version.file_size || 0
+        
+        if (s3Key && quality && width && height) {
+          qualities.push({
+            quality: quality,
+            width: width,
+            height: height,
+            bitrate: bitrate,
+            url: `${req.protocol}://${req.get('host')}/api/media/serve/${media.id}/quality/${encodeURIComponent(s3Key)}`,
+            fileSize: fileSize
+          })
+        }
+      }
+    }
+
+    // Sort qualities by resolution (highest first)
+    qualities.sort((a, b) => (b.width * b.height) - (a.width * a.height))
+
+    res.json({
+      success: true,
+      qualities
+    })
+
+  } catch (error) {
+    console.error('Error getting video qualities:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error getting video qualities'
+    })
+  }
+}))
+
+// Serve video with specific quality
+router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id, s3Key } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this media
+  const canView = await canViewMedia(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  const media = await prisma.media.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      processingStatus: true,
+      videoVersions: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  if (media.mediaType !== 'VIDEO') {
+    res.status(400).json({
+      success: false,
+      error: 'This endpoint is for video media only'
+    })
+    return
+  }
+
+  if (media.processingStatus !== 'COMPLETED') {
+    res.status(202).json({
+      success: false,
+      error: 'Video is still processing',
+      processingStatus: media.processingStatus
+    })
+    return
+  }
+
+  // Verify that the requested S3 key is actually a version for this video
+  const versions = media.videoVersions as any[]
+  const versionExists = versions && Array.isArray(versions) && 
+    versions.some(version => {
+      const versionS3Key = version.s3Key || version.s3_key
+      return versionS3Key === decodeURIComponent(s3Key)
+    })
+
+  if (!versionExists) {
+    res.status(404).json({
+      success: false,
+      error: 'Video quality not found'
+    })
+    return
+  }
+
+  try {
+    // Stream the specific quality version
+    await streamVideoFromS3(decodeURIComponent(s3Key), 'video/mp4', req, res)
+  } catch (error) {
+    console.error('Error streaming video quality:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error streaming video'
+    })
+  }
+}))
+
 export default router 
