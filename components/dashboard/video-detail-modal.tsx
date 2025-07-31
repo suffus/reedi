@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Send, Calendar, User, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, FileText, Video, HardDrive, PanelLeftClose, PanelLeftOpen, Loader2, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMediaComments, useCreateComment, useAuth, useUpdateMedia } from '@/lib/api-hooks'
+import { useMediaComments, useCreateComment, useAuth, useUpdateMedia, useVideoQualities, VideoQuality } from '@/lib/api-hooks'
 import { getMediaUrlFromMedia } from '@/lib/api'
 import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
@@ -86,6 +86,11 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const createCommentMutation = useCreateComment()
   const updateMediaMutation = useUpdateMedia()
   const { data: authData } = useAuth()
+  
+  // Video quality functionality
+  const { data: videoQualities, isLoading: qualitiesLoading } = useVideoQualities(media.id)
+  const [selectedQuality, setSelectedQuality] = useState<string>('auto')
+  const [showQualityMenu, setShowQualityMenu] = useState(false)
   
   // Check if current user is the media owner
   const isOwner = authData?.data?.user?.id === media.authorId
@@ -301,6 +306,55 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     const seconds = Math.floor(time % 60)
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
+
+  // Get current video source based on selected quality
+  const getCurrentVideoSource = () => {
+    if (selectedQuality === 'auto' || !videoQualities || videoQualities.length === 0) {
+      return getMediaUrlFromMedia(media, false)
+    }
+    
+    const selectedQualityData = videoQualities.find(q => q.quality === selectedQuality)
+    return selectedQualityData?.url || getMediaUrlFromMedia(media, false)
+  }
+
+  // Handle quality change
+  const handleQualityChange = (quality: string) => {
+    if (videoRef.current) {
+      const currentTime = videoRef.current.currentTime
+      const wasPlaying = !videoRef.current.paused
+      
+      setSelectedQuality(quality)
+      setShowQualityMenu(false)
+      
+      // Update video source
+      const newSource = quality === 'auto' 
+        ? getMediaUrlFromMedia(media, false)
+        : videoQualities?.find(q => q.quality === quality)?.url || getMediaUrlFromMedia(media, false)
+      
+      videoRef.current.src = newSource
+      
+      // Restore playback state
+      videoRef.current.currentTime = currentTime
+      if (wasPlaying) {
+        videoRef.current.play().catch(console.error)
+      }
+    }
+  }
+
+  // Close quality menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (!target.closest('.quality-selector')) {
+        setShowQualityMenu(false)
+      }
+    }
+
+    if (showQualityMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showQualityMenu])
 
   // Keyboard navigation
   useEffect(() => {
@@ -535,118 +589,117 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         className="fixed inset-0 z-50 flex"
       >
         <div className="flex-1 flex flex-col bg-black" ref={containerRef}>
-          {/* Close Button */}
-          <motion.button
-            onClick={handleClose}
-            className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
-            animate={{ opacity: controlsVisible ? 1 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <X className="h-5 w-5" />
-          </motion.button>
-
-          {/* Navigation Buttons */}
-          {canNavigate && (
-            <>
-              {/* Previous Button */}
-              <motion.button
-                onClick={slideshow.handlePrev}
-                className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
-                  !slideshow.hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
-                }`}
-                disabled={!slideshow.hasPrev}
-                title="Previous video (←)"
-                animate={{ opacity: controlsVisible ? 1 : 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </motion.button>
-
-              {/* Next Button */}
-              <motion.button
-                onClick={slideshow.handleNext}
-                className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
-                  !slideshow.hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
-                }`}
-                disabled={!slideshow.hasNext}
-                title="Next video (→)"
-                animate={{ opacity: controlsVisible ? 1 : 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <ChevronRight className="h-6 w-6" />
-              </motion.button>
-
-              {/* Video Counter */}
-              <motion.div 
-                className="absolute bottom-20 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full"
-                animate={{ opacity: controlsVisible ? 1 : 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                {slideshow.currentIndex + 1} / {allMedia.length}
-              </motion.div>
-
-              {/* Slideshow Controls */}
-              <motion.div 
-                className="absolute bottom-20 right-4 z-10 flex items-center space-x-2"
-                animate={{ opacity: controlsVisible ? 1 : 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                {/* Slideshow Toggle */}
-                <button
-                  onClick={slideshow.toggleSlideshow}
-                  className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
-                  title={slideshow.isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
-                >
-                  {slideshow.isSlideshowActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </button>
-
-                {/* Slideshow Speed Control */}
-                {slideshow.isSlideshowActive && (
-                  <div className="flex items-center space-x-2 bg-black bg-opacity-50 px-3 py-1 rounded-full">
-                    <span className="text-white text-xs">Speed:</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}
-                      onChange={(e) => {
-                        const sliderValue = parseInt(e.target.value)
-                        const newSpeed = 1000 + (sliderValue / 100) * 59000 // 1s to 60s
-                        slideshow.updateSlideshowSpeed(newSpeed)
-                      }}
-                      className="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
-                      style={{
-                        background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}%, #6b7280 ${Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}%, #6b7280 100%)`
-                      }}
-                    />
-                    <span className="text-white text-xs">
-                      {slideshow.currentSlideshowSpeed < 1000 
-                        ? `${slideshow.currentSlideshowSpeed}ms` 
-                        : `${Math.round(slideshow.currentSlideshowSpeed / 1000)}s`
-                      }
-                    </span>
-                  </div>
-                )}
-              </motion.div>
-            </>
-          )}
-
-          {/* Panel Toggle */}
-          <motion.button
-            onClick={togglePanel}
-            className="absolute top-4 right-4 z-20 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
-            title={isPanelMinimized ? "Show Panel" : "Hide Panel"}
-            animate={{ opacity: controlsVisible ? 1 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {isPanelMinimized ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-          </motion.button>
-
           {/* Video Container */}
           <div 
             ref={containerRef}
             className="flex-1 flex items-center justify-center relative"
           >
+            {/* Close Button */}
+            <motion.button
+              onClick={handleClose}
+              className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+              animate={{ opacity: controlsVisible ? 1 : 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <X className="h-5 w-5" />
+            </motion.button>
+
+            {/* Panel Toggle */}
+            <motion.button
+              onClick={togglePanel}
+              className="absolute top-4 right-4 z-20 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+              title={isPanelMinimized ? "Show Panel" : "Hide Panel"}
+              animate={{ opacity: controlsVisible ? 1 : 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {isPanelMinimized ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+            </motion.button>
+
+            {/* Navigation Buttons */}
+            {canNavigate && (
+              <>
+                {/* Previous Button */}
+                <motion.button
+                  onClick={slideshow.handlePrev}
+                  className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
+                    !slideshow.hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                  }`}
+                  disabled={!slideshow.hasPrev}
+                  title="Previous video (←)"
+                  animate={{ opacity: controlsVisible ? 1 : 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </motion.button>
+
+                {/* Next Button */}
+                <motion.button
+                  onClick={slideshow.handleNext}
+                  className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
+                    !slideshow.hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                  }`}
+                  disabled={!slideshow.hasNext}
+                  title="Next video (→)"
+                  animate={{ opacity: controlsVisible ? 1 : 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </motion.button>
+
+                {/* Video Counter */}
+                <motion.div 
+                  className="absolute bottom-20 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full"
+                  animate={{ opacity: controlsVisible ? 1 : 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {slideshow.currentIndex + 1} / {allMedia.length}
+                </motion.div>
+
+                {/* Slideshow Controls */}
+                <motion.div 
+                  className="absolute bottom-20 right-4 z-10 flex items-center space-x-2"
+                  animate={{ opacity: controlsVisible ? 1 : 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Slideshow Toggle */}
+                  <button
+                    onClick={slideshow.toggleSlideshow}
+                    className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+                    title={slideshow.isSlideshowActive ? "Pause Slideshow" : "Start Slideshow"}
+                  >
+                    {slideshow.isSlideshowActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  </button>
+
+                  {/* Slideshow Speed Control */}
+                  {slideshow.isSlideshowActive && (
+                    <div className="flex items-center space-x-2 bg-black bg-opacity-50 px-3 py-1 rounded-full">
+                      <span className="text-white text-xs">Speed:</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}
+                        onChange={(e) => {
+                          const sliderValue = parseInt(e.target.value)
+                          const newSpeed = 1000 + (sliderValue / 100) * 59000 // 1s to 60s
+                          slideshow.updateSlideshowSpeed(newSpeed)
+                        }}
+                        className="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+                        style={{
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}%, #6b7280 ${Math.max(0, Math.min(100, (slideshow.currentSlideshowSpeed - 1000) / 59000 * 100))}%, #6b7280 100%)`
+                        }}
+                      />
+                      <span className="text-white text-xs">
+                        {slideshow.currentSlideshowSpeed < 1000 
+                          ? `${slideshow.currentSlideshowSpeed}ms` 
+                          : `${Math.round(slideshow.currentSlideshowSpeed / 1000)}s`
+                        }
+                      </span>
+                    </div>
+                  )}
+                </motion.div>
+              </>
+            )}
             {isProcessing ? (
               // Processing overlay
               <div className="flex flex-col items-center justify-center text-center p-8 bg-black bg-opacity-75 rounded-lg">
@@ -682,6 +735,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 style={{
                   ...(isFullscreen && getFullscreenStyle())
                 }}
+                src={getCurrentVideoSource()}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onPlay={() => setIsPlaying(true)}
@@ -693,7 +747,6 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 }}
                 onClick={handleTogglePlay}
               >
-                <source src={getMediaUrlFromMedia(media, false)} type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
             )}
@@ -756,16 +809,46 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <select
-                    value={videoQuality}
-                    onChange={(e) => setVideoQuality(e.target.value)}
-                    className="px-2 py-1 bg-black bg-opacity-50 text-white text-sm rounded border border-gray-600"
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="1080p">1080p</option>
-                    <option value="720p">720p</option>
-                    <option value="480p">480p</option>
-                  </select>
+                  {/* Quality Selector */}
+                  {videoQualities && videoQualities.length > 1 && (
+                    <div className="relative quality-selector">
+                      <button
+                        onClick={() => setShowQualityMenu(!showQualityMenu)}
+                        className="px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded border border-gray-600 hover:bg-opacity-70 transition-all duration-200 flex items-center space-x-1"
+                      >
+                        <span>{selectedQuality === 'auto' ? 'Auto' : selectedQuality}</span>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      
+                      {showQualityMenu && (
+                        <div className="absolute bottom-full right-0 mb-2 bg-black bg-opacity-90 text-white text-sm rounded border border-gray-600 min-w-[120px] z-10">
+                          <div className="p-1">
+                            <button
+                              onClick={() => handleQualityChange('auto')}
+                              className={`w-full text-left px-2 py-1 rounded hover:bg-white hover:bg-opacity-20 ${
+                                selectedQuality === 'auto' ? 'bg-white bg-opacity-20' : ''
+                              }`}
+                            >
+                              Auto
+                            </button>
+                            {videoQualities.map((quality) => (
+                              <button
+                                key={quality.quality}
+                                onClick={() => handleQualityChange(quality.quality)}
+                                className={`w-full text-left px-2 py-1 rounded hover:bg-white hover:bg-opacity-20 ${
+                                  selectedQuality === quality.quality ? 'bg-white bg-opacity-20' : ''
+                                }`}
+                              >
+                                {quality.quality} ({quality.width}x{quality.height})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <button
                     onClick={handleFullscreen}
@@ -869,6 +952,12 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                           Unknown User
                         </button>
                       </span>
+                      {media.originalFilename && (
+                        <span className="flex items-center">
+                          <FileText className="h-3 w-3 mr-1" />
+                          {media.originalFilename}
+                        </span>
+                      )}
                       {media.duration && (
                         <span className="flex items-center">
                           <Video className="h-3 w-3 mr-1" />

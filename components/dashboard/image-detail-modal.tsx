@@ -844,6 +844,12 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                           Unknown User
                         </button>
                       </span>
+                      {media.originalFilename && (
+                        <span className="flex items-center">
+                          <FileText className="h-3 w-3 mr-1" />
+                          {media.originalFilename}
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}

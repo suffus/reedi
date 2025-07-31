@@ -129,6 +129,27 @@ export class RabbitMQService {
     }
   }
 
+  async sendMessage(queueName: string, message: any): Promise<void> {
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel not initialized')
+    }
+
+    try {
+      const messageBuffer = Buffer.from(JSON.stringify(message))
+      await this.channel.publish(
+        this.exchanges.processing,
+        queueName.split('.').pop() || 'default',
+        messageBuffer,
+        { persistent: true }
+      )
+      
+      logger.info(`Sent message to queue ${queueName}: ${message.id || message.job_id}`)
+    } catch (error) {
+      logger.error(`Failed to send message to queue ${queueName}:`, error)
+      throw error
+    }
+  }
+
   async consumeProgressUpdates(callback: (update: ProgressUpdate) => Promise<void>): Promise<void> {
     if (!this.channel) {
       throw new Error('RabbitMQ channel not initialized')
@@ -137,7 +158,10 @@ export class RabbitMQService {
     this.updateCallback = callback
 
     await this.channel.consume(this.queues.updates, async (msg: amqp.ConsumeMessage | null) => {
-      if (!msg) return
+      if (!msg) {
+        console.log('No message received in updates queue')
+        return
+      }
 
       try {
         const update: ProgressUpdate = JSON.parse(msg.content.toString())

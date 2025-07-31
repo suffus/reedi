@@ -20,7 +20,7 @@ import friendRoutes from '@/routes/friends'
 import videoProcessingRoutes from '@/routes/videoProcessing'
 
 // Import services
-import { VideoProcessingService } from '@/services/videoProcessingService'
+import { StagedVideoProcessingService } from '@/services/stagedVideoProcessingService'
 import { RabbitMQService } from '@/services/rabbitmqService'
 
 // Import middleware
@@ -141,7 +141,7 @@ setInterval(async () => {
 }, 30000) // Check every 30 seconds
 
 // Initialize video processing service
-let videoProcessingService: VideoProcessingService | null = null
+let videoProcessingService: StagedVideoProcessingService | null = null
 
 // Start server
 async function startServer() {
@@ -153,10 +153,10 @@ async function startServer() {
     // Initialize video processing service
     try {
       const rabbitmqService = new RabbitMQService()
-      videoProcessingService = new VideoProcessingService(prisma, rabbitmqService)
+      videoProcessingService = new StagedVideoProcessingService(prisma, rabbitmqService)
       await videoProcessingService.start()
       app.locals.videoProcessingService = videoProcessingService
-      console.log('✅ Video processing service started')
+      console.log('✅ Staged video processing service started')
     } catch (error) {
       console.warn('⚠️ Video processing service failed to start:', error)
       console.warn('⚠️ Video processing will be disabled')

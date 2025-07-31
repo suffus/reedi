@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter, CheckSquare, Square, Edit3, MoreHorizontal } from 'lucide-react'
-import { useUserMedia, useDeleteMedia, useMyGalleries, useGallery } from '../../lib/api-hooks'
+import { useUserMedia, useDeleteMedia, useInfiniteMyGalleries, useGallery } from '../../lib/api-hooks'
 import { MediaDetailModal } from './media-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
 import { FullScreenWrapper } from '../full-screen-wrapper'
@@ -50,7 +50,14 @@ export function UserGallery({ userId }: UserGalleryProps) {
     reset
   } = useUserMedia(userId)
 
-  const { data: galleriesData, isLoading: galleriesLoading } = useMyGalleries()
+  const { 
+    data: galleriesData, 
+    isLoading: galleriesLoading, 
+    loadMore: loadMoreGalleries, 
+    hasMore: hasMoreGalleries, 
+    isLoadingMore: isLoadingMoreGalleries,
+    totalGalleries
+  } = useInfiniteMyGalleries()
   const galleries = galleriesData?.data?.galleries || []
 
   const { data: selectedGalleryData, isLoading: selectedGalleryLoading } = useGallery(
@@ -225,7 +232,12 @@ export function UserGallery({ userId }: UserGalleryProps) {
               </>
             ) : (
               <>
-                {galleries.length} {(galleries.length === 1 ? 'gallery' : 'galleries')} created
+                {totalGalleries} {(totalGalleries === 1 ? 'gallery' : 'galleries')} created
+                {galleries.length > 0 && galleries.length < totalGalleries && (
+                  <span className="text-gray-500">
+                    {' '}(showing {galleries.length} of {totalGalleries})
+                  </span>
+                )}
               </>
             )}
           </p>
@@ -469,70 +481,76 @@ export function UserGallery({ userId }: UserGalleryProps) {
         </>
       ) : (
         <>
-          {/* Galleries View */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {galleries.map((gallery: any) => (
-              <motion.div
-                key={gallery.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow duration-200 cursor-pointer"
-                onClick={() => {
-                  setSelectedGallery(gallery)
-                  setIsGalleryDetailModalOpen(true)
-                }}
-              >
-                <div className="relative aspect-video overflow-hidden">
-                  {gallery.coverMedia ? (
-                    <LazyMedia
-                      src={getMediaUrlFromMedia(gallery.coverMedia, true)}
-                      alt={gallery.coverMedia.altText || 'Gallery cover'}
-                      className="w-full h-full object-cover"
-                      mediaType={gallery.coverMedia.mediaType || 'IMAGE'}
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                      <FolderOpen className="h-12 w-12 text-gray-400" />
+          {/* Galleries View with Infinite Scroll */}
+          <InfiniteScrollContainer
+            hasMore={hasMoreGalleries}
+            isLoading={isLoadingMoreGalleries}
+            onLoadMore={loadMoreGalleries}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {galleries.map((gallery: any) => (
+                <motion.div
+                  key={gallery.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow duration-200 cursor-pointer"
+                  onClick={() => {
+                    setSelectedGallery(gallery)
+                    setIsGalleryDetailModalOpen(true)
+                  }}
+                >
+                  <div className="relative aspect-video overflow-hidden">
+                    {gallery.coverMedia ? (
+                      <LazyMedia
+                        src={getMediaUrlFromMedia(gallery.coverMedia, true)}
+                        alt={gallery.coverMedia.altText || 'Gallery cover'}
+                        className="w-full h-full object-cover"
+                        mediaType={gallery.coverMedia.mediaType || 'IMAGE'}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                        <FolderOpen className="h-12 w-12 text-gray-400" />
+                      </div>
+                    )}
+                    
+                    {/* Overlay */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button 
+                          className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setSelectedGallery(gallery)
+                            setIsGalleryDetailModalOpen(true)
+                          }}
+                        >
+                          <Eye className="h-4 w-4 text-gray-700" />
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  </div>
                   
-                  {/* Overlay */}
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <button 
-                        className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setSelectedGallery(gallery)
-                          setIsGalleryDetailModalOpen(true)
-                        }}
-                      >
-                        <Eye className="h-4 w-4 text-gray-700" />
-                      </button>
+                  <div className="p-4">
+                    <h3 className="font-medium text-gray-900 mb-1 truncate">
+                      {gallery.name}
+                    </h3>
+                    {gallery.description && (
+                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                        {gallery.description}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span className="flex items-center">
+                        <Calendar className="h-3 w-3 mr-1" />
+                        {formatDate(gallery.createdAt)}
+                      </span>
+                      <span>{gallery._count.images} images</span>
                     </div>
                   </div>
-                </div>
-                
-                <div className="p-4">
-                  <h3 className="font-medium text-gray-900 mb-1 truncate">
-                    {gallery.name}
-                  </h3>
-                  {gallery.description && (
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                      {gallery.description}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span className="flex items-center">
-                      <Calendar className="h-3 w-3 mr-1" />
-                      {formatDate(gallery.createdAt)}
-                    </span>
-                    <span>{gallery._count.images} images</span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+                </motion.div>
+              ))}
+            </div>
+          </InfiniteScrollContainer>
 
           {/* Empty State for Galleries */}
           {galleries.length === 0 && !galleriesLoading && (

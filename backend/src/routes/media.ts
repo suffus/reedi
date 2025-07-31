@@ -265,6 +265,8 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
           userId,
           s3Key,
           req.file.originalname,
+          req.file.mimetype,
+          req.file.size,
           true, // request progress updates
           5 // progress interval
         )

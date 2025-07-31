@@ -2,8 +2,8 @@
 
 import express from 'express'
 import cors from 'cors'
-import { VideoProcessingService } from './services/videoProcessingService'
-import { RabbitMQService } from './services/rabbitmqService'
+import { StagedVideoProcessingService } from './services/stagedVideoProcessingService'
+import { EnhancedRabbitMQService } from './services/enhancedRabbitMQService'
 import { S3ProcessorService } from './services/s3ProcessorService'
 import dotenv from 'dotenv'
 import logger from './utils/logger'
@@ -47,16 +47,21 @@ async function main() {
             process.exit(1)
           }
 
-  let videoProcessingService: VideoProcessingService | null = null
+  let videoProcessingService: StagedVideoProcessingService | null = null
 
   try {
-    logger.info('Starting video processing service...')
+    logger.info('Starting staged video processing service...')
 
     // Initialize services
-    const rabbitmqService = new RabbitMQService(
+    const rabbitmqService = new EnhancedRabbitMQService(
       config.rabbitmq.url,
       config.rabbitmq.exchanges,
-      config.rabbitmq.queues
+      {
+        download: 'video.processing.download',
+        processing: 'video.processing.processing',
+        upload: 'video.processing.upload',
+        updates: 'video.processing.updates'
+      }
     )
 
     const s3Service = new S3ProcessorService(
@@ -68,11 +73,10 @@ async function main() {
       config.s3.endpoint
     )
 
-    videoProcessingService = new VideoProcessingService(
+    videoProcessingService = new StagedVideoProcessingService(
       rabbitmqService,
       s3Service,
-      config.processing.tempDir,
-      config.processing.progressInterval
+      config.processing.tempDir
     )
 
     // Start the video processing service

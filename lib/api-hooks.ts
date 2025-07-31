@@ -956,6 +956,111 @@ export const useMyGalleries = (page = 1, limit = 20) => {
   })
 }
 
+// Infinite scroll galleries hook
+export const useInfiniteMyGalleries = () => {
+  const isClient = useIsClient()
+  const [allGalleries, setAllGalleries] = useState<any[]>([])
+  const [hasMore, setHasMore] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalGalleries, setTotalGalleries] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchGalleries = useCallback(async (page: number, pageSize: number) => {
+    const token = getToken()
+    if (!token) throw new Error('No token found')
+    
+    const response = await fetch(`${API_BASE_URL}/galleries/my?page=${page}&limit=${pageSize}`, {
+      headers: getAuthHeaders(token)
+    })
+    
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch my galleries')
+    
+    return data.data
+  }, [])
+
+  const loadGalleries = useCallback(async (page: number, isInitial = false) => {
+    try {
+      if (isInitial) {
+        setIsLoading(true)
+      } else {
+        setIsLoadingMore(true)
+      }
+      setError(null)
+
+      const data = await fetchGalleries(page, 20)
+      const newGalleries = data.galleries || []
+      const pagination = data.pagination
+
+      if (page === 1) {
+        // First page - replace all galleries
+        setAllGalleries(newGalleries)
+      } else {
+        // Subsequent pages - append new galleries, avoiding duplicates
+        setAllGalleries(prev => {
+          const existingIds = new Set(prev.map((gallery: any) => gallery.id))
+          const uniqueNewGalleries = newGalleries.filter((gallery: any) => !existingIds.has(gallery.id))
+          return [...prev, ...uniqueNewGalleries]
+        })
+      }
+
+      setTotalGalleries(pagination?.total || 0)
+      setHasMore(pagination?.hasNext || false)
+      setCurrentPage(page)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load galleries')
+    } finally {
+      setIsLoading(false)
+      setIsLoadingMore(false)
+    }
+  }, [fetchGalleries])
+
+  const loadMore = useCallback(() => {
+    if (hasMore && !isLoading && !isLoadingMore) {
+      loadGalleries(currentPage + 1, false)
+    }
+  }, [hasMore, isLoading, isLoadingMore, currentPage, loadGalleries])
+
+  const reset = useCallback(() => {
+    setAllGalleries([])
+    setHasMore(true)
+    setCurrentPage(1)
+    setTotalGalleries(0)
+    setIsLoading(false)
+    setIsLoadingMore(false)
+    setError(null)
+  }, [])
+
+  // Load initial data
+  useEffect(() => {
+    if (isClient && hasToken()) {
+      loadGalleries(1, true)
+    }
+  }, [isClient, loadGalleries])
+
+  return {
+    data: {
+      data: {
+        galleries: allGalleries,
+        pagination: {
+          total: totalGalleries,
+          hasNext: hasMore
+        }
+      }
+    },
+    isLoading,
+    isFetching: isLoadingMore,
+    error,
+    loadMore,
+    reset,
+    hasMore,
+    isLoadingMore,
+    totalGalleries
+  }
+}
+
 export const useGallery = (galleryId: string) => {
   const isClient = useIsClient()
   
@@ -1172,5 +1277,36 @@ export const useReorderGalleryMedia = () => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
     }
+  })
+}
+
+// Video quality hooks
+export interface VideoQuality {
+  quality: string
+  width: number
+  height: number
+  bitrate: string
+  url: string
+  fileSize: number
+}
+
+export const useVideoQualities = (mediaId: string) => {
+  return useQuery({
+    queryKey: ['video-qualities', mediaId],
+    queryFn: async (): Promise<VideoQuality[]> => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/media/serve/${mediaId}/qualities`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch video qualities')
+      
+      return data.qualities || []
+    },
+    enabled: !!mediaId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   })
 } 
