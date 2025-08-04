@@ -104,7 +104,7 @@ app.use('/api/media/serve', mediaServeRoutes)
 
 // Protected media routes (authentication required)
 app.use('/api/media', authMiddleware, mediaRoutes)
-app.use('/api/galleries', authMiddleware, galleryRoutes)
+app.use('/api/galleries', galleryRoutes)
 app.use('/api/search', searchRoutes)
 app.use('/api/friends', friendRoutes)
 app.use('/api/video-processing', videoProcessingRoutes)

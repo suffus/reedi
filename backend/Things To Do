@@ -1,0 +1,6 @@
+# TTD
+
+## Interface
+
+1. Improve upload widget to be faster, more economical, and more responsive.
+2. Stop wheel movements propagating to components behind the gallery modal, the upload modal, and any other modal. 

@@ -120,15 +120,19 @@ export class EnhancedRabbitMQService {
         const message = JSON.parse(msg.content.toString())
         logger.info(`Received message from queue ${queueName}: ${message.job_id || message.id}`)
         
+        // Acknowledge the message immediately after receiving it
+        // This prevents RabbitMQ timeouts for long-running processing jobs
+        this.channel!.ack(msg)
+        
+        // Now process the message (without blocking the acknowledgment)
         await callback(message)
         
-        // Acknowledge the message
-        this.channel!.ack(msg)
       } catch (error) {
         logger.error(`Error processing message from queue ${queueName}:`, error)
         
-        // Reject the message and requeue it
-        this.channel!.nack(msg, false, true)
+        // Note: We can't nack here since we already acked the message
+        // The error will be logged but the message won't be requeued
+        // This is acceptable since we want to avoid timeouts for long videos
       }
     })
 

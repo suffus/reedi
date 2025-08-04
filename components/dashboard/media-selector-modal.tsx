@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Upload, Image as ImageIcon, Video, Globe } from 'lucide-react'
 import { MediaUploader } from './media-uploader'
-import { useUserMedia, useSearchMediaByTags } from '../../lib/api-hooks'
+import { useUserMedia, useSearchMediaByTags, useMyGalleries, useGalleryMedia } from '../../lib/api-hooks'
 import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
@@ -31,6 +31,7 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
   const [filterTags, setFilterTags] = useState<string[]>([])
+  const [selectedGalleryId, setSelectedGalleryId] = useState<string>('')
   const [showFilters, setShowFilters] = useState(false)
 
   console.log("userId", userId)
@@ -44,6 +45,23 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
     reset
   } = useUserMedia(userId)
   
+  // Get user's galleries for filtering
+  const { data: galleriesData } = useMyGalleries(1, 100)
+  const userGalleries = galleriesData?.data?.galleries || []
+  
+  // Get media from selected gallery if one is selected
+  const { data: selectedGalleryMediaData, isLoading: selectedGalleryLoading } = useGalleryMedia(selectedGalleryId, 1, 100)
+  const selectedGalleryMedia = selectedGalleryId ? (selectedGalleryMediaData?.data?.media || []).map((mediaItem: any) => {
+    const mapped = mapMediaData(mediaItem)
+    return {
+      ...mapped,
+      url: getMediaUrlFromMedia(mapped, false),
+      thumbnail: getMediaUrlFromMedia(mapped, true),
+    }
+  }) : []
+  
+
+  
   // Map the raw media to our frontend format
   const galleryMedia = (galleryData?.data?.media || []).map((mediaItem: any) => {
     const mapped = mapMediaData(mediaItem)
@@ -55,8 +73,16 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
     }
   })
 
-  // Filter local gallery media based on selected tags
-  const filteredGalleryMedia = filterTags.length === 0 ? galleryMedia : galleryMedia.filter((mediaItem: any) => {
+  // Determine which media to show based on filters
+  let displayMedia = galleryMedia
+  
+  // If a gallery is selected, show only that gallery's media
+  if (selectedGalleryId) {
+    displayMedia = selectedGalleryMedia
+  }
+  
+  // Filter media based on selected tags
+  const filteredGalleryMedia = filterTags.length === 0 ? displayMedia : displayMedia.filter((mediaItem: any) => {
     // Check if the media has all the selected tags
     return filterTags.every(tag => 
       mediaItem.tags && Array.isArray(mediaItem.tags) && mediaItem.tags.some((mediaTag: string) => 
@@ -64,6 +90,8 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
       )
     )
   })
+  
+
 
   // Parse tag query into array
   const tagArray = tagQuery.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
@@ -261,23 +289,32 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                 )}
 
                 {/* Filter Section */}
-                {galleryMedia.length > 0 && (
+                {(galleryMedia.length > 0 || userGalleries.length > 0) && (
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-medium text-gray-700">Your Media</h3>
                       <div className="flex items-center space-x-2">
                         {/* Filter Toggle Button */}
-                        <button
-                          onClick={() => setShowFilters(!showFilters)}
-                          className={`p-2 rounded-lg transition-colors duration-200 ${
-                            showFilters
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                          }`}
-                          title={filterTags.length > 0 ? `${filterTags.length} filter(s) active` : 'Filter by tags'}
-                        >
-                          <Filter className="h-4 w-4" />
-                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`p-2 rounded-lg transition-colors duration-200 ${
+                              showFilters || filterTags.length > 0 || selectedGalleryId
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                            }`}
+                            title={
+                              filterTags.length > 0 || selectedGalleryId 
+                                ? `${filterTags.length} tag filter(s)${selectedGalleryId ? ', gallery filter' : ''} active` 
+                                : 'Filter by tags and galleries'
+                            }
+                          >
+                            <Filter className="h-4 w-4" />
+                          </button>
+                          {(filterTags.length > 0 || selectedGalleryId) && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -287,36 +324,69 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="text-sm font-medium text-gray-700 flex items-center">
                             <Filter className="h-4 w-4 mr-2" />
-                            Filter by Tags
+                            Filter Options
                           </h4>
-                          {filterTags.length > 0 && (
+                          {(filterTags.length > 0 || selectedGalleryId) && (
                             <button
-                              onClick={() => setFilterTags([])}
+                              onClick={() => {
+                                setFilterTags([])
+                                setSelectedGalleryId('')
+                              }}
                               className="text-xs text-gray-500 hover:text-gray-700"
                             >
                               Clear filters
                             </button>
                           )}
                         </div>
-                        <TagInput
-                          tags={filterTags}
-                          onTagsChange={setFilterTags}
-                          placeholder="Enter tags to filter by (comma-separated)..."
-                          className="w-full"
-                        />
-                        {filterTags.length > 0 && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            Showing media that contain all selected tags
-                          </p>
-                        )}
+                        
+                        {/* Gallery Filter */}
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Filter by Gallery
+                          </label>
+                          <select
+                            value={selectedGalleryId}
+                            onChange={(e) => setSelectedGalleryId(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          >
+                            <option value="">All Media</option>
+                            {userGalleries.map((gallery: any) => (
+                              <option key={gallery.id} value={gallery.id}>
+                                {gallery.name} ({gallery._count?.media || 0} items)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        {/* Tag Filter */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Filter by Tags
+                          </label>
+                          <TagInput
+                            tags={filterTags}
+                            onTagsChange={setFilterTags}
+                            placeholder="Enter tags to filter by (comma-separated)..."
+                            className="w-full"
+                          />
+                          {filterTags.length > 0 && (
+                            <p className="text-xs text-gray-500 mt-2">
+                              Showing media that contain all selected tags
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
 
                 {/* Local Gallery Media */}
-                {galleryMedia.length > 0 && (
+                {displayMedia.length > 0 && (
                   <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                  <Globe className="h-4 w-4 mr-2" />
+                  My Media
+                </h3>
                     <InfiniteScrollContainer
                       hasMore={hasMore}
                       isLoading={isLoadingMore}
@@ -369,7 +439,7 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                 )}
 
                 {/* Empty State for Gallery */}
-                {galleryMedia.length === 0 && !galleryLoading && !showGlobalSearch && (
+                {displayMedia.length === 0 && !galleryLoading && !showGlobalSearch && (
                   <div className="text-center py-12">
                     <div className="flex items-center justify-center space-x-2 mb-4">
                       <ImageIcon className="h-12 w-12 text-gray-400" />

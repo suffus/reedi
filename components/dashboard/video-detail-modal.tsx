@@ -587,6 +587,22 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex"
+        onWheel={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation()
+        }}
+        onMouseMove={(e) => {
+          e.stopPropagation()
+        }}
+        onMouseUp={(e) => {
+          e.stopPropagation()
+        }}
       >
         <div className="flex-1 flex flex-col bg-black" ref={containerRef}>
           {/* Video Container */}

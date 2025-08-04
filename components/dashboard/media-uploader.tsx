@@ -86,7 +86,9 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('handleFileSelect called with files:', e.target.files)
     const files = Array.from(e.target.files || [])
+    console.log('Files array:', files)
     handleFiles(files)
     // Reset the input so the same file can be selected again
     e.target.value = ''
@@ -101,6 +103,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
   }
 
   const handleFiles = (files: File[]) => {
+    console.log('handleFiles called with:', files.length, 'files')
     // Reset last applied metadata when new files are added
     setLastAppliedSharedMetadata({ title: '', description: '', tags: [] })
     
@@ -118,12 +121,15 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
     
     // Filter for both images and supported videos
     const mediaFiles = files.filter(file => {
+      console.log('Processing file:', file.name, 'type:', file.type)
       if (file.type.startsWith('image/')) {
+        console.log('File is image:', file.name)
         return true
       }
       
       if (file.type.startsWith('video/')) {
         if (SUPPORTED_VIDEO_TYPES.includes(file.type)) {
+          console.log('File is supported video:', file.name)
           return true
         } else {
           // Show error for unsupported video formats
@@ -133,8 +139,11 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
         }
       }
       
+      console.log('File is not supported:', file.name, 'type:', file.type)
       return false
     })
+    
+    console.log('Filtered media files:', mediaFiles.length)
     
     // Sort files by filename to ensure proper order (e.g., DSC_5689.JPG before DSC_5690.JPG)
     const sortedFiles = mediaFiles.sort((a, b) => {
