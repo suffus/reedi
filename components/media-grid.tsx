@@ -63,6 +63,8 @@ export function MediaGrid({
   formatFileSize,
   formatDate
 }: MediaGridProps) {
+  // State for shift-click range selection
+  const [lastClickedIndex, setLastClickedIndex] = React.useState<number | null>(null)
   const isMediaSelected = (mediaId: string) => {
     return selectedMedia.some(m => m.id === mediaId)
   }
@@ -71,11 +73,29 @@ export function MediaGrid({
     return existingGalleryMedia.some(m => m.id === mediaId)
   }
 
-  const handleMediaClick = (media: Media) => {
+  const handleMediaClick = (mediaItem: Media, event: React.MouseEvent, index: number) => {
     if (isSelectable && onMediaSelect) {
-      onMediaSelect(media)
+      if (event.shiftKey && lastClickedIndex !== null) {
+        // Shift-click: select range from last clicked to current
+        const startIndex = Math.min(lastClickedIndex, index)
+        const endIndex = Math.max(lastClickedIndex, index)
+        const rangeMedia = media.slice(startIndex, endIndex + 1)
+        
+        // Add all items in the range to selection
+        rangeMedia.forEach((item: Media) => {
+          if (!isMediaSelected(item.id)) {
+            onMediaSelect(item)
+          }
+        })
+      } else {
+        // Normal click: toggle selection of current item
+        onMediaSelect(mediaItem)
+      }
+      
+      // Update last clicked index
+      setLastClickedIndex(index)
     } else if (onMediaClick) {
-      onMediaClick(media)
+      onMediaClick(mediaItem)
     }
   }
 
@@ -132,13 +152,13 @@ export function MediaGrid({
       {/* Grid View */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {media.map((mediaItem) => (
+          {media.map((mediaItem, index) => (
             <div
               key={mediaItem.id}
               className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200 ${
                 isMediaSelected(mediaItem.id) ? 'ring-2 ring-primary-500' : 'hover:ring-2 hover:ring-gray-300'
               }`}
-              onClick={() => handleMediaClick(mediaItem)}
+              onClick={(event) => handleMediaClick(mediaItem, event, index)}
             >
               <LazyMedia
                 src={getMediaUrlFromMedia(mediaItem, true)}
@@ -269,13 +289,13 @@ export function MediaGrid({
       ) : (
         // List View
         <div className="space-y-4">
-          {media.map((mediaItem) => (
+          {media.map((mediaItem, index) => (
             <div
               key={mediaItem.id}
               className={`flex items-center space-x-4 p-4 bg-white rounded-lg border hover:shadow-md transition-shadow duration-200 ${
                 isMediaSelected(mediaItem.id) ? 'ring-2 ring-primary-500' : 'hover:ring-2 hover:ring-gray-300'
               }`}
-              onClick={() => handleMediaClick(mediaItem)}
+              onClick={(event) => handleMediaClick(mediaItem, event, index)}
             >
               {/* Thumbnail */}
               <div className="relative w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">

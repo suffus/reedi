@@ -6,12 +6,84 @@ import { AuthenticatedRequest } from '@/types'
 
 const router = Router()
 
+// Shared function to get galleries with image/video counts
+async function getGalleriesWithCounts(userId: string, page: number, limit: number, whereClause: any) {
+  const offset = (page - 1) * limit
+
+  const [galleries, total] = await Promise.all([
+    prisma.gallery.findMany({
+      where: whereClause,
+      include: {
+        _count: {
+          select: {
+            media: true
+          }
+        },
+        coverMedia: {
+          select: {
+            id: true,
+            s3Key: true,
+            thumbnailS3Key: true,
+            altText: true,
+            caption: true
+          }
+        }
+      },
+      skip: offset,
+      take: limit,
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.gallery.count({ where: whereClause })
+  ])
+
+  // Get image and video counts for each gallery
+  const galleriesWithCounts = await Promise.all(
+    galleries.map(async (gallery) => {
+      const [imageCount, videoCount] = await Promise.all([
+        prisma.media.count({
+          where: {
+            galleryId: gallery.id,
+            mediaType: 'IMAGE'
+          }
+        }),
+        prisma.media.count({
+          where: {
+            galleryId: gallery.id,
+            mediaType: 'VIDEO'
+          }
+        })
+      ])
+
+      return {
+        ...gallery,
+        _count: {
+          ...gallery._count,
+          images: imageCount,
+          videos: videoCount
+        }
+      }
+    })
+  )
+
+  return {
+    galleries: galleriesWithCounts,
+    total,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext: offset + limit < total,
+      hasPrev: page > 1
+    }
+  }
+}
+
 // Get user's galleries with visibility filtering
 router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { userId } = req.params
   const viewerId = req.user?.id
   const { page = 1, limit = 20 } = req.query
-  const offset = (Number(page) - 1) * Number(limit)
 
   // Determine which galleries the viewer can see
   let visibilityFilter: any[] = [
@@ -41,45 +113,11 @@ router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: Aut
     ...(visibilityFilter.length > 0 ? { OR: visibilityFilter } : {})
   }
 
-  const [galleries, total] = await Promise.all([
-    prisma.gallery.findMany({
-      where,
-      include: {
-        _count: {
-          select: {
-            media: true
-          }
-        },
-        coverMedia: {
-          select: {
-            id: true,
-            s3Key: true,
-            thumbnailS3Key: true,
-            altText: true,
-            caption: true
-          }
-        }
-      },
-      skip: offset,
-      take: Number(limit),
-      orderBy: { createdAt: 'desc' }
-    }),
-    prisma.gallery.count({ where })
-  ])
+  const result = await getGalleriesWithCounts(userId, Number(page), Number(limit), where)
 
   res.json({
     success: true,
-    data: {
-      galleries,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / Number(limit)),
-        hasNext: offset + Number(limit) < total,
-        hasPrev: Number(page) > 1
-      }
-    }
+    data: result
   })
 }))
 
@@ -87,7 +125,6 @@ router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: Aut
 router.get('/my', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { page = 1, limit = 20 } = req.query
-  const offset = (Number(page) - 1) * Number(limit)
 
   if (!userId) {
     res.status(401).json({
@@ -97,47 +134,11 @@ router.get('/my', authMiddleware, asyncHandler(async (req: AuthenticatedRequest,
     return
   }
 
-  const [galleries, total] = await Promise.all([
-    prisma.gallery.findMany({
-      where: { authorId: userId },
-      include: {
-        _count: {
-          select: {
-            media: true
-          }
-        },
-        coverMedia: {
-          select: {
-            id: true,
-            s3Key: true,
-            thumbnailS3Key: true,
-            altText: true,
-            caption: true
-          }
-        }
-      },
-      skip: offset,
-      take: Number(limit),
-      orderBy: { createdAt: 'desc' }
-    }),
-    prisma.gallery.count({
-      where: { authorId: userId }
-    })
-  ])
+  const result = await getGalleriesWithCounts(userId, Number(page), Number(limit), { authorId: userId })
 
   res.json({
     success: true,
-    data: {
-      galleries,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / Number(limit)),
-        hasNext: offset + Number(limit) < total,
-        hasPrev: Number(page) > 1
-      }
-    }
+    data: result
   })
 }))
 
@@ -182,6 +183,159 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     success: true,
     data: { gallery },
     message: 'Gallery created successfully'
+  })
+}))
+
+// Get media by gallery ID
+router.get('/:id/media', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params
+  const viewerId = req.user?.id
+  const { page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  const gallery = await prisma.gallery.findUnique({
+    where: { id },
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      }
+    }
+  })
+
+  if (!gallery) {
+    res.status(404).json({
+      success: false,
+      error: 'Gallery not found'
+    })
+    return
+  }
+
+  // Check visibility
+  if (gallery.visibility === 'PRIVATE' && gallery.authorId !== viewerId) {
+    res.status(403).json({
+      success: false,
+      error: 'Gallery is private'
+    })
+    return
+  }
+
+  if (gallery.visibility === 'FRIENDS_ONLY' && gallery.authorId !== viewerId) {
+    if (!viewerId) {
+      res.status(403).json({
+        success: false,
+        error: 'Gallery is friends only'
+      })
+      return
+    }
+
+    const isFriend = await prisma.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId: viewerId, receiverId: gallery.authorId, status: 'ACCEPTED' },
+          { senderId: gallery.authorId, receiverId: viewerId, status: 'ACCEPTED' }
+        ]
+      }
+    })
+
+    if (!isFriend) {
+      res.status(403).json({
+        success: false,
+        error: 'Gallery is friends only'
+      })
+      return
+    }
+  }
+
+  // Build visibility filter for media
+  let whereClause: any = {
+    galleryId: id
+  }
+
+  if (viewerId) {
+    if (viewerId === gallery.authorId) {
+      // Gallery owner can see all media - no visibility filter needed
+      whereClause = {
+        galleryId: id
+      }
+    } else {
+      // Non-owner can only see public and friends-only media
+      whereClause = {
+        galleryId: id,
+        OR: [
+          { visibility: 'PUBLIC' },
+          { visibility: 'FRIENDS_ONLY' }
+        ]
+      }
+    }
+  } else {
+    // No viewer - only show public media
+    whereClause = {
+      galleryId: id,
+      visibility: 'PUBLIC'
+    }
+  }
+
+
+
+  const [media, total] = await Promise.all([
+    prisma.media.findMany({
+      where: whereClause,
+      skip: offset,
+      take: Number(limit),
+      orderBy: [
+        { order: 'asc' },
+        { createdAt: 'asc' }
+      ],
+      select: {
+        id: true,
+        s3Key: true,
+        thumbnailS3Key: true,
+        originalFilename: true,
+        altText: true,
+        caption: true,
+        tags: true,
+        visibility: true,
+        createdAt: true,
+        updatedAt: true,
+        order: true,
+        width: true,
+        height: true,
+        size: true,
+        mimeType: true,
+        authorId: true,
+        mediaType: true,
+        processingStatus: true,
+        duration: true,
+        codec: true,
+        bitrate: true,
+        framerate: true,
+        videoUrl: true,
+        videoS3Key: true
+      }
+    }),
+    prisma.media.count({
+      where: whereClause
+    })
+  ])
+
+  res.json({
+    success: true,
+    data: {
+      media,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+        hasNext: offset + Number(limit) < total,
+        hasPrev: Number(page) > 1
+      }
+    }
   })
 }))
 

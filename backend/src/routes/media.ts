@@ -50,15 +50,75 @@ const upload = multer({
   }
 })
 
-// Get user's media
+// Get user's media with optional filtering
 router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params
-  const { page = 1, limit = 20 } = req.query
+  const { 
+    page = 1, 
+    limit = 20, 
+    tags, 
+    title, 
+    galleryId, 
+    visibility, 
+    mediaType,
+    startDate,
+    endDate
+  } = req.query
   const offset = (Number(page) - 1) * Number(limit)
+
+  // Build where clause with filters
+  const whereClause: any = { authorId: userId }
+
+  // Filter by tags (comma-separated string)
+  if (tags && typeof tags === 'string') {
+    const tagArray = tags.split(',').map(tag => tag.trim().toLowerCase())
+    whereClause.tags = {
+      hasSome: tagArray
+    }
+  }
+
+  // Filter by title/caption (text search)
+  if (title && typeof title === 'string') {
+    whereClause.OR = [
+      { originalFilename: { contains: title, mode: 'insensitive' } },
+      { caption: { contains: title, mode: 'insensitive' } },
+      { altText: { contains: title, mode: 'insensitive' } }
+    ]
+  }
+
+  // Filter by gallery
+  if (galleryId && typeof galleryId === 'string') {
+    whereClause.galleryId = galleryId
+  }
+
+  // Filter by visibility
+  if (visibility && typeof visibility === 'string') {
+    whereClause.visibility = visibility
+  }
+
+  // Filter by media type
+  if (mediaType && typeof mediaType === 'string') {
+    whereClause.mediaType = mediaType
+  }
+
+  // Filter by date range
+  if (startDate && typeof startDate === 'string') {
+    whereClause.createdAt = {
+      ...whereClause.createdAt,
+      gte: new Date(startDate)
+    }
+  }
+
+  if (endDate && typeof endDate === 'string') {
+    whereClause.createdAt = {
+      ...whereClause.createdAt,
+      lte: new Date(endDate)
+    }
+  }
 
   const [media, total] = await Promise.all([
     prisma.media.findMany({
-      where: { authorId: userId },
+      where: whereClause,
       skip: offset,
       take: Number(limit),
       orderBy: { createdAt: 'desc' },
@@ -84,11 +144,13 @@ router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => 
         videoS3Key: true,
         createdAt: true,
         updatedAt: true,
-        authorId: true
+        authorId: true,
+        galleryId: true,
+        visibility: true
       }
     }),
     prisma.media.count({
-      where: { authorId: userId }
+      where: whereClause
     })
   ])
 

@@ -46,12 +46,18 @@ export async function processImageForS3(
   originalName: string,
   mimeType: string
 ): Promise<ProcessedImage> {
-  // Process original image
+  // Process original image with automatic EXIF orientation correction
   const originalImage = sharp(buffer)
   const originalMetadata = await originalImage.metadata()
   
-  // Convert original to progressive JPEG for better loading experience
+  // Log EXIF orientation information for debugging
+  if (originalMetadata.orientation) {
+    console.log(`Image ${originalName}: EXIF orientation detected: ${originalMetadata.orientation}`)
+  }
+  
+  // Convert original to progressive JPEG with EXIF orientation correction
   const progressiveBuffer = await sharp(buffer)
+    .rotate() // Automatically rotate based on EXIF orientation
     .jpeg({ 
       quality: 85,
       progressive: true, // Enable progressive loading
@@ -59,8 +65,9 @@ export async function processImageForS3(
     })
     .toBuffer()
   
-  // Create thumbnail (max 300x300, maintain aspect ratio)
+  // Create thumbnail with EXIF orientation correction
   const thumbnailBuffer = await sharp(buffer)
+    .rotate() // Automatically rotate based on EXIF orientation
     .resize(300, 300, { 
       fit: 'cover',
       withoutEnlargement: true 
@@ -72,11 +79,20 @@ export async function processImageForS3(
     })
     .toBuffer()
 
+  // Get the corrected dimensions after rotation
+  const correctedImage = sharp(buffer).rotate()
+  const correctedMetadata = await correctedImage.metadata()
+
+  // Log dimension changes if orientation was corrected
+  if (originalMetadata.orientation && originalMetadata.orientation > 1) {
+    console.log(`Image ${originalName}: Corrected orientation. Original: ${originalMetadata.width}x${originalMetadata.height}, Corrected: ${correctedMetadata.width}x${correctedMetadata.height}`)
+  }
+
   return {
     originalBuffer: progressiveBuffer, // Use progressive version as original
     thumbnailBuffer,
-    width: originalMetadata.width || 0,
-    height: originalMetadata.height || 0,
+    width: correctedMetadata.width || originalMetadata.width || 0,
+    height: correctedMetadata.height || originalMetadata.height || 0,
     size: progressiveBuffer.length, // Use progressive buffer size
   }
 }

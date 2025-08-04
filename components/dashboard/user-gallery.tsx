@@ -54,11 +54,13 @@ export function UserGallery({ userId }: UserGalleryProps) {
     data: galleriesData, 
     isLoading: galleriesLoading, 
     loadMore: loadMoreGalleries, 
-    hasMore: hasMoreGalleries, 
-    isLoadingMore: isLoadingMoreGalleries,
-    totalGalleries
+    isFetching: isLoadingMoreGalleries,
+    refresh: refreshGalleries
   } = useInfiniteMyGalleries()
+  
   const galleries = galleriesData?.data?.galleries || []
+  const hasMoreGalleries = galleriesData?.data?.pagination?.hasNext || false
+  const totalGalleries = galleriesData?.data?.pagination?.total || 0
 
   const { data: selectedGalleryData, isLoading: selectedGalleryLoading } = useGallery(
     selectedGallery?.id || ''
@@ -544,7 +546,13 @@ export function UserGallery({ userId }: UserGalleryProps) {
                         <Calendar className="h-3 w-3 mr-1" />
                         {formatDate(gallery.createdAt)}
                       </span>
-                      <span>{gallery._count.images} images</span>
+                      
+                      <span>
+                        {[
+                          gallery._count.images > 0 && `${gallery._count.images} image${gallery._count.images !== 1 ? 's' : ''}`,
+                          gallery._count.videos > 0 && `${gallery._count.videos} video${gallery._count.videos !== 1 ? 's' : ''}`
+                        ].filter(Boolean).join(', ')}
+                      </span>
                     </div>
                   </div>
                 </motion.div>
@@ -611,7 +619,8 @@ export function UserGallery({ userId }: UserGalleryProps) {
         onClose={() => setIsNewGalleryModalOpen(false)}
         userId={userId}
         onGalleryCreated={() => {
-          // The query will automatically refetch
+          // Refresh the galleries list to show the newly created gallery
+          refreshGalleries()
         }}
       />
 

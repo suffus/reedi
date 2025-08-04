@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   description: 'A secure social media platform for family and friends to share moments, stories, and stay connected.',
   keywords: ['social media', 'family', 'friends', 'secure', 'community'],
   authors: [{ name: 'Reedi Team' }],
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' }
+    ],
+    apple: '/favicon.svg',
+  },
 }
 
 export const viewport: Viewport = {

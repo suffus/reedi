@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { useState, useEffect, useCallback } from 'react'
 import { API_BASE_URL, getAuthHeaders, getImageUrl, API_ENDPOINTS } from './api'
 import { GalleryMedia, Comment } from './types'
@@ -458,6 +458,143 @@ export const usePublicUserMedia = (identifier: string, page = 1, limit = 20) => 
 }
 
 // Infinite scroll user media hook
+// Filter interface for user media
+interface UserMediaFilters {
+  tags?: string[]
+  title?: string
+  galleryId?: string
+  visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
+  mediaType?: 'IMAGE' | 'VIDEO'
+  startDate?: string
+  endDate?: string
+}
+
+export const useFilteredUserMedia = (
+  userId: string, 
+  filters: UserMediaFilters = {}, 
+  page = 1, 
+  limit = 20
+) => {
+  const isClient = useIsClient()
+  
+  // Build query parameters from filters
+  const queryParams = new URLSearchParams()
+  queryParams.append('page', page.toString())
+  queryParams.append('limit', limit.toString())
+  
+  if (filters.tags && filters.tags.length > 0) {
+    queryParams.append('tags', filters.tags.join(','))
+  }
+  
+  if (filters.title) {
+    queryParams.append('title', filters.title)
+  }
+  
+  if (filters.galleryId) {
+    queryParams.append('galleryId', filters.galleryId)
+  }
+  
+  if (filters.visibility) {
+    queryParams.append('visibility', filters.visibility)
+  }
+  
+  if (filters.mediaType) {
+    queryParams.append('mediaType', filters.mediaType)
+  }
+  
+  if (filters.startDate) {
+    queryParams.append('startDate', filters.startDate)
+  }
+  
+  if (filters.endDate) {
+    queryParams.append('endDate', filters.endDate)
+  }
+  
+  return useQuery({
+    queryKey: ['filtered-media', 'user', userId, filters, page, limit],
+    queryFn: async () => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const url = `${API_ENDPOINTS.MEDIA.USER(userId)}?${queryParams.toString()}`
+      const response = await fetch(url, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch filtered media')
+      
+      return data
+    },
+    enabled: isClient && hasToken() && !!userId
+  })
+}
+
+// Infinite scroll version of filtered user media
+export const useInfiniteFilteredUserMedia = (
+  userId: string, 
+  filters: UserMediaFilters = {}
+) => {
+  const isClient = useIsClient()
+  
+  return useInfiniteQuery({
+    queryKey: ['infinite-filtered-media', 'user', userId, filters],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }: { pageParam: number }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      // Build query parameters from filters
+      const queryParams = new URLSearchParams()
+      queryParams.append('page', pageParam.toString())
+      queryParams.append('limit', '20')
+      
+      if (filters.tags && filters.tags.length > 0) {
+        queryParams.append('tags', filters.tags.join(','))
+      }
+      
+      if (filters.title) {
+        queryParams.append('title', filters.title)
+      }
+      
+      if (filters.galleryId) {
+        queryParams.append('galleryId', filters.galleryId)
+      }
+      
+      if (filters.visibility) {
+        queryParams.append('visibility', filters.visibility)
+      }
+      
+      if (filters.mediaType) {
+        queryParams.append('mediaType', filters.mediaType)
+      }
+      
+      if (filters.startDate) {
+        queryParams.append('startDate', filters.startDate)
+      }
+      
+      if (filters.endDate) {
+        queryParams.append('endDate', filters.endDate)
+      }
+      
+      const url = `${API_ENDPOINTS.MEDIA.USER(userId)}?${queryParams.toString()}`
+      const response = await fetch(url, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch filtered media')
+      
+      return data
+    },
+    getNextPageParam: (lastPage: any) => {
+      const pagination = lastPage.data?.pagination
+      return pagination?.hasNext ? pagination.page + 1 : undefined
+    },
+    enabled: isClient && hasToken() && !!userId
+  })
+}
+
 export const useUserMedia = (userId: string) => {
   const isClient = useIsClient()
   const [allMedia, setAllMedia] = useState<any[]>([])
@@ -525,7 +662,7 @@ export const useUserMedia = (userId: string) => {
       // Stop loading immediately since we're using lazy loading
       setIsLoadingMore(false)
     }
-  }, [data, currentPage, allMedia.length])
+  }, [data, currentPage])
 
   const loadMore = useCallback(() => {
     if (hasMore && !isFetching && !isLoadingMore) {
@@ -959,86 +1096,57 @@ export const useMyGalleries = (page = 1, limit = 20) => {
 // Infinite scroll galleries hook
 export const useInfiniteMyGalleries = () => {
   const isClient = useIsClient()
-  const [allGalleries, setAllGalleries] = useState<any[]>([])
-  const [hasMore, setHasMore] = useState(true)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalGalleries, setTotalGalleries] = useState(0)
-  const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isFetchingNextPage,
+    isLoading,
+    error,
+    refetch
+  } = useInfiniteQuery({
+    queryKey: ['galleries', 'my'],
+    queryFn: async ({ pageParam }: { pageParam: number }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/galleries/my?page=${pageParam}&limit=20`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch my galleries')
+      
+      return data.data
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: any) => {
+      return lastPage.pagination?.hasNext ? lastPage.pagination.page + 1 : undefined
+    },
+    enabled: isClient && hasToken(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
 
-  const fetchGalleries = useCallback(async (page: number, pageSize: number) => {
-    const token = getToken()
-    if (!token) throw new Error('No token found')
-    
-    const response = await fetch(`${API_BASE_URL}/galleries/my?page=${page}&limit=${pageSize}`, {
-      headers: getAuthHeaders(token)
-    })
-    
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Failed to fetch my galleries')
-    
-    return data.data
-  }, [])
-
-  const loadGalleries = useCallback(async (page: number, isInitial = false) => {
-    try {
-      if (isInitial) {
-        setIsLoading(true)
-      } else {
-        setIsLoadingMore(true)
-      }
-      setError(null)
-
-      const data = await fetchGalleries(page, 20)
-      const newGalleries = data.galleries || []
-      const pagination = data.pagination
-
-      if (page === 1) {
-        // First page - replace all galleries
-        setAllGalleries(newGalleries)
-      } else {
-        // Subsequent pages - append new galleries, avoiding duplicates
-        setAllGalleries(prev => {
-          const existingIds = new Set(prev.map((gallery: any) => gallery.id))
-          const uniqueNewGalleries = newGalleries.filter((gallery: any) => !existingIds.has(gallery.id))
-          return [...prev, ...uniqueNewGalleries]
-        })
-      }
-
-      setTotalGalleries(pagination?.total || 0)
-      setHasMore(pagination?.hasNext || false)
-      setCurrentPage(page)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load galleries')
-    } finally {
-      setIsLoading(false)
-      setIsLoadingMore(false)
-    }
-  }, [fetchGalleries])
+  // Flatten all pages into a single array
+  const allGalleries = data?.pages?.flatMap(page => page.galleries || []) || []
+  const totalGalleries = data?.pages?.[0]?.pagination?.total || 0
 
   const loadMore = useCallback(() => {
-    if (hasMore && !isLoading && !isLoadingMore) {
-      loadGalleries(currentPage + 1, false)
+    if (hasNextPage && !isFetching && !isFetchingNextPage) {
+      fetchNextPage()
     }
-  }, [hasMore, isLoading, isLoadingMore, currentPage, loadGalleries])
+  }, [hasNextPage, isFetching, isFetchingNextPage, fetchNextPage])
 
   const reset = useCallback(() => {
-    setAllGalleries([])
-    setHasMore(true)
-    setCurrentPage(1)
-    setTotalGalleries(0)
-    setIsLoading(false)
-    setIsLoadingMore(false)
-    setError(null)
-  }, [])
+    // Reset is handled by React Query's refetch
+    refetch()
+  }, [refetch])
 
-  // Load initial data
-  useEffect(() => {
-    if (isClient && hasToken()) {
-      loadGalleries(1, true)
-    }
-  }, [isClient, loadGalleries])
+  const refresh = useCallback(() => {
+    refetch()
+  }, [refetch])
 
   return {
     data: {
@@ -1046,18 +1154,16 @@ export const useInfiniteMyGalleries = () => {
         galleries: allGalleries,
         pagination: {
           total: totalGalleries,
-          hasNext: hasMore
+          hasNext: hasNextPage || false
         }
       }
     },
     isLoading,
-    isFetching: isLoadingMore,
-    error,
+    isFetching: isFetchingNextPage,
+    error: error?.message || null,
     loadMore,
     reset,
-    hasMore,
-    isLoadingMore,
-    totalGalleries
+    refresh
   }
 }
 
@@ -1079,6 +1185,34 @@ export const useGallery = (galleryId: string) => {
       
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to fetch gallery')
+      
+      return data
+    },
+    enabled: isClient && !!galleryId
+  })
+}
+
+export const useGalleryMedia = (galleryId: string, page = 1, limit = 20) => {
+  const isClient = useIsClient()
+  
+  return useQuery({
+    queryKey: ['gallery-media', galleryId, page, limit],
+    queryFn: async () => {
+      const token = getToken()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      
+      const url = `${API_BASE_URL}/galleries/${galleryId}/media?page=${page}&limit=${limit}`
+      
+      const response = await fetch(url, {
+        headers
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch gallery media')
       
       return data
     },
@@ -1136,7 +1270,7 @@ export const useUpdateGallery = () => {
       return data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
     }
   })
@@ -1161,7 +1295,7 @@ export const useDeleteGallery = () => {
       return data
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
     }
   })
 }
@@ -1186,7 +1320,7 @@ export const useAddMediaToGallery = () => {
       return data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
       queryClient.invalidateQueries({ queryKey: ['media'] })
     }
@@ -1213,7 +1347,7 @@ export const useRemoveMediaFromGallery = () => {
       return data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
       queryClient.invalidateQueries({ queryKey: ['media'] })
     }
@@ -1240,7 +1374,7 @@ export const useSetGalleryCover = () => {
       return data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
     }
   })
@@ -1274,7 +1408,7 @@ export const useReorderGalleryMedia = () => {
       return data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
     }
   })
