@@ -1,5 +1,10 @@
 import { DashboardWrapper } from '../../components/dashboard/dashboard-wrapper'
+import { MessagingProvider } from '../../lib/messaging-context'
 
 export default function DashboardPage() {
-  return <DashboardWrapper />
+  return (
+    <MessagingProvider>
+      <DashboardWrapper />
+    </MessagingProvider>
+  )
 } 

@@ -62,6 +62,14 @@ model User {
   // Video processing jobs
   videoProcessingJobs VideoProcessingJob[]
 
+  // Messaging relations
+  conversationsCreated Conversation[] @relation("ConversationCreator")
+  conversationParticipants ConversationParticipant[] @relation("ConversationParticipants")
+  messagesSent Message[] @relation("MessageSender")
+  messageDeliveryStatus MessageDeliveryStatus[] @relation("MessageDeliveryStatus")
+  messageReactions MessageReaction[] @relation("MessageReactions")
+  userSessions UserSession[] @relation("UserSessions")
+
   @@map("users")
 }
 
@@ -175,6 +183,8 @@ model Media {
   coverForGallery Gallery? @relation("GalleryCover")
   comments Comment[]
   videoProcessingJobs VideoProcessingJob[]
+  messages Message[] @relation("MessageMedia")
+  messageMediaItems MessageMedia[] @relation("MessageMediaItems")
 
   @@map("media")
 }
@@ -371,4 +381,153 @@ enum ProcessingStatus {
   COMPLETED
   REJECTED
   FAILED
+}
+
+// Messaging Models
+model Conversation {
+  id              String            @id @default(cuid())
+  type            ConversationType  @default(DIRECT)
+  name            String?           // For group chats
+  avatarUrl       String?           // For group chats
+  createdById     String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  lastMessageAt   DateTime?
+  isActive        Boolean           @default(true)
+
+  // Relations
+  createdBy       User              @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  participants    ConversationParticipant[]
+  messages        Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id              String            @id @default(cuid())
+  conversationId  String
+  userId          String
+  role            ParticipantRole   @default(MEMBER)
+  joinedAt        DateTime          @default(now())
+  leftAt          DateTime?
+  isActive        Boolean           @default(true)
+
+  // Relations
+  conversation    Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User              @relation("ConversationParticipants", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id                String        @id @default(cuid())
+  conversationId    String
+  senderId          String
+  content           String?
+  messageType       MessageType   @default(TEXT)
+  mediaId           String?
+  replyToId         String?
+  encryptedContent  String?       // For future E2E encryption
+  encryptionVersion Int           @default(1)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  isDeleted         Boolean       @default(false)
+
+  // Relations
+  conversation      Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender            User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  media             Media?        @relation("MessageMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  mediaItems        MessageMedia[] @relation("MessageMediaItems")
+  deliveryStatus    MessageDeliveryStatus[]
+  reactions         MessageReaction[]
+
+  @@map("messages")
+}
+
+model MessageMedia {
+  id     String @id @default(cuid())
+  messageId String
+  mediaId String
+  order  Int    @default(0)
+
+  // Relations
+  message Message @relation("MessageMediaItems", fields: [messageId], references: [id], onDelete: Cascade)
+  media   Media   @relation("MessageMediaItems", fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, mediaId])
+  @@map("message_media")
+}
+
+model MessageDeliveryStatus {
+  id          String          @id @default(cuid())
+  messageId   String
+  userId      String
+  status      DeliveryStatus  @default(SENT)
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  // Relations
+  message     Message         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User            @relation("MessageDeliveryStatus", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_delivery_status")
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  reaction  String   // Emoji
+  createdAt DateTime @default(now())
+
+  // Relations
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation("MessageReactions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, reaction])
+  @@map("message_reactions")
+}
+
+model UserSession {
+  id         String   @id @default(cuid())
+  userId     String
+  sessionId  String   @unique
+  deviceInfo Json?
+  lastSeen   DateTime @default(now())
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user       User     @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+}
+
+// Messaging Enums
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum ParticipantRole {
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  POST
+  SYSTEM
+}
+
+enum DeliveryStatus {
+  SENT
+  DELIVERED
+  READ
 } 

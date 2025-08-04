@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus } from 'lucide-react'
+import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus, MessageCircle } from 'lucide-react'
 import { PersonalFeed } from './personal-feed'
 import { UserGallery } from './user-gallery'
 import { ProfileEditor } from './profile-editor'
@@ -11,6 +11,7 @@ import { MediaUploader } from './media-uploader'
 import FriendRequests from './friend-requests'
 import FriendsList from './friends-list'
 import { useAuth } from '../../lib/api-hooks'
+import { useMessaging } from '../../lib/messaging-context'
 
 interface UserData {
   id: string
@@ -32,6 +33,7 @@ export function DashboardWrapper() {
   const [isClient, setIsClient] = useState(false)
 
   const { data: authData, isLoading, error } = useAuth()
+  const { conversations, isConnected, unreadCount } = useMessaging()
 
   const handleUploadComplete = useCallback(() => {
     // The optimistic update will handle this automatically
@@ -127,6 +129,23 @@ export function DashboardWrapper() {
                 <Plus className="h-4 w-4" />
                 <span>Upload Media</span>
               </button>
+              
+              {/* Messaging Icon */}
+              <div className="relative">
+                <button
+                  onClick={() => router.push('/messages')}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 relative"
+                  title="Messages"
+                >
+                  <MessageCircle className="h-6 w-6 text-gray-600" />
+                  {/* Unread messages badge */}
+                  {isConnected && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
               
               <div className="relative group">
                 <button className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
