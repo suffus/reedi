@@ -113,7 +113,16 @@ export function MessagingProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize Socket.io connection
   useEffect(() => {
+    console.log('Socket.io connection attempt:', { 
+      user: !!user, 
+      token: !!token, 
+      tokenLength: token?.length,
+      tokenStart: token?.substring(0, 20) + '...',
+      socketUrl: process.env.NEXT_PUBLIC_SOCKET_URL
+    });
+    
     if (!user || !token) {
+      console.log('Socket.io connection skipped:', { user: !!user, token: !!token });
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -122,7 +131,17 @@ export function MessagingProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const socket = io('http://localhost:8088', {
+    // Use the same base URL as the API, but for Socket.io
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api';
+    const socketUrl = apiUrl.replace('/api', ''); // Remove /api suffix for Socket.io
+    console.log('API URL:', apiUrl);
+    console.log('Socket.io URL:', socketUrl);
+    console.log('Environment check:', {
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+      NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL
+    });
+    
+    const socket = io(socketUrl, {
       auth: { token },
       transports: ['websocket', 'polling']
     });
