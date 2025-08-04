@@ -34,25 +34,37 @@ export class MessagingService {
       try {
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
         
+        console.log('Socket.io auth attempt:', {
+          hasAuthToken: !!socket.handshake.auth.token,
+          hasAuthHeader: !!socket.handshake.headers.authorization,
+          tokenLength: token?.length
+        });
+        
         if (!token) {
+          console.log('Socket.io auth failed: No token provided');
           return next(new Error('Authentication error: No token provided'));
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+        console.log('Socket.io auth: Token decoded successfully, userId:', decoded.userId);
+        
         const user = await this.prisma.user.findUnique({
           where: { id: decoded.userId },
           select: { id: true, name: true, username: true, avatar: true }
         });
 
         if (!user) {
+          console.log('Socket.io auth failed: User not found for userId:', decoded.userId);
           return next(new Error('Authentication error: User not found'));
         }
 
+        console.log('Socket.io auth successful for user:', user.name);
         socket.userId = user.id;
         socket.user = user;
         next();
       } catch (error) {
-        next(new Error('Authentication error: Invalid token'));
+        console.log('Socket.io auth failed: Invalid token, error:', error);
+        next(new Error('Authentication error: Invalid token: ' + JSON.stringify(error)));
       }
     });
   }
