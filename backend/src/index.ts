@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 import { PrismaClient } from '@prisma/client'
 import path from 'path'
+import { createServer } from 'http'
 
 // Import routes
 import authRoutes from '@/routes/auth'
@@ -18,6 +19,10 @@ import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
 import friendRoutes from '@/routes/friends'
 import videoProcessingRoutes from '@/routes/videoProcessing'
+import messageRoutes from '@/routes/messages'
+
+// Import services
+import { MessagingService } from '@/services/messagingService'
 
 // Import services
 import { StagedVideoProcessingService } from '@/services/stagedVideoProcessingService'
@@ -41,8 +46,9 @@ export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 })
 
-// Create Express app
+// Create Express app and HTTP server
 const app = express()
+const server = createServer(app)
 const PORT = process.env.PORT || 8088
 
 // Add video processing service to app context
@@ -108,6 +114,7 @@ app.use('/api/galleries', galleryRoutes)
 app.use('/api/search', searchRoutes)
 app.use('/api/friends', friendRoutes)
 app.use('/api/video-processing', videoProcessingRoutes)
+app.use('/api/messages', messageRoutes)
 
 // Error handling middleware
 app.use(errorHandler)
@@ -140,8 +147,9 @@ setInterval(async () => {
   }
 }, 30000) // Check every 30 seconds
 
-// Initialize video processing service
+// Initialize services
 let videoProcessingService: StagedVideoProcessingService | null = null
+let messagingService: MessagingService | null = null
 
 // Start server
 async function startServer() {
@@ -149,6 +157,16 @@ async function startServer() {
     // Test database connection
     await prisma.$connect()
     console.log('✅ Database connected successfully')
+
+    // Initialize messaging service
+    try {
+      messagingService = new MessagingService(server, prisma)
+      app.locals.messagingService = messagingService
+      console.log('✅ Messaging service started')
+    } catch (error) {
+      console.warn('⚠️ Messaging service failed to start:', error)
+      console.warn('⚠️ Real-time messaging will be disabled')
+    }
 
     // Initialize video processing service
     try {
@@ -162,10 +180,11 @@ async function startServer() {
       console.warn('⚠️ Video processing will be disabled')
     }
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`)
       console.log(`📊 Health check: http://localhost:${PORT}/health`)
       console.log(`🔗 API Base URL: http://localhost:${PORT}/api`)
+      console.log(`💬 WebSocket: ws://localhost:${PORT}`)
     })
   } catch (error) {
     console.error('❌ Failed to start server:', error)

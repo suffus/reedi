@@ -7,6 +7,37 @@ import { AuthenticatedRequest } from '@/types'
 
 const router = Router()
 
+// Get all users (for messaging)
+router.get('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const currentUserId = req.user?.id
+  
+  if (!currentUserId) {
+    res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+    return
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      id: { not: currentUserId } // Exclude current user
+    },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      avatar: true,
+      isPrivate: true
+    },
+    orderBy: {
+      name: 'asc'
+    }
+  })
+
+  res.json(users)
+}))
+
 // Configure multer for avatar uploads
 const storage = multer.memoryStorage()
 const upload = multer({ 
