@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Upload, Image as ImageIcon, Video, Globe } from 'lucide-react'
 import { MediaUploader } from './media-uploader'
-import { useUserMedia, useSearchMediaByTags, useMyGalleries, useGalleryMedia } from '../../lib/api-hooks'
+import { useInfiniteFilteredUserMedia, useSearchMediaByTags, useMyGalleries } from '../../lib/api-hooks'
 import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
@@ -36,60 +36,41 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
 
   console.log("userId", userId)
 
-  const { 
-    data: galleryData, 
-    isLoading: galleryLoading, 
-    loadMore, 
-    hasMore, 
-    isLoadingMore,
-    reset
-  } = useUserMedia(userId)
-  
   // Get user's galleries for filtering
   const { data: galleriesData } = useMyGalleries(1, 100)
   const userGalleries = galleriesData?.data?.galleries || []
   
-  // Get media from selected gallery if one is selected
-  const { data: selectedGalleryMediaData, isLoading: selectedGalleryLoading } = useGalleryMedia(selectedGalleryId, 1, 100)
-  const selectedGalleryMedia = selectedGalleryId ? (selectedGalleryMediaData?.data?.media || []).map((mediaItem: any) => {
-    const mapped = mapMediaData(mediaItem)
-    return {
-      ...mapped,
-      url: getMediaUrlFromMedia(mapped, false),
-      thumbnail: getMediaUrlFromMedia(mapped, true),
-    }
-  }) : []
-  
-
-  
-  // Map the raw media to our frontend format
-  const galleryMedia = (galleryData?.data?.media || []).map((mediaItem: any) => {
-    const mapped = mapMediaData(mediaItem)
-    return {
-      ...mapped,
-      // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
-      url: getMediaUrlFromMedia(mapped, false),
-      thumbnail: getMediaUrlFromMedia(mapped, true),
-    }
-  })
-
-  // Determine which media to show based on filters
-  let displayMedia = galleryMedia
-  
-  // If a gallery is selected, show only that gallery's media
-  if (selectedGalleryId) {
-    displayMedia = selectedGalleryMedia
+  // Build filters for the filtered user media hook
+  const mediaFilters = {
+    ...(selectedGalleryId && { galleryId: selectedGalleryId }),
+    ...(filterTags.length > 0 && { tags: filterTags })
   }
   
-  // Filter media based on selected tags
-  const filteredGalleryMedia = filterTags.length === 0 ? displayMedia : displayMedia.filter((mediaItem: any) => {
-    // Check if the media has all the selected tags
-    return filterTags.every(tag => 
-      mediaItem.tags && Array.isArray(mediaItem.tags) && mediaItem.tags.some((mediaTag: string) => 
-        mediaTag && typeof mediaTag === 'string' && mediaTag.toLowerCase().includes(tag.toLowerCase())
-      )
-    )
-  })
+  // Get filtered user media with infinite scroll
+  const { 
+    data: filteredMediaData, 
+    isLoading: galleryLoading,
+    error: galleryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage
+  } = useInfiniteFilteredUserMedia(userId, mediaFilters)
+  
+  // Map the raw media to our frontend format (flatten pages from infinite query)
+  const galleryMedia = (filteredMediaData?.pages || []).flatMap((page: any) => 
+    (page.data?.media || []).map((mediaItem: any) => {
+      const mapped = mapMediaData(mediaItem)
+      return {
+        ...mapped,
+        // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
+        url: getMediaUrlFromMedia(mapped, false),
+        thumbnail: getMediaUrlFromMedia(mapped, true),
+      }
+    })
+  )
+
+  // For now, we'll use the filtered media directly since filtering is now done server-side
+  const filteredGalleryMedia = galleryMedia
   
 
 
@@ -116,19 +97,6 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
   // Determine default tab based on whether user has media in gallery
   const defaultTab: TabType = galleryMedia.length > 0 ? 'gallery' : 'upload'
   const [activeTab, setActiveTab] = useState<TabType>(defaultTab)
-
-  // Reset gallery when search query changes
-  useEffect(() => {
-    if (searchQuery || tagQuery) {
-      const timeoutId = setTimeout(() => {
-        reset()
-        setSearchPage(1)
-        setShowGlobalSearch(false)
-      }, 500)
-      
-      return () => clearTimeout(timeoutId)
-    }
-  }, [searchQuery, tagQuery, reset])
 
   // Check if we should show global search when tag query changes
   useEffect(() => {
@@ -381,16 +349,16 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                 )}
 
                 {/* Local Gallery Media */}
-                {displayMedia.length > 0 && (
+                {galleryMedia.length > 0 && (
                   <div className="mb-6">
                   <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
                   <Globe className="h-4 w-4 mr-2" />
                   My Media
                 </h3>
                     <InfiniteScrollContainer
-                      hasMore={hasMore}
-                      isLoading={isLoadingMore}
-                      onLoadMore={loadMore}
+                      hasMore={hasNextPage}
+                      isLoading={isFetchingNextPage}
+                      onLoadMore={fetchNextPage}
                     >
                       <MediaGrid
                         media={filteredGalleryMedia}
@@ -439,7 +407,7 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                 )}
 
                 {/* Empty State for Gallery */}
-                {displayMedia.length === 0 && !galleryLoading && !showGlobalSearch && (
+                {galleryMedia.length === 0 && !galleryLoading && !showGlobalSearch && (
                   <div className="text-center py-12">
                     <div className="flex items-center justify-center space-x-2 mb-4">
                       <ImageIcon className="h-12 w-12 text-gray-400" />
