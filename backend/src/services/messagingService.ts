@@ -227,6 +227,16 @@ export class MessagingService {
             thumbnail: message.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}/thumbnail` : null
           } : null;
 
+          // Transform mediaItems URLs to full URLs
+          const mediaItemsWithUrls = message.mediaItems?.map(item => ({
+            ...item,
+            media: {
+              ...item.media,
+              url: item.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}` : null,
+              thumbnail: item.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}/thumbnail` : null
+            }
+          })) || [];
+
           // Emit message to all participants in the conversation
           const messageData = {
             id: message.id,
@@ -235,6 +245,7 @@ export class MessagingService {
             content: message.content,
             messageType: message.messageType,
             media: mediaWithUrls,
+            mediaItems: mediaItemsWithUrls,
             createdAt: message.createdAt,
             sender: message.sender
           };

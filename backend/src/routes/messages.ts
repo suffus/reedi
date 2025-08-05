@@ -276,7 +276,15 @@ router.get('/conversations/:conversationId/messages', authMiddleware, async (req
         ...message.media,
         url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null,
         thumbnail: message.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}/thumbnail` : null
-      } : null
+      } : null,
+      mediaItems: message.mediaItems?.map(item => ({
+        ...item,
+        media: {
+          ...item.media,
+          url: item.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}` : null,
+          thumbnail: item.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}/thumbnail` : null
+        }
+      })) || []
     }));
 
     res.json(messagesWithUrls.reverse()); // Return in chronological order

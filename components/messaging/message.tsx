@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { MediaDisplay } from '../common/media-display';
+import { useMediaDetail } from '../common/media-detail-context';
 
 interface MessageProps {
   message: {
@@ -39,6 +41,8 @@ interface MessageProps {
 }
 
 export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
+  const { openMediaDetail } = useMediaDetail()
+  
   // Debug logging for media messages
   if (message.messageType !== 'TEXT' && message.media) {
     console.log('Message media debug:', {
@@ -59,9 +63,9 @@ export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
               alt="Image message"
               className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => {
-                if (message.media?.url) {
-                  // TODO: Open in media detail modal like posts
-                  window.open(message.media.url, '_blank');
+                if (message.media) {
+                  // Open in shared media detail modal
+                  openMediaDetail(message.media);
                 }
               }}
             />
@@ -107,60 +111,10 @@ export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
               <p className="text-sm text-gray-600 mb-2">{message.content}</p>
             )}
             {message.mediaItems && message.mediaItems.length > 0 && (
-              <div className="grid grid-cols-1 gap-2">
-                {message.mediaItems.map((item) => (
-                  <div key={item.id} className="relative">
-                    {item.media.mimeType?.startsWith('image/') ? (
-                      <img
-                        src={item.media.url || item.media.thumbnail}
-                        alt={item.media.originalFilename || 'Image'}
-                        className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                        onClick={() => {
-                          if (item.media.url) {
-                            // TODO: Open in media detail modal like posts
-                            window.open(item.media.url, '_blank');
-                          }
-                        }}
-                      />
-                    ) : item.media.mimeType?.startsWith('video/') ? (
-                      <video
-                        src={item.media.url}
-                        controls
-                        className="rounded-lg max-w-full h-auto"
-                        poster={item.media.thumbnail}
-                      />
-                    ) : (
-                      <div className="flex items-center p-3 bg-gray-100 rounded-lg">
-                        <div className="flex-shrink-0 mr-3">
-                          <svg className="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {item.media.originalFilename || 'File'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {item.media.mimeType || 'Unknown type'}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (item.media.url) {
-                              window.open(item.media.url, '_blank');
-                            }
-                          }}
-                          className="ml-2 p-1 text-gray-500 hover:text-gray-700"
-                        >
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <MediaDisplay
+                media={message.mediaItems.map(item => item.media)}
+                maxWidth="max-w-md"
+              />
             )}
           </div>
         );
