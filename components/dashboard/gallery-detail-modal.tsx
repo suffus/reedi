@@ -26,6 +26,8 @@ import { FullScreenWrapper } from '../full-screen-wrapper'
 import { TagInput } from '../tag-input'
 import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
+import { useToast } from '../common/toast'
+import { downloadMedia } from '@/lib/download-utils'
 
 interface GalleryDetailModalProps {
   isOpen: boolean
@@ -57,6 +59,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
 
   // Media selection state for bulk editing
   const [selectedMediaItems, setSelectedMediaItems] = useState<any[]>([])
+  const [lastClickedMediaIndex, setLastClickedMediaIndex] = useState<number | null>(null)
 
   const { data: galleryData, isLoading, error, refetch: refetchGallery } = useGallery(galleryId)
   const { data: userMediaData } = useUserMedia('me')
@@ -67,6 +70,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   const reorderMediaMutation = useReorderGalleryMedia()
   const setCoverMutation = useSetGalleryCover()
   const bulkUpdateMediaMutation = useBulkUpdateMedia()
+  const { showToast } = useToast()
 
   const gallery = galleryData?.data?.gallery
   const media = gallery?.media || []
@@ -271,6 +275,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
 
   const clearSelection = () => {
     setSelectedMediaItems([])
+    setLastClickedMediaIndex(null)
   }
 
   const selectMedia = (mediaItems: any[]) => {
@@ -285,13 +290,38 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     clearSelection()
   }
 
-  const toggleMedia = (mediaItem: any) => {
+  const toggleMedia = (mediaItem: any, event?: React.MouseEvent, index?: number) => {
     setSelectedMediaItems(prev => {
       const isSelected = prev.some(m => m.id === mediaItem.id)
-      if (isSelected) {
-        return prev.filter(m => m.id !== mediaItem.id)
+      
+      // Handle shift-click range selection
+      if (event?.shiftKey && lastClickedMediaIndex !== null && index !== undefined) {
+        const startIndex = Math.min(lastClickedMediaIndex, index)
+        const endIndex = Math.max(lastClickedMediaIndex, index)
+        const rangeMedia = orderedMedia.slice(startIndex, endIndex + 1)
+        
+        // Add all items in the range to selection
+        const newSelection = [...prev]
+        rangeMedia.forEach((item: any) => {
+          if (!newSelection.some(m => m.id === item.id)) {
+            newSelection.push(item)
+          }
+        })
+        
+        setLastClickedMediaIndex(index)
+        return newSelection
       } else {
-        return [...prev, mediaItem]
+        // Normal click: toggle selection of current item
+        if (isSelected) {
+          return prev.filter(m => m.id !== mediaItem.id)
+        } else {
+          const newSelection = [...prev, mediaItem]
+          // Update last clicked index if index is provided
+          if (index !== undefined) {
+            setLastClickedMediaIndex(index)
+          }
+          return newSelection
+        }
       }
     })
   }
@@ -371,6 +401,27 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     setShowBulkEditForm(false)
     setBulkEditMode(false)
     clearSelection()
+  }
+
+  const handleDownloadMedia = async (media: any) => {
+    try {
+      const mediaUrl = getMediaUrlFromMedia(media, false)
+      const mediaName = media.altText || media.caption || 'media'
+      const mediaType = media.mediaType || 'IMAGE'
+      
+      await downloadMedia(mediaUrl, mediaName, mediaType)
+      
+      showToast({
+        type: 'success',
+        message: `${mediaType === 'VIDEO' ? 'Video' : 'Image'} downloaded successfully!`
+      })
+    } catch (error) {
+      console.error('Download failed:', error)
+      showToast({
+        type: 'error',
+        message: 'Failed to download media. Please try again.'
+      })
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -811,9 +862,9 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               src={getMediaUrlFromMedia(media, true)}
                               alt={media.altText || 'Gallery medium'}
                               className={`w-full h-full object-cover ${bulkEditMode ? 'cursor-pointer' : 'cursor-pointer'}`}
-                              onClick={() => {
+                              onClick={(e?: React.MouseEvent) => {
                                 if (bulkEditMode) {
-                                  toggleMedia(media)
+                                  toggleMedia(media, e, index)
                                 } else {
                                   setSelectedMediaForDetail(media)
                                 }
@@ -827,7 +878,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    toggleMedia(media)
+                                    toggleMedia(media, e, index)
                                   }}
                                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 ${
                                     selectedMediaItems.some((img: any) => img.id === media.id)
@@ -859,13 +910,12 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                   >
                                     <Eye className="h-4 w-4 text-gray-700" />
                                   </button>
-                                  <a
-                                    href={getMediaUrlFromMedia(media, false)}
-                                    download
+                                  <button
+                                    onClick={() => handleDownloadMedia(media)}
                                     className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
                                   >
                                     <Download className="h-4 w-4 text-gray-700" />
-                                  </a>
+                                  </button>
                                   {isOwner && (
                                     <>
                                       <button
@@ -983,7 +1033,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               {/* Bulk Edit Selection Checkbox */}
                               {bulkEditMode && (
                                 <button
-                                  onClick={() => toggleMedia(media)}
+                                  onClick={(e) => toggleMedia(media, e, index)}
                                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 flex-shrink-0 ${
                                     selectedMediaItems.some((img: any) => img.id === media.id)
                                       ? 'bg-green-500 border-green-500 text-white'
@@ -1002,9 +1052,9 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                   src={getMediaUrlFromMedia(media, true)}
                                   alt={media.altText || 'Gallery media 3'}
                                   className="w-full h-full object-cover cursor-pointer"
-                                  onClick={() => {
+                                  onClick={(e) => {
                                     if (bulkEditMode) {
-                                      toggleMedia(media)
+                                      toggleMedia(media, e, index)
                                     } else {
                                       setSelectedMediaForDetail(media)
                                     }
@@ -1044,13 +1094,12 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                     >
                                       <Eye className="h-4 w-4" />
                                     </button>
-                                    <a
-                                      href={getMediaUrlFromMedia(media, false)}
-                                      download
+                                    <button
+                                      onClick={() => handleDownloadMedia(media)}
                                       className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                                     >
                                       <Download className="h-4 w-4" />
-                                    </a>
+                                    </button>
                                     {isOwner && (
                                       <>
                                         <button

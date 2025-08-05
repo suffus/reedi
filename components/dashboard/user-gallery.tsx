@@ -16,6 +16,8 @@ import { Media } from '@/lib/types'
 import { mapMediaData, getBestThumbnailUrl } from '@/lib/media-utils'
 import { TagInput } from '../tag-input'
 import { InfiniteScrollContainer } from '../infinite-scroll-container'
+import { useToast } from '../common/toast'
+import { downloadMedia } from '@/lib/download-utils'
 
 
 interface UserGalleryProps {
@@ -67,6 +69,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
   )
 
   const deleteMediaMutation = useDeleteMedia()
+  const { showToast } = useToast()
 
   const handleGalleryClick = (gallery: any) => {
     setSelectedGallery(gallery)
@@ -442,11 +445,25 @@ export function UserGallery({ userId }: UserGalleryProps) {
               isSelectable={isBulkSelectMode}
               showActions={!isBulkSelectMode}
               onViewDetails={(media) => setSelectedMedia(media)}
-              onDownload={(media) => {
-                const link = document.createElement('a')
-                link.href = getMediaUrlFromMedia(media, false)
-                link.download = media.altText || 'media'
-                link.click()
+              onDownload={async (media) => {
+                try {
+                  const mediaUrl = getMediaUrlFromMedia(media, false)
+                  const mediaName = media.altText || media.caption || 'media'
+                  const mediaType = media.mediaType || 'IMAGE'
+                  
+                  await downloadMedia(mediaUrl, mediaName, mediaType)
+                  
+                  showToast({
+                    type: 'success',
+                    message: `${mediaType === 'VIDEO' ? 'Video' : 'Image'} downloaded successfully!`
+                  })
+                } catch (error) {
+                  console.error('Download failed:', error)
+                  showToast({
+                    type: 'error',
+                    message: 'Failed to download media. Please try again.'
+                  })
+                }
               }}
               onDelete={(media) => handleDeleteMedia(media.id)}
               isDeleting={deleteMediaMutation.isPending}

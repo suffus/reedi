@@ -9,7 +9,7 @@ interface LazyMediaProps {
   mediaType: 'IMAGE' | 'VIDEO'
   className?: string
   style?: React.CSSProperties
-  onClick?: () => void
+  onClick?: (e?: React.MouseEvent) => void
   onLoad?: () => void
   onError?: () => void
   placeholder?: string
@@ -159,7 +159,7 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
             transform: isLoaded ? 'scale(1)' : 'scale(0.98)',
             transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
           }}
-          onClick={onClick}
+          onClick={(e) => onClick?.(e)}
           onLoadStart={handleLoad}
           onLoadedData={handleLoad}
           onError={handleError}
@@ -229,7 +229,7 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
           transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
           filter: showProgressiveEffect && isProgressiveLoading ? `blur(${Math.max(0, 10 - (progressiveQuality / 10))}px)` : 'none'
         }}
-        onClick={onClick}
+        onClick={(e) => onClick?.(e)}
         onLoad={handleLoad}
         onError={handleError}
         draggable={draggable}
