@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import { Providers } from '../components/providers'
+import { SharedMediaDetailModal } from '../components/common/shared-media-detail-modal'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -44,6 +45,7 @@ export default function RootLayout({
       <body className="font-sans antialiased bg-white text-primary-900">
         <Providers>
           {children}
+          <SharedMediaDetailModal />
         </Providers>
       </body>
     </html>
