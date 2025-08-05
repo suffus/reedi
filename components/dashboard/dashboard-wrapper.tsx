@@ -12,6 +12,8 @@ import FriendRequests from './friend-requests'
 import FriendsList from './friends-list'
 import { useAuth } from '../../lib/api-hooks'
 import { useMessaging } from '../../lib/messaging-context'
+import { useQueryClient } from '@tanstack/react-query'
+import { useToast } from '../common/toast'
 
 interface UserData {
   id: string
@@ -34,11 +36,27 @@ export function DashboardWrapper() {
 
   const { data: authData, isLoading, error } = useAuth()
   const { conversations, isConnected, unreadCount } = useMessaging()
+  const queryClient = useQueryClient()
+  const { showToast } = useToast()
 
   const handleUploadComplete = useCallback(() => {
-    // The optimistic update will handle this automatically
-    console.log('Upload complete')
-  }, [])
+    // Force a complete invalidation and refresh of the user gallery
+    console.log('Upload complete - forcing gallery refresh')
+    
+    // Show success toast
+    showToast({
+      type: 'success',
+      message: 'Media uploaded successfully! Gallery is being updated...'
+    })
+    
+    // Invalidate all user media queries to force a complete refresh
+    queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
+    
+    // Also dispatch a custom event for immediate UI feedback
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gallery-refresh-required'))
+    }
+  }, [queryClient, showToast])
 
   useEffect(() => {
     setIsClient(true)

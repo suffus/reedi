@@ -71,26 +71,43 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const deleteMediaMutation = useDeleteMedia()
   const { showToast } = useToast()
 
+  // Listen for gallery refresh events from upload dialog
+  useEffect(() => {
+    const handleGalleryRefresh = () => {
+      console.log('Gallery refresh event received - resetting user media')
+      reset()
+    }
+
+    window.addEventListener('gallery-refresh-required', handleGalleryRefresh)
+    
+    return () => {
+      window.removeEventListener('gallery-refresh-required', handleGalleryRefresh)
+    }
+  }, [reset])
+
   const handleGalleryClick = (gallery: any) => {
     setSelectedGallery(gallery)
     setIsGalleryDetailModalOpen(true)
   }
 
   // Map the raw media to our frontend format and use backend serve endpoints
-  const media = (data?.data?.media || []).map((mediaItem: any) => {
-    const mapped = mapMediaData(mediaItem)
-    const bestThumbnail = getBestThumbnailUrl(mapped)
-    
-    return {
-      ...mapped,
-      // Keep the original S3 keys for the MediaDetailModal
-      s3Key: mediaItem.s3Key || mediaItem.url,
-      thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
-      // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
-      url: getMediaUrlFromMedia(mapped, false),
-      thumbnail: bestThumbnail || getMediaUrlFromMedia(mapped, true), // Use best thumbnail or fallback
-    }
-  })
+  const media = (data?.data?.media || [])
+    .map((mediaItem: any) => {
+      const mapped = mapMediaData(mediaItem)
+      const bestThumbnail = getBestThumbnailUrl(mapped)
+      
+      return {
+        ...mapped,
+        // Keep the original S3 keys for the MediaDetailModal
+        s3Key: mediaItem.s3Key || mediaItem.url,
+        thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+        // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
+        url: getMediaUrlFromMedia(mapped, false),
+        thumbnail: bestThumbnail || getMediaUrlFromMedia(mapped, true), // Use best thumbnail or fallback
+      }
+    })
+    // Sort by creation date in descending order (most recent first)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   // Filter media based on selected tags
   const filteredMedia = useMemo(() => {
