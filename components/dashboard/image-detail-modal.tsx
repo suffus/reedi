@@ -4,6 +4,7 @@ import { X, MessageCircle, Send, Calendar, User, ZoomIn, ZoomOut, Crop, Edit2, S
 import { useRouter } from 'next/navigation'
 import { useMediaComments, useCreateComment, useAuth, useUpdateMedia } from '@/lib/api-hooks'
 import { getMediaUrlFromMedia } from '@/lib/api'
+import { getSmartMediaUrl } from '@/lib/media-utils'
 import { LazyMedia } from '../lazy-media'
 import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
@@ -719,7 +720,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             )}
 
             <img
-              src={getMediaUrlFromMedia(media, false)}
+              src={getSmartMediaUrl(media, 'detail')}
               alt={mappedMedia.altText || 'Gallery image'}
               className={dragStart.x === 0 ? "transition-transform duration-200 ease-out" : ""}
               style={{

@@ -2,20 +2,20 @@ import * as amqp from 'amqplib'
 import logger from '../utils/logger'
 
 export interface ProcessingRequest {
-  type: 'video_processing_request'
+  type: 'video_processing_request' | 'image_processing_request'
   job_id: string
   media_id: string
   user_id: string
   s3_key: string
   original_filename: string
-  request_thumbnails: boolean
+  request_thumbnails?: boolean
   request_progress_updates: boolean
   progress_interval: number
   timestamp: string
 }
 
 export interface ProgressUpdate {
-  type: 'video_processing_update'
+  type: 'video_processing_update' | 'image_processing_update'
   job_id: string
   media_id: string
   status: 'processing' | 'completed' | 'failed'
@@ -34,12 +34,24 @@ export interface ProgressUpdate {
     height: number
     file_size: number
   }>
+  image_versions?: Array<{
+    quality: string
+    s3_key: string
+    width: number
+    height: number
+    file_size: number
+  }>
   metadata?: {
-    duration: number
-    resolution: string
-    codec: string
-    bitrate: number
-    framerate: number
+    duration?: number
+    resolution?: string
+    codec?: string
+    bitrate?: number
+    framerate?: number
+    width?: number
+    height?: number
+    format?: string
+    colorSpace?: string
+    hasAlpha?: boolean
   }
   error_message?: string
   timestamp: string
@@ -57,27 +69,27 @@ export class EnhancedRabbitMQService {
   private channel?: amqp.Channel
   private readonly url: string
   private readonly exchanges: {
+    requests: string
     processing: string
     updates: string
   }
   private readonly queues: QueueConfig
+  private readonly routingKey: string
 
   constructor(
     url: string = 'amqp://localhost',
     exchanges = {
-      processing: 'video.processing',
-      updates: 'video.updates'
+      requests: 'media.requests',
+      processing: 'media.processing',
+      updates: 'media.updates'
     },
-    queues: QueueConfig = {
-      download: 'video.processing.download',
-      processing: 'video.processing.processing',
-      upload: 'video.processing.upload',
-      updates: 'video.processing.updates'
-    }
+    routingKey = 'define-the-routing-key',
+    queues: QueueConfig 
   ) {
     this.url = url
     this.exchanges = exchanges
     this.queues = queues
+    this.routingKey = routingKey
   }
 
   async connect(): Promise<void> {
@@ -86,21 +98,13 @@ export class EnhancedRabbitMQService {
       this.channel = await (this.connection as any).createChannel()
       
       // Declare exchanges
-      await (this.channel as any).assertExchange(this.exchanges.processing, 'direct', { durable: true })
-      await (this.channel as any).assertExchange(this.exchanges.updates, 'direct', { durable: true })
+      for (const exchange of Object.values(this.exchanges)) {
+        await (this.channel as any).assertExchange(exchange, 'direct', {durable: true})
+      }
       
       // Declare all queues
-      await (this.channel as any).assertQueue(this.queues.download, { durable: true })
-      await (this.channel as any).assertQueue(this.queues.processing, { durable: true })
-      await (this.channel as any).assertQueue(this.queues.upload, { durable: true })
-      await (this.channel as any).assertQueue(this.queues.updates, { durable: true })
-      
-      // Bind queues to exchanges
-      await (this.channel as any).bindQueue(this.queues.download, this.exchanges.processing, 'download')
-      await (this.channel as any).bindQueue(this.queues.processing, this.exchanges.processing, 'processing')
-      await (this.channel as any).bindQueue(this.queues.upload, this.exchanges.processing, 'upload')
-      await (this.channel as any).bindQueue(this.queues.updates, this.exchanges.updates, 'update')
-      
+      await this.assertQueues(this.queues)
+      await this.bindQueues(this.queues, this.routingKey)
       logger.info('Enhanced RabbitMQ connection established')
     } catch (error) {
       logger.error('Failed to connect to RabbitMQ:', error)
@@ -108,10 +112,29 @@ export class EnhancedRabbitMQService {
     }
   }
 
+  async assertQueues(queues: QueueConfig): Promise<void> {
+    for (const queue of Object.values(queues)) {
+      await (this.channel as any).assertQueue(queue, { durable: true })
+    }
+  }
+
+  async bindQueues( queues: QueueConfig, routingKey: string): Promise<void> {
+    await (this.channel as any).bindQueue(queues.download, this.exchanges.processing, routingKey+'.download')
+    logger.info(`Binding queue ${queues.download} to exchange ${this.exchanges.processing} with routing key ${routingKey+'.download'}`)
+    await (this.channel as any).bindQueue(queues.processing, this.exchanges.processing, routingKey+'.processing')
+    logger.info(`Binding queue ${queues.processing} to exchange ${this.exchanges.processing} with routing key ${routingKey+'.processing'}`)
+    await (this.channel as any).bindQueue(queues.upload, this.exchanges.processing, routingKey+'.upload')
+    logger.info(`Binding queue ${queues.upload} to exchange ${this.exchanges.processing} with routing key ${routingKey+'.upload'}`)
+    await (this.channel as any).bindQueue(queues.updates, this.exchanges.updates, routingKey+'.updates')
+    logger.info(`Binding queue ${queues.updates} to exchange ${this.exchanges.updates} with routing key ${routingKey+'.updates'}`)
+  }
+
   async consumeQueue(queueName: string, callback: (message: any) => Promise<void>): Promise<void> {
     if (!this.channel) {
       throw new Error('RabbitMQ channel not initialized')
     }
+
+    logger.info(`Consuming from queue ${queueName}`)
 
     await this.channel.consume(queueName, async (msg: amqp.ConsumeMessage | null) => {
       if (!msg) return
@@ -146,9 +169,10 @@ export class EnhancedRabbitMQService {
 
     try {
       const messageBuffer = Buffer.from(JSON.stringify(message))
+      logger.info(`Routing message to queue ${queueName} with routing key ${this.routingKey + '.' + queueName.split('.').pop() || 'default'}`)
       await this.channel.publish(
         this.exchanges.processing,
-        queueName.split('.').pop() || 'default',
+        this.routingKey + '.' + queueName.split('.').pop() || 'default',
         messageBuffer,
         { persistent: true }
       )
@@ -168,9 +192,10 @@ export class EnhancedRabbitMQService {
 
     try {
       const message = Buffer.from(JSON.stringify(update))
+      logger.info(`Publishing progress update for job ${update.job_id} with message ${message}`)
       await this.channel.publish(
         this.exchanges.updates,
-        'update',
+        this.routingKey + '.updates',
         message,
         { persistent: true }
       )

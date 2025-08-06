@@ -49,7 +49,6 @@ IDRIVE_BUCKET_NAME=your_bucket_name
 
 # API Backend Configuration
 API_BASE_URL=http://host.docker.internal:8088
-API_WEBHOOK_SECRET=your_webhook_secret
 ```
 
 ### Optional Variables (with defaults)

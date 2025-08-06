@@ -1,11 +1,51 @@
-import amqp from 'amqplib'
+import * as amqp from 'amqplib'
+import logger from '../utils/logger'
 
-const logger = {
-  info: (message: string, ...args: any[]) => console.log(`[INFO] ${message}`, ...args),
-  error: (message: string, ...args: any[]) => console.error(`[ERROR] ${message}`, ...args),
-  warn: (message: string, ...args: any[]) => console.warn(`[WARN] ${message}`, ...args)
+export interface ImageProcessingRequest {
+  type: 'image_processing_request'
+  job_id: string
+  media_id: string
+  user_id: string
+  s3_key: string
+  original_filename: string
+  request_progress_updates: boolean
+  progress_interval: number
+  timestamp: string
 }
 
+export interface ImageProgressUpdate {
+  type: 'image_processing_update'
+  job_id: string
+  media_id: string
+  status: 'processing' | 'completed' | 'failed'
+  progress: number
+  current_step?: string
+  image_versions?: Array<{
+    quality: string
+    s3Key: string
+    width: number
+    height: number
+    fileSize: number
+  }>
+  metadata?: {
+    width: number
+    height: number
+    format: string
+    colorSpace?: string
+    hasAlpha?: boolean
+  }
+  error_message?: string
+  timestamp: string
+}
+
+export interface ImageQueueConfig {
+  download: string
+  processing: string
+  upload: string
+  updates: string
+}
+
+// Legacy RabbitMQ service for video processing (keeping for backward compatibility)
 export interface ProcessingRequest {
   type: 'video_processing_request'
   job_id: string
@@ -13,7 +53,7 @@ export interface ProcessingRequest {
   user_id: string
   s3_key: string
   original_filename: string
-  request_thumbnails: boolean
+  request_thumbnails?: boolean
   request_progress_updates: boolean
   progress_interval: number
   timestamp: string
@@ -39,12 +79,24 @@ export interface ProgressUpdate {
     height: number
     file_size: number
   }>
+  image_versions?: Array<{
+    quality: string
+    s3Key: string
+    width: number
+    height: number
+    fileSize: number
+  }>
   metadata?: {
-    duration: number
-    resolution: string
-    codec: string
-    bitrate: number
-    framerate: number
+    duration?: number
+    resolution?: string
+    codec?: string
+    bitrate?: number
+    framerate?: number
+    width?: number
+    height?: number
+    format?: string
+    colorSpace?: string
+    hasAlpha?: boolean
   }
   error_message?: string
   timestamp: string
@@ -54,6 +106,7 @@ export class RabbitMQService {
   private connection?: amqp.Connection
   private channel?: amqp.Channel
   private readonly url: string
+  private readonly routingKey: string
   private readonly exchanges: {
     processing: string
     updates: string
@@ -67,17 +120,19 @@ export class RabbitMQService {
   constructor(
     url: string = process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
     exchanges = {
-      processing: 'video.processing',
-      updates: 'video.updates'
+      processing: 'media.processing',
+      updates: 'media.updates'
     },
+    routingKey = 'media',
     queues = {
-      requests: 'video.processing.requests',
-      updates: 'video.processing.updates'
-    }
+      requests: 'media.video.processing.requests',
+      updates: 'media.video.processing.updates'
+    },
   ) {
     this.url = url
     this.exchanges = exchanges
     this.queues = queues
+    this.routingKey = routingKey
   }
 
   async connect(): Promise<void> {
@@ -98,8 +153,9 @@ export class RabbitMQService {
       await this.channel.assertQueue(this.queues.updates, { durable: true })
       
       // Bind queues to exchanges
-      await this.channel.bindQueue(this.queues.requests, this.exchanges.processing, 'request')
-      await this.channel.bindQueue(this.queues.updates, this.exchanges.updates, 'update')
+      await this.channel.bindQueue(this.queues.requests, this.exchanges.processing, this.routingKey + '.request')
+      await this.channel.bindQueue(this.queues.updates, this.exchanges.updates, this.routingKey + '.updates')
+      logger.info(`Binding queue ${this.queues.updates} to exchange ${this.exchanges.updates} with routing key ${this.routingKey + '.updates'}`)
       
       logger.info('RabbitMQ connection established')
     } catch (error) {
@@ -107,7 +163,7 @@ export class RabbitMQService {
       throw error
     }
   }
-
+/*
   async publishProcessingRequest(request: ProcessingRequest): Promise<void> {
     if (!this.channel) {
       throw new Error('RabbitMQ channel not initialized')
@@ -117,7 +173,7 @@ export class RabbitMQService {
       const message = Buffer.from(JSON.stringify(request))
       await this.channel.publish(
         this.exchanges.processing,
-        'request',
+        this.routingKey + '.request',
         message,
         { persistent: true }
       )
@@ -128,7 +184,7 @@ export class RabbitMQService {
       throw error
     }
   }
-
+*/
   async sendMessage(queueName: string, message: any): Promise<void> {
     if (!this.channel) {
       throw new Error('RabbitMQ channel not initialized')
@@ -136,14 +192,16 @@ export class RabbitMQService {
 
     try {
       const messageBuffer = Buffer.from(JSON.stringify(message))
+      const routingCode = this.routingKey + '.' + queueName.split('.').pop() || 'default'
+
       await this.channel.publish(
         this.exchanges.processing,
-        queueName.split('.').pop() || 'default',
+        routingCode,
         messageBuffer,
         { persistent: true }
       )
       
-      logger.info(`Sent message to queue ${queueName}: ${message.id || message.job_id}`)
+      logger.info(`Sent message to queue ${queueName} with routing code ${routingCode} over exchange ${this.exchanges.processing}: ${message.id || message.job_id}`)
     } catch (error) {
       logger.error(`Failed to send message to queue ${queueName}:`, error)
       throw error
@@ -156,23 +214,25 @@ export class RabbitMQService {
     }
 
     this.updateCallback = callback
-
+    logger.info(`Rabbit MQ Consuming progress updates from queue: ${this.queues.updates}`)
     await this.channel.consume(this.queues.updates, async (msg: amqp.ConsumeMessage | null) => {
       if (!msg) {
-        console.log('No message received in updates queue')
+        console.log('XXX No message received in updates queue ' + this.queues.updates)
         return
       }
+
+      logger.info(`Rabbit MQ Consuming an update from queue: ${this.queues.updates}`)
 
       try {
         const update: ProgressUpdate = JSON.parse(msg.content.toString())
         logger.info(`Received progress update for job ${update.job_id}: ${update.status} (${update.progress}%)`)
         
+        // Acknowledge the message
+        this.channel!.ack(msg)
         if (this.updateCallback) {
           await this.updateCallback(update)
         }
         
-        // Acknowledge the message
-        this.channel!.ack(msg)
       } catch (error) {
         logger.error('Error processing progress update:', error)
         
@@ -201,4 +261,4 @@ export class RabbitMQService {
   isConnected(): boolean {
     return !!(this.connection && this.channel)
   }
-} 
+}

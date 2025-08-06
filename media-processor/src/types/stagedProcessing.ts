@@ -2,7 +2,7 @@ export interface StagedProcessingJob {
   id: string
   mediaId: string
   userId: string
-  mediaType: 'VIDEO'
+  mediaType: 'VIDEO' | 'IMAGE'
   s3Key: string
   originalFilename: string
   mimeType: string
@@ -10,8 +10,8 @@ export interface StagedProcessingJob {
   createdAt: Date
   stage: ProcessingStage
   previousStage?: ProcessingStage
-  localVideoPath?: string
-  metadata?: VideoMetadata
+  localMediaPath?: string
+  metadata?: VideoMetadata | ImageMetadata
   outputs?: ProcessingOutput[]
 }
 
@@ -36,14 +36,25 @@ export interface VideoMetadata {
   mimeType: string
 }
 
+export interface ImageMetadata {
+  width: number
+  height: number
+  fileSize: number
+  mimeType: string
+  format: string
+  colorSpace?: string
+  hasAlpha?: boolean
+}
+
 export interface ProcessingOutput {
-  type: 'thumbnail' | 'scaled'
+  type: 'thumbnail' | 'scaled' | 'image_scaled'
   s3Key: string
   width: number
   height: number
   fileSize: number
   mimeType: string
   quality?: string
+  localPath?: string
 }
 
 export interface StageResult {
@@ -51,8 +62,8 @@ export interface StageResult {
   stage: ProcessingStage
   mediaId: string
   jobId: string
-  localVideoPath?: string
-  metadata?: VideoMetadata
+  localMediaPath?: string
+  metadata?: VideoMetadata | ImageMetadata
   outputs?: ProcessingOutput[]
   error?: string
 }

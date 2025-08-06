@@ -165,6 +165,58 @@ export const getMediaUrl = (mediaPath: string): string => {
   return getImageUrl(mediaPath)
 }
 
+// Helper function to get video URL with preferred quality
+export const getVideoUrlWithQuality = async (mediaId: string, preferredQuality: string = '540p'): Promise<string> => {
+  try {
+    const token = localStorage.getItem('token')
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/media/serve/${mediaId}/qualities`, {
+      headers
+    })
+    
+    if (!response.ok) {
+      // Fallback to regular media URL if qualities endpoint fails
+      return `${API_BASE_URL}/media/serve/${mediaId}`
+    }
+    
+    const data = await response.json()
+    if (data.success && data.qualities && Array.isArray(data.qualities)) {
+      // Find the preferred quality
+      const preferredVersion = data.qualities.find((q: any) => q.quality === preferredQuality)
+      if (preferredVersion) {
+        return preferredVersion.url
+      }
+      
+      // If preferred quality not found, find the closest one
+      const qualities = data.qualities.filter((q: any) => q.quality !== 'original')
+      if (qualities.length > 0) {
+        // Sort by resolution and find the closest to preferred
+        qualities.sort((a: any, b: any) => {
+          const aRes = a.width * a.height
+          const bRes = b.width * b.height
+          const preferredRes = preferredQuality === '540p' ? 960 * 540 : 1280 * 720
+          return Math.abs(aRes - preferredRes) - Math.abs(bRes - preferredRes)
+        })
+        return qualities[0].url
+      }
+    }
+    
+    // Fallback to regular media URL
+    return `${API_BASE_URL}/media/serve/${mediaId}`
+  } catch (error) {
+    console.error('Error getting video qualities:', error)
+    // Fallback to regular media URL
+    return `${API_BASE_URL}/media/serve/${mediaId}`
+  }
+}
+
 // Helper function to handle API responses
 export const handleApiResponse = async (response: Response) => {
   const data = await response.json()

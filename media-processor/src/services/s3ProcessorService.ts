@@ -75,6 +75,40 @@ export class S3ProcessorService {
     }
   }
 
+  async downloadImage(s3Key: string): Promise<string> {
+    const localPath = path.join(this.tempDir, `${uuidv4()}.jpg`)
+    
+    try {
+      logger.info(`Downloading image from S3: ${s3Key} to ${localPath}`)
+      
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: s3Key
+      })
+
+      const response = await this.s3Client.send(command)
+      
+      if (!response.Body) {
+        throw new Error('No body in S3 response')
+      }
+
+      // Convert the readable stream to a buffer and write to file
+      const chunks: Buffer[] = []
+      for await (const chunk of response.Body as any) {
+        chunks.push(chunk)
+      }
+      const buffer = Buffer.concat(chunks)
+      
+      fs.writeFileSync(localPath, buffer)
+      
+      logger.info(`Successfully downloaded image to ${localPath}`)
+      return localPath
+    } catch (error) {
+      logger.error(`Failed to download image from S3: ${error}`)
+      throw error
+    }
+  }
+
   async uploadFile(localPath: string, s3Key: string, contentType?: string): Promise<void> {
     try {
       logger.info(`Uploading file to S3: ${localPath} -> ${s3Key}`)
@@ -110,6 +144,16 @@ export class S3ProcessorService {
   async uploadOriginalVideo(localPath: string, mediaId: string): Promise<string> {
     const s3Key = `videos/${mediaId}_original.mp4`
     await this.uploadFile(localPath, s3Key, 'video/mp4')
+    return s3Key
+  }
+
+  async uploadImage(localPath: string, s3Key: string): Promise<void> {
+    await this.uploadFile(localPath, s3Key, 'image/jpeg')
+  }
+
+  async uploadImageVersion(localPath: string, mediaId: string, quality: string): Promise<string> {
+    const s3Key = `processed/images/${mediaId}/${quality}.jpg`
+    await this.uploadFile(localPath, s3Key, 'image/jpeg')
     return s3Key
   }
 

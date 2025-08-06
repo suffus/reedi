@@ -57,11 +57,12 @@ export class StagedVideoProcessingService {
 
     try {
       // Create job record in database
-      await this.prisma.videoProcessingJob.create({
+      await this.prisma.mediaProcessingJob.create({
         data: {
           id: jobId,
           mediaId: mediaId,
           userId: userId,
+          mediaType: 'VIDEO',
           s3Key: s3Key,
           originalFilename: originalFilename,
           status: 'PENDING',
@@ -94,7 +95,7 @@ export class StagedVideoProcessingService {
       }
 
       // Send to download queue
-      await this.rabbitmqService.sendMessage('video.processing.download', request)
+      await this.rabbitmqService.sendMessage('media.video.processing.download', request)
 
       logger.info(`Created staged video processing job ${jobId} for media ${mediaId}`)
       return jobId
@@ -107,7 +108,7 @@ export class StagedVideoProcessingService {
 
   async getProcessingStatus(jobId: string): Promise<any> {
     try {
-      const job = await this.prisma.videoProcessingJob.findUnique({
+      const job = await this.prisma.mediaProcessingJob.findUnique({
         where: { id: jobId },
         include: {
           media: true
@@ -141,7 +142,7 @@ export class StagedVideoProcessingService {
       const media = await this.prisma.media.findUnique({
         where: { id: mediaId },
         include: {
-          videoProcessingJobs: {
+          mediaProcessingJobs: {
             orderBy: { createdAt: 'desc' },
             take: 1
           }
@@ -152,7 +153,7 @@ export class StagedVideoProcessingService {
         throw new Error(`Media ${mediaId} not found`)
       }
 
-      const latestJob = media.videoProcessingJobs[0]
+      const latestJob = media.mediaProcessingJobs[0]
 
       return {
         mediaId: media.id,
@@ -180,7 +181,7 @@ export class StagedVideoProcessingService {
       const { job_id, media_id, status, progress, current_step, error_message, thumbnails, video_versions, metadata } = update
 
       // Update job record
-      await this.prisma.videoProcessingJob.update({
+      await this.prisma.mediaProcessingJob.update({
         where: { id: job_id },
         data: {
           status: status.toUpperCase(),

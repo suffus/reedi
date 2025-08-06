@@ -112,11 +112,6 @@ export interface S3Config {
   bucket: string
 }
 
-export interface ApiConfig {
-  baseUrl: string
-  webhookSecret: string
-}
-
 export interface ProcessingStatus {
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
   progress?: number
@@ -124,13 +119,6 @@ export interface ProcessingStatus {
   error?: string
   outputs?: ProcessingOutput[]
   metadata?: MediaMetadata
-}
-
-export interface WebhookPayload {
-  mediaId: string
-  status: ProcessingStatus
-  timestamp: Date
-  signature?: string
 }
 
 export interface HealthCheckResult {
