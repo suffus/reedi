@@ -79,7 +79,7 @@ export class StagedVideoProcessingService {
         stage: 'DOWNLOADED',
         mediaId,
         jobId,
-        localVideoPath,
+        localMediaPath: localVideoPath,
         metadata
       }
       
@@ -108,7 +108,8 @@ export class StagedVideoProcessingService {
   }
 
   private async handleProcessingStage(job: StagedProcessingJob): Promise<void> {
-    const { id: jobId, mediaId, localVideoPath } = job
+    const { id: jobId, mediaId, localMediaPath } = job
+    const localVideoPath = localMediaPath as string
     
     if (!localVideoPath) {
       logger.error(`No local video path for job ${jobId}`)
@@ -134,7 +135,7 @@ export class StagedVideoProcessingService {
         stage: 'PROCESSED',
         mediaId,
         jobId,
-        localVideoPath,
+        localMediaPath,
         metadata: result.metadata,
         outputs: result.outputs
       }
@@ -196,7 +197,7 @@ export class StagedVideoProcessingService {
         100,
         'upload_complete',
         thumbnails,
-        job.metadata,
+        job.metadata as VideoMetadata,
         undefined,
         videoVersions
       )
@@ -289,7 +290,7 @@ export class StagedVideoProcessingService {
       createdAt: new Date(),
       stage: nextStage,
       previousStage: result.stage,
-      localVideoPath: result.localVideoPath,
+      localMediaPath: result.localMediaPath,
       metadata: result.metadata,
       outputs: result.outputs
     }

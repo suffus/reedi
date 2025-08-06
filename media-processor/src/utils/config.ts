@@ -1,6 +1,6 @@
 import dotenv from 'dotenv'
 import Joi from 'joi'
-import { ProcessingConfig, JobQueueConfig, S3Config, ApiConfig } from '../types'
+import { ProcessingConfig, JobQueueConfig, S3Config } from '../types'
 
 // Load environment variables
 dotenv.config()
@@ -21,7 +21,6 @@ const envSchema = Joi.object({
 
   // API Backend Configuration
   API_BASE_URL: Joi.string().uri().required(),
-  API_WEBHOOK_SECRET: Joi.string().required(),
 
   // Processing Configuration
   MAX_CONCURRENT_JOBS: Joi.number().default(3),
@@ -139,9 +138,8 @@ export const config = {
   } as S3Config,
 
   api: {
-    baseUrl: envVars.API_BASE_URL,
-    webhookSecret: envVars.API_WEBHOOK_SECRET
-  } as ApiConfig,
+    baseUrl: envVars.API_BASE_URL
+  },
 
   logging: {
     level: envVars.LOG_LEVEL,

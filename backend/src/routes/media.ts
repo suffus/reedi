@@ -342,33 +342,43 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
     }
 
   } else {
-    // For images, process immediately (existing flow)
-    const processedImage = await processImage(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype,
-      userId
-    )
-
+    // For images, upload to S3 and queue for processing
+    const s3Key = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype, userId)
+    
     media = await prisma.media.create({
       data: {
-        url: processedImage.imagePath,
-        thumbnail: processedImage.thumbnailPath,
-        s3Key: processedImage.s3Key,
-        thumbnailS3Key: processedImage.thumbnailS3Key,
+        url: s3Key, // Store S3 key for now
+        s3Key: s3Key,
         originalFilename: req.file.originalname,
         altText: req.body.title || req.body.altText || 'Uploaded image',
         caption: req.body.description || req.body.caption || '',
         tags: tags,
-        width: processedImage.width,
-        height: processedImage.height,
-        size: processedImage.size,
+        size: req.file.size,
         mimeType: req.file.mimetype,
         mediaType: 'IMAGE',
-        processingStatus: 'COMPLETED',
+        processingStatus: 'PENDING',
         authorId: userId
       }
     })
+
+    // Queue image processing job
+    const imageProcessingService = req.app.locals.imageProcessingService
+    if (imageProcessingService) {
+      try {
+        await imageProcessingService.requestImageProcessing(
+          media.id,
+          userId,
+          s3Key,
+          req.file.originalname
+        )
+        console.log(`Image processing job queued for media ${media.id}`)
+      } catch (error) {
+        console.error(`Failed to queue image processing job for media ${media.id}:`, error)
+        // Don't fail the upload, just log the error
+      }
+    } else {
+      console.warn('Image processing service not available, skipping image processing')
+    }
   }
 
   console.log('Media created successfully:', { 

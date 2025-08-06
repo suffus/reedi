@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
-import { Play, Video } from 'lucide-react'
+import { Play, Video, Image as ImageIcon } from 'lucide-react'
 
 interface LazyMediaProps {
   src: string
@@ -28,6 +28,8 @@ interface LazyMediaProps {
   autoPlay?: boolean
   muted?: boolean
   loop?: boolean
+  isMainMedia?: boolean // New prop to indicate if this is the main media item
+  showPlayButton?: boolean // New prop to show play button overlay
 }
 
 export function LazyMedia(props: LazyMediaProps): JSX.Element {
@@ -56,6 +58,8 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
     autoPlay = false,
     muted = true,
     loop = false,
+    isMainMedia = false,
+    showPlayButton = true,
     ...restProps
   } = props
 
@@ -65,8 +69,10 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
   const [isProgressiveLoading, setIsProgressiveLoading] = useState(false)
   const [progressiveQuality, setProgressiveQuality] = useState(0)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [thumbnailError, setThumbnailError] = useState(false)
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null)
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const videoObserverRef = useRef<IntersectionObserver | null>(null)
 
   useEffect(() => {
     const media = mediaRef.current
@@ -95,6 +101,9 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
       if (observerRef.current) {
         observerRef.current.disconnect()
       }
+      if (videoObserverRef.current) {
+        videoObserverRef.current.disconnect()
+      }
     }
   }, [threshold, rootMargin])
 
@@ -109,6 +118,10 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
     setHasError(true)
     setIsProgressiveLoading(false)
     onError?.()
+  }
+
+  const handleThumbnailError = () => {
+    setThumbnailError(true)
   }
 
   const handleVideoPlay = () => {
@@ -142,16 +155,105 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
     }
   }, [mediaType, showProgressiveEffect, isInView, isLoaded])
 
+  // Video intersection observer for auto-pause when out of viewport
+  useEffect(() => {
+    if (mediaType === 'VIDEO' && isMainMedia && isInView) {
+      const video = mediaRef.current as HTMLVideoElement
+      if (!video) return
+
+      // Create intersection observer for video auto-pause
+      videoObserverRef.current = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry.isIntersecting && !video.paused) {
+            // Video is out of viewport and playing, pause it
+            video.pause()
+            setIsVideoPlaying(false)
+          }
+        },
+        {
+          threshold: 0.1, // Trigger when 10% of video is out of view
+          rootMargin: '0px'
+        }
+      )
+
+      videoObserverRef.current.observe(video)
+
+      return () => {
+        if (videoObserverRef.current) {
+          videoObserverRef.current.disconnect()
+        }
+      }
+    }
+  }, [mediaType, isMainMedia, isInView])
+
   const mediaSrc = isInView ? src : placeholder
 
+  // Generate a video placeholder SVG
+  const generateVideoPlaceholder = () => {
+    return `data:image/svg+xml;base64,${btoa(`
+      <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f3f4f6"/>
+        <rect x="50" y="50" width="100" height="100" fill="#e5e7eb" rx="8"/>
+        <circle cx="100" cy="100" r="25" fill="#6b7280"/>
+        <polygon points="95,90 95,110 115,100" fill="white"/>
+        <text x="100" y="140" font-family="Arial, sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">Video</text>
+      </svg>
+    `)}`
+  }
+
   if (mediaType === 'VIDEO') {
+    // If this is the main media item, show the video player
+    if (isMainMedia) {
+      return (
+        <div className="relative">
+          {/* Video element */}
+          <video
+            ref={mediaRef as React.RefObject<HTMLVideoElement>}
+            src={videoUrl || src}
+            poster={thumbnailError ? generateVideoPlaceholder() : (src || generateVideoPlaceholder())}
+            className={className}
+            style={{
+              ...style,
+              opacity: isLoaded ? 1 : 0.7,
+              transform: isLoaded ? 'scale(1)' : 'scale(0.98)',
+              transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
+            }}
+            onClick={(e) => onClick?.(e)}
+            onLoadStart={handleLoad}
+            onLoadedData={handleLoad}
+            onError={handleError}
+            onPlay={handleVideoPlay}
+            onPause={handleVideoPause}
+            controls={showVideoControls}
+            autoPlay={autoPlay}
+            muted={muted}
+            loop={loop}
+            draggable={draggable}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            onDragEnd={onDragEnd}
+            {...restProps}
+          />
+          
+          {/* Video type indicator */}
+          <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
+            <Video className="h-3 w-3" />
+            <span>Video</span>
+          </div>
+        </div>
+      )
+    }
+
+    // For video thumbnails, show as image with play button overlay
     return (
-      <div className="relative">
-        {/* Video element */}
-        <video
-          ref={mediaRef as React.RefObject<HTMLVideoElement>}
-          src={videoUrl || src}
-          poster={src} // Use the thumbnail as poster
+      <div className="relative group">
+        {/* Thumbnail image */}
+        <img
+          ref={mediaRef as React.RefObject<HTMLImageElement>}
+          src={thumbnailError ? generateVideoPlaceholder() : mediaSrc}
+          alt={alt}
           className={className}
           style={{
             ...style,
@@ -160,15 +262,8 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
             transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
           }}
           onClick={(e) => onClick?.(e)}
-          onLoadStart={handleLoad}
-          onLoadedData={handleLoad}
-          onError={handleError}
-          onPlay={handleVideoPlay}
-          onPause={handleVideoPause}
-          controls={showVideoControls}
-          autoPlay={autoPlay}
-          muted={muted}
-          loop={loop}
+          onLoad={handleLoad}
+          onError={handleThumbnailError}
           draggable={draggable}
           onDragStart={onDragStart}
           onDragOver={onDragOver}
@@ -178,7 +273,14 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
           {...restProps}
         />
         
-        {/* Video play overlay when not playing - REMOVED since we have video indicator */}
+        {/* Play button overlay */}
+        {showPlayButton && !isVideoPlaying && (
+          <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+            <div className="bg-white bg-opacity-90 rounded-full p-3 shadow-lg group-hover:scale-110 transition-transform duration-200">
+              <Play className="h-6 w-6 text-gray-800 ml-1" fill="currentColor" />
+            </div>
+          </div>
+        )}
         
         {/* Video type indicator */}
         <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">

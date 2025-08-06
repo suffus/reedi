@@ -9,8 +9,8 @@ import { MediaDetailModal } from './media-detail-modal'
 import { PostMenu } from './post-menu'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { PostAuthorForm } from './post-author-form'
-import { getMediaUrl, getMediaUrlFromMedia } from '../../lib/api'
-import { getBestThumbnailUrl } from '../../lib/media-utils'
+import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality } from '../../lib/api'
+import { getBestThumbnailUrl, getSmartMediaUrl } from '../../lib/media-utils'
 import { LazyMedia } from '../lazy-media'
 
 interface Post {
@@ -439,16 +439,61 @@ export function PersonalFeed() {
     }
     
     if (useThumbnail) {
-      // For thumbnails, try to use processed video thumbnails first
-      const bestThumbnail = getBestThumbnailUrl(mediaItem)
-      if (bestThumbnail) {
-        return bestThumbnail
-      }
-      // Fall back to regular thumbnail endpoint
-      return getMediaUrlFromMedia(mediaItem, true)
+      // For thumbnails, use the smart thumbnail URL
+      return getSmartMediaUrl(mediaItem, 'thumbnail')
     }
     
-    return getMediaUrlFromMedia(mediaItem, false)
+    // For main images, use 1080p quality
+    return getSmartMediaUrl(mediaItem, 'main')
+  }
+
+  const getVideoUrl = (mediaItem: any) => {
+    if (typeof mediaItem === 'string') {
+      return null
+    }
+    
+    // Return the video URL for video playback
+    return mediaItem.videoUrl || getMediaUrlFromMedia(mediaItem, false)
+  }
+
+  // State to store video URLs with quality
+  const [videoUrls, setVideoUrls] = useState<Record<string, string>>({})
+
+  // Effect to load video URLs with preferred quality
+  useEffect(() => {
+    const loadVideoUrls = async () => {
+      const newVideoUrls: Record<string, string> = {}
+      
+      for (const post of posts) {
+        for (const mediaItem of post.media) {
+          if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id]) {
+            try {
+              const qualityUrl = await getVideoUrlWithQuality(mediaItem.id, '540p')
+              newVideoUrls[mediaItem.id] = qualityUrl
+            } catch (error) {
+              console.error('Error getting video quality URL:', error)
+              // Fallback to regular URL
+              newVideoUrls[mediaItem.id] = mediaItem.videoUrl || getMediaUrlFromMedia(mediaItem, false)
+            }
+          }
+        }
+      }
+      
+      if (Object.keys(newVideoUrls).length > 0) {
+        setVideoUrls(prev => ({ ...prev, ...newVideoUrls }))
+      }
+    }
+
+    loadVideoUrls()
+  }, [posts])
+
+  const getCachedVideoUrl = (mediaItem: any) => {
+    if (typeof mediaItem === 'string') {
+      return null
+    }
+    
+    // Return cached quality URL if available, otherwise fallback
+    return videoUrls[mediaItem.id] || mediaItem.videoUrl || getMediaUrlFromMedia(mediaItem, false)
   }
 
     
@@ -456,6 +501,8 @@ export function PersonalFeed() {
       const mediaItem = reorderedMedia[0];
       const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
       const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
+      const videoUrl = getCachedVideoUrl(mediaItem);
+      
       return (
         <div className="mb-4 relative">
           {showReorderHint && (
@@ -481,6 +528,10 @@ export function PersonalFeed() {
             onDragEnd={handleDragEnd}
             mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
             showProgressiveEffect={true}
+            isMainMedia={true}
+            videoUrl={videoUrl}
+            showVideoControls={isVideo}
+            showPlayButton={isVideo}
           />
         </div>
       );
@@ -498,7 +549,9 @@ export function PersonalFeed() {
           {reorderedMedia.map((mediaItem, idx) => {
               const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
               const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
-                              return (
+              const videoUrl = getCachedVideoUrl(mediaItem);
+              
+              return (
                   <div
                     key={typeof mediaItem === 'string' ? idx : mediaItem.id}
                     draggable
@@ -519,6 +572,10 @@ export function PersonalFeed() {
                       onClick={() => onMediaClick(mediaItem)}
                       mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
                       showProgressiveEffect={true}
+                      isMainMedia={idx === 0} // First item is main media
+                      videoUrl={videoUrl}
+                      showVideoControls={isVideo && idx === 0} // Only show controls for main video
+                      showPlayButton={isVideo}
                     />
                     {/* Insertion marker */}
                     {dragOverIndex === idx && draggedMedia?.id !== mediaItem.id && (
@@ -536,6 +593,7 @@ export function PersonalFeed() {
     const [main, ...thumbs] = reorderedMedia;
     const isMainVideo = typeof main !== 'string' && main.mediaType === 'VIDEO';
     const mainMediaUrl = getBestMediaUrl(main, isMainVideo);
+    const mainVideoUrl = getCachedVideoUrl(main);
     
     // Calculate aspect ratio for main media
     const mainAspectRatio = typeof main === 'string' ? 1 : (main.width && main.height ? main.width / main.height : 1);
@@ -575,6 +633,10 @@ export function PersonalFeed() {
                 }}
                 onClick={() => onMediaClick(main)}
                 mediaType={main.mediaType || 'IMAGE'}
+                isMainMedia={true}
+                videoUrl={mainVideoUrl}
+                showVideoControls={isMainVideo}
+                showPlayButton={isMainVideo}
               />
               {/* Insertion marker */}
               {dragOverIndex === 0 && draggedMedia?.id !== main.id && (
@@ -587,7 +649,8 @@ export function PersonalFeed() {
           <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
             {thumbs.map((mediaItem, idx) => {
               const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
-              const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
+              const mediaUrl = getSmartMediaUrl(mediaItem, 'small');
+              const videoUrl = getVideoUrl(mediaItem);
               const actualIndex = idx + 1; // +1 because main media is at index 0
               return (
                 <div
@@ -612,6 +675,8 @@ export function PersonalFeed() {
                     }}
                     onClick={() => onMediaClick(mediaItem)}
                     mediaType={mediaItem.mediaType || 'IMAGE'}
+                    videoUrl={videoUrl}
+                    showPlayButton={isVideo}
                   />
                   {/* Insertion marker */}
                   {dragOverIndex === actualIndex && draggedMedia?.id !== mediaItem.id && (
@@ -651,6 +716,10 @@ export function PersonalFeed() {
               style={typeof main === 'string' ? undefined : { aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
               onClick={() => onMediaClick(main)}
               mediaType={main.mediaType || 'IMAGE'}
+              isMainMedia={true}
+              videoUrl={mainVideoUrl}
+              showVideoControls={isMainVideo}
+              showPlayButton={isMainVideo}
             />
             {/* Insertion marker */}
             {dragOverIndex === 0 && draggedMedia?.id !== main.id && (
@@ -661,7 +730,9 @@ export function PersonalFeed() {
           {/* Thumbnails - horizontal row at 17.5% of post width */}
           <div className="flex gap-2 overflow-x-auto">
             {thumbs.map((mediaItem, idx) => {
-              const mediaUrl = typeof mediaItem === 'string' ? getMediaUrl(mediaItem) : getMediaUrlFromMedia(mediaItem, false);
+              const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
+              const mediaUrl = getSmartMediaUrl(mediaItem, 'small');
+              const videoUrl = getCachedVideoUrl(mediaItem);
               const actualIndex = idx + 1; // +1 because main media is at index 0
               return (
                 <div
@@ -686,6 +757,8 @@ export function PersonalFeed() {
                     }}
                     onClick={() => onMediaClick(mediaItem)}
                     mediaType={mediaItem.mediaType || 'IMAGE'}
+                    videoUrl={videoUrl}
+                    showPlayButton={isVideo}
                   />
                   {/* Insertion marker */}
                   {dragOverIndex === actualIndex && draggedMedia?.id !== mediaItem.id && (

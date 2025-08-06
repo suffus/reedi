@@ -141,7 +141,7 @@ router.get('/jobs/:jobId', authMiddleware, async (req: AuthenticatedRequest, res
     const userId = req.user!.id
 
     // Get job details
-    const job = await prisma.videoProcessingJob.findUnique({
+    const job = await prisma.mediaProcessingJob.findUnique({
       where: { id: jobId },
       include: { media: true }
     })

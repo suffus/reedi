@@ -3,6 +3,7 @@
 import express from 'express'
 import cors from 'cors'
 import { StagedVideoProcessingService } from './services/stagedVideoProcessingService'
+import { StagedImageProcessingService } from './services/stagedImageProcessingService'
 import { EnhancedRabbitMQService } from './services/enhancedRabbitMQService'
 import { S3ProcessorService } from './services/s3ProcessorService'
 import dotenv from 'dotenv'
@@ -19,12 +20,17 @@ async function main() {
     rabbitmq: {
       url: process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
       exchanges: {
-        processing: process.env['RABBITMQ_PROCESSING_EXCHANGE'] || 'video.processing',
-        updates: process.env['RABBITMQ_UPDATES_EXCHANGE'] || 'video.updates'
+        requests: process.env['RABBITMQ_REQUESTS_EXCHANGE'] || 'media.requests',
+        processing: process.env['RABBITMQ_PROCESSING_EXCHANGE'] || 'media.processing',
+        updates: process.env['RABBITMQ_UPDATES_EXCHANGE'] || 'media.updates'
       },
-      queues: {
-        requests: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'video.processing.requests',
-        updates: process.env['RABBITMQ_UPDATES_QUEUE'] || 'video.processing.updates'
+      video_queues: {
+        requests: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.video.processing.requests',
+        updates: process.env['RABBITMQ_UPDATES_QUEUE'] || 'media.video.processing.updates'
+      },
+      image_queues: {
+        requests: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.image.processing.requests',
+        updates: process.env['RABBITMQ_UPDATES_QUEUE'] || 'media.image.processing.updates'
       }
     },
                 s3: {
@@ -48,22 +54,12 @@ async function main() {
           }
 
   let videoProcessingService: StagedVideoProcessingService | null = null
+  let imageProcessingService: StagedImageProcessingService | null = null
 
   try {
-    logger.info('Starting staged video processing service...')
+    logger.info('Starting media processing services...')
 
-    // Initialize services
-    const rabbitmqService = new EnhancedRabbitMQService(
-      config.rabbitmq.url,
-      config.rabbitmq.exchanges,
-      {
-        download: 'video.processing.download',
-        processing: 'video.processing.processing',
-        upload: 'video.processing.upload',
-        updates: 'video.processing.updates'
-      }
-    )
-
+    // Initialize shared services
     const s3Service = new S3ProcessorService(
       config.s3.region,
       config.s3.accessKeyId,
@@ -73,14 +69,60 @@ async function main() {
       config.s3.endpoint
     )
 
+    // Initialize video processing service
+    logger.info('Starting staged video processing service...')
+    const videoRabbitmqService = new EnhancedRabbitMQService(
+      config.rabbitmq.url,
+      {
+        requests: 'media.requests',
+        processing: 'media.processing',
+        updates: 'media.updates'
+      },
+      'video',
+      {
+        download: 'video.processing.download',
+        processing: 'video.processing.processing',
+        upload: 'video.processing.upload',
+        updates: 'video.processing.updates'
+      }
+    )
+
     videoProcessingService = new StagedVideoProcessingService(
-      rabbitmqService,
+      videoRabbitmqService,
       s3Service,
       config.processing.tempDir
     )
 
     // Start the video processing service
     await videoProcessingService.start()
+    logger.info('✅ Video processing service started successfully')
+
+    // Initialize image processing service
+    logger.info('Starting staged image processing service...')
+    const imageRabbitmqService = new EnhancedRabbitMQService(
+      config.rabbitmq.url,
+      {
+        requests: 'media.requests',
+        processing: 'media.processing',
+        updates: 'media.updates'
+      },
+      'images',
+      {
+        download: 'media.images.processing.download',
+        processing: 'media.images.processing.processing',
+        upload: 'media.images.processing.upload',
+        updates: 'media.images.processing.updates'
+      }
+    )
+
+    imageProcessingService = new StagedImageProcessingService(
+      imageRabbitmqService,
+      s3Service
+    )
+
+    // Start the image processing service
+    await imageProcessingService.start()
+    logger.info('✅ Image processing service started successfully')
 
     // Create Express server for health checks and monitoring
     const app = express()
@@ -95,20 +137,43 @@ async function main() {
         service: 'video-processing',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        rabbitmq: rabbitmqService.isConnected()
+        rabbitmq: videoRabbitmqService.isConnected() && imageRabbitmqService.isConnected()
       })
     })
 
     // Service info endpoint
     app.get('/info', (_req, res) => {
       res.json({
-        service: 'Video Processing Service',
-        version: '1.0.0',
+        service: 'Media Processing Service',
+        version: '2.0.0',
         port: config.server.port,
+        services: {
+          video: {
+            status: videoProcessingService ? 'running' : 'stopped',
+            exchanges: config.rabbitmq.exchanges,
+            queues: {
+              download: 'video.processing.download',
+              processing: 'video.processing.processing',
+              upload: 'video.processing.upload',
+              updates: 'video.processing.updates'
+            }
+          },
+          image: {
+            status: imageProcessingService ? 'running' : 'stopped',
+            exchanges: {
+              processing: 'reedi.images.processing',
+              updates: 'reedi.images.updates'
+            },
+            queues: {
+              download: 'reedi.images.processing.download',
+              processing: 'reedi.images.processing.processing',
+              upload: 'reedi.images.processing.upload',
+              updates: 'reedi.images.processing.updates'
+            }
+          }
+        },
         rabbitmq: {
-          url: config.rabbitmq.url.replace(/\/\/.*@/, '//***:***@'),
-          exchanges: config.rabbitmq.exchanges,
-          queues: config.rabbitmq.queues
+          url: config.rabbitmq.url.replace(/\/\/.*@/, '//***:***@')
         },
         s3: {
           region: config.s3.region,
@@ -126,7 +191,7 @@ async function main() {
       logger.info(`Video processing service HTTP server started on port ${config.server.port}`)
     })
 
-    logger.info('Video processing service started successfully')
+    logger.info('All media processing services started successfully')
 
     // Handle graceful shutdown
     const shutdown = async (signal: string) => {
@@ -134,9 +199,15 @@ async function main() {
       
       if (videoProcessingService) {
         await videoProcessingService.stop()
+        logger.info('Video processing service stopped')
       }
       
-      logger.info('Video processing service stopped')
+      if (imageProcessingService) {
+        await imageProcessingService.stop()
+        logger.info('Image processing service stopped')
+      }
+      
+      logger.info('All media processing services stopped')
       process.exit(0)
     }
 
@@ -144,10 +215,14 @@ async function main() {
     process.on('SIGTERM', () => shutdown('SIGTERM'))
 
   } catch (error) {
-    logger.error('Failed to start video processing service:', error)
+    logger.error('Failed to start media processing services:', error)
     
     if (videoProcessingService) {
       await videoProcessingService.stop()
+    }
+    
+    if (imageProcessingService) {
+      await imageProcessingService.stop()
     }
     
     process.exit(1)

@@ -68,6 +68,42 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
   }
 }
 
+// Function to stream image from S3
+async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Request, res: Response) {
+  try {
+    const bucket = process.env.IDRIVE_BUCKET_NAME || ''
+    
+    // Prepare the S3 request
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: s3Key
+    })
+    
+    // Get the object from S3
+    const response = await s3Client.send(command)
+    
+    if (!response.Body) {
+      throw new Error('No body in S3 response')
+    }
+    
+    // Set appropriate headers for images
+    res.setHeader('Content-Type', mimeType || 'image/jpeg')
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    res.setHeader('Content-Length', response.ContentLength?.toString() || '0')
+    
+    // Stream the image data directly to the response
+    const stream = response.Body as any
+    stream.pipe(res)
+    
+  } catch (error) {
+    console.error('Error streaming image from S3:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error streaming image'
+    })
+  }
+}
+
 // Add CORS headers for all media serve requests
 router.use((req: Request, res: Response, next) => {
   res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000')
@@ -637,7 +673,7 @@ router.get('/:id/qualities', optionalAuthMiddleware, asyncHandler(async (req: Au
             width: width,
             height: height,
             bitrate: bitrate,
-            url: `${req.protocol}://${req.get('host')}/api/media/serve/${media.id}/quality/${encodeURIComponent(s3Key)}`,
+            url: `${req.protocol}://${req.get('host')}/api/media/serve/by_quality/${media.id}/${quality}`,
             fileSize: fileSize
           })
         }
@@ -661,7 +697,270 @@ router.get('/:id/qualities', optionalAuthMiddleware, asyncHandler(async (req: Au
   }
 }))
 
-// Serve video with specific quality
+// Get available image qualities for a media item
+router.get('/:id/image-qualities', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this media
+  const canView = await canViewMedia(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  const media = await prisma.media.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      processingStatus: true,
+      imageProcessingStatus: true,
+      imageVersions: true,
+      s3Key: true,
+      mimeType: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  if (media.mediaType !== 'IMAGE') {
+    res.status(400).json({
+      success: false,
+      error: 'This endpoint is for image media only'
+    })
+    return
+  }
+
+  // Check image processing status specifically
+  const processingStatus = media.imageProcessingStatus || media.processingStatus
+  if (processingStatus !== 'COMPLETED') {
+    res.status(202).json({
+      success: false,
+      error: 'Image is still processing',
+      processingStatus: processingStatus
+    })
+    return
+  }
+
+  try {
+    const qualities: Array<{
+      quality: string
+      width: number
+      height: number
+      url: string
+      fileSize: number
+    }> = []
+
+    // Add original quality if available
+    if (media.s3Key) {
+      qualities.push({
+        quality: 'original',
+        width: 0, // Will be filled by frontend when image loads
+        height: 0,
+        url: `${req.protocol}://${req.get('host')}/api/media/serve/${media.id}`,
+        fileSize: 0
+      })
+    }
+
+    // Add processed qualities if available
+    let versions: any[] = []
+    if (media.imageVersions) {
+      if (typeof media.imageVersions === 'string') {
+        try {
+          versions = JSON.parse(media.imageVersions)
+        } catch (error) {
+          console.error('Failed to parse imageVersions JSON in qualities endpoint:', error)
+        }
+      } else if (Array.isArray(media.imageVersions)) {
+        versions = media.imageVersions
+      }
+    }
+    
+    if (versions && Array.isArray(versions)) {
+      for (const version of versions) {
+        // Handle both snake_case and camelCase field names
+        const quality = version.quality
+        const width = version.width
+        const height = version.height
+        const fileSize = version.fileSize || version.file_size || 0
+        
+        if (quality && width && height) {
+          qualities.push({
+            quality: quality,
+            width: width,
+            height: height,
+            url: `${req.protocol}://${req.get('host')}/api/media/serve/by_quality/${media.id}/${quality}`,
+            fileSize: fileSize
+          })
+        }
+      }
+    }
+
+    // Sort qualities by resolution (highest first)
+    qualities.sort((a, b) => (b.width * b.height) - (a.width * a.height))
+
+    res.json({
+      success: true,
+      qualities
+    })
+
+  } catch (error) {
+    console.error('Error getting image qualities:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error getting image qualities'
+    })
+  }
+}))
+
+// Serve specific image quality by name (e.g., /by_quality/1080p, /by_quality/540p)
+router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id, quality } = req.params
+  const viewerId = req.user?.id
+
+  // Check if user can view this media
+  const canView = await canViewMedia(id, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  const media = await prisma.media.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      processingStatus: true,
+      imageProcessingStatus: true,
+      imageVersions: true,
+      s3Key: true, // Fallback to original
+      mimeType: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  // Only support images for now
+  if (media.mediaType !== 'IMAGE') {
+    res.status(400).json({
+      success: false,
+      error: 'Quality selection only supported for images'
+    })
+    return
+  }
+
+  // Check image processing status specifically
+  const processingStatus = media.imageProcessingStatus || media.processingStatus
+  if (processingStatus !== 'COMPLETED') {
+    res.status(202).json({
+      success: false,
+      error: 'Image is still processing',
+      processingStatus: processingStatus
+    })
+    return
+  }
+
+  try {
+    let s3Key: string | null = null
+
+    // If quality is 'original', use the original image
+    if (quality === 'original') {
+      s3Key = media.s3Key
+    } else {
+          // Look for the specific quality in imageVersions
+    // Parse imageVersions if it's a JSON string
+    let versions: any[] = []
+    if (media.imageVersions) {
+      if (typeof media.imageVersions === 'string') {
+        try {
+          versions = JSON.parse(media.imageVersions)
+        } catch (error) {
+          console.error('Failed to parse imageVersions JSON:', error)
+        }
+      } else if (Array.isArray(media.imageVersions)) {
+        versions = media.imageVersions
+      }
+    }
+    
+    if (versions && Array.isArray(versions)) {
+      // First try to find exact quality match
+      let targetVersion = versions.find(version => version.quality === quality)
+      
+      if (targetVersion) {
+        s3Key = targetVersion.s3Key
+      } else {
+        // Find the best available quality (closest above requested, or highest available)
+        const qualityOrder = ['180p', '360p', '540p', '720p', '1080p', 'original']
+        const requestedIndex = qualityOrder.indexOf(quality)
+        
+        if (requestedIndex !== -1) {
+          // Look for the next best quality above the requested one
+          let bestVersion = null
+          let bestIndex = -1
+          
+          for (const version of versions) {
+            const versionIndex = qualityOrder.indexOf(version.quality)
+            if (versionIndex !== -1 && versionIndex >= requestedIndex) {
+              if (bestVersion === null || versionIndex < bestIndex) {
+                bestVersion = version
+                bestIndex = versionIndex
+              }
+            }
+          }
+          
+          if (bestVersion) {
+            s3Key = bestVersion.s3Key
+          }
+        }
+      }
+    }
+    }
+
+    // If no specific quality found, fall back to original
+    if (!s3Key) {
+      s3Key = media.s3Key
+    }
+
+    if (!s3Key) {
+      res.status(404).json({
+        success: false,
+        error: 'Image not found'
+      })
+      return
+    }
+
+    // Stream the image
+    await streamImageFromS3(s3Key, media.mimeType, req, res)
+
+  } catch (error) {
+    console.error('Error serving image quality:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Error serving image'
+    })
+  }
+}))
+
+// Serve video with specific quality by S3 key
 router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id, s3Key } = req.params
   const viewerId = req.user?.id
@@ -682,7 +981,8 @@ router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (re
       id: true,
       mediaType: true,
       processingStatus: true,
-      videoVersions: true
+      videoVersions: true,
+      imageVersions: true
     }
   })
 
@@ -694,47 +994,82 @@ router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (re
     return
   }
 
-  if (media.mediaType !== 'VIDEO') {
+  if (media.mediaType === 'VIDEO') {
+    if (media.processingStatus !== 'COMPLETED') {
+      res.status(202).json({
+        success: false,
+        error: 'Video is still processing',
+        processingStatus: media.processingStatus
+      })
+      return
+    }
+
+    // Verify that the requested S3 key is actually a version for this video
+    const versions = media.videoVersions as any[]
+    const versionExists = versions && Array.isArray(versions) && 
+      versions.some(version => {
+        const versionS3Key = version.s3Key || version.s3_key
+        return versionS3Key === decodeURIComponent(s3Key)
+      })
+
+    if (!versionExists) {
+      res.status(404).json({
+        success: false,
+        error: 'Video quality not found'
+      })
+      return
+    }
+
+    try {
+      // Stream the specific quality version
+      await streamVideoFromS3(decodeURIComponent(s3Key), 'video/mp4', req, res)
+    } catch (error) {
+      console.error('Error streaming video quality:', error)
+      res.status(500).json({
+        success: false,
+        error: 'Error streaming video'
+      })
+    }
+  } else if (media.mediaType === 'IMAGE') {
+    if (media.processingStatus !== 'COMPLETED') {
+      res.status(202).json({
+        success: false,
+        error: 'Image is still processing',
+        processingStatus: media.processingStatus
+      })
+      return
+    }
+
+    // Verify that the requested S3 key is actually a version for this image
+    const versions = media.imageVersions as any[]
+    const versionExists = versions && Array.isArray(versions) && 
+      versions.some(version => {
+        const versionS3Key = version.s3Key || version.s3_key
+        return versionS3Key === decodeURIComponent(s3Key)
+      })
+
+    if (!versionExists) {
+      res.status(404).json({
+        success: false,
+        error: 'Image quality not found'
+      })
+      return
+    }
+
+    try {
+      // Stream the specific quality version
+      await streamImageFromS3(decodeURIComponent(s3Key), 'image/jpeg', req, res)
+    } catch (error) {
+      console.error('Error streaming image quality:', error)
+      res.status(500).json({
+        success: false,
+        error: 'Error streaming image'
+      })
+    }
+  } else {
     res.status(400).json({
       success: false,
-      error: 'This endpoint is for video media only'
-    })
-    return
-  }
-
-  if (media.processingStatus !== 'COMPLETED') {
-    res.status(202).json({
-      success: false,
-      error: 'Video is still processing',
-      processingStatus: media.processingStatus
-    })
-    return
-  }
-
-  // Verify that the requested S3 key is actually a version for this video
-  const versions = media.videoVersions as any[]
-  const versionExists = versions && Array.isArray(versions) && 
-    versions.some(version => {
-      const versionS3Key = version.s3Key || version.s3_key
-      return versionS3Key === decodeURIComponent(s3Key)
-    })
-
-  if (!versionExists) {
-    res.status(404).json({
-      success: false,
-      error: 'Video quality not found'
-    })
-    return
-  }
-
-  try {
-    // Stream the specific quality version
-    await streamVideoFromS3(decodeURIComponent(s3Key), 'video/mp4', req, res)
-  } catch (error) {
-    console.error('Error streaming video quality:', error)
-    res.status(500).json({
-      success: false,
-      error: 'Error streaming video'
+      error: 'Unsupported media type'
     })
   }
 }))

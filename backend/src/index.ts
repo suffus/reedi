@@ -18,7 +18,8 @@ import mediaServeRoutes from '@/routes/mediaServe'
 import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
 import friendRoutes from '@/routes/friends'
-import videoProcessingRoutes from '@/routes/videoProcessing'
+//import videoProcessingRoutes from '@/routes/videoProcessing'
+//import imageProcessingRoutes from '@/routes/imageProcessing'
 import messageRoutes from '@/routes/messages'
 
 // Import services
@@ -26,6 +27,7 @@ import { MessagingService } from '@/services/messagingService'
 
 // Import services
 import { StagedVideoProcessingService } from '@/services/stagedVideoProcessingService'
+import { ImageProcessingService } from '@/services/imageProcessingService'
 import { RabbitMQService } from '@/services/rabbitmqService'
 
 // Import middleware
@@ -113,7 +115,8 @@ app.use('/api/media', authMiddleware, mediaRoutes)
 app.use('/api/galleries', galleryRoutes)
 app.use('/api/search', searchRoutes)
 app.use('/api/friends', friendRoutes)
-app.use('/api/video-processing', videoProcessingRoutes)
+//app.use('/api/video-processing', videoProcessingRoutes)
+//app.use('/api/image-processing', imageProcessingRoutes)
 app.use('/api/messages', messageRoutes)
 
 // Error handling middleware
@@ -149,6 +152,7 @@ setInterval(async () => {
 
 // Initialize services
 let videoProcessingService: StagedVideoProcessingService | null = null
+let imageProcessingService: ImageProcessingService | null = null
 let messagingService: MessagingService | null = null
 
 // Start server
@@ -170,7 +174,18 @@ async function startServer() {
 
     // Initialize video processing service
     try {
-      const rabbitmqService = new RabbitMQService()
+      const rabbitmqService = new RabbitMQService(
+        process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
+        {
+          processing: 'media.processing',
+          updates: 'media.updates'
+        },
+        'video',
+        {
+          requests: 'media.video.processing.requests',
+          updates: 'media.video.processing.updates'
+        }
+      )
       videoProcessingService = new StagedVideoProcessingService(prisma, rabbitmqService)
       await videoProcessingService.start()
       app.locals.videoProcessingService = videoProcessingService
@@ -178,6 +193,29 @@ async function startServer() {
     } catch (error) {
       console.warn('⚠️ Video processing service failed to start:', error)
       console.warn('⚠️ Video processing will be disabled')
+    }
+
+    // Initialize image processing service
+    try {
+      const imageRabbitmqService = new RabbitMQService(
+        process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
+        {
+          processing: 'media.processing',
+          updates: 'media.updates'
+        },
+        'images',
+        {
+          requests: 'media.images.processing.requests',
+          updates: 'media.images.processing.updates'
+        }
+      )
+      imageProcessingService = new ImageProcessingService(prisma, imageRabbitmqService)
+      await imageProcessingService.start()
+      app.locals.imageProcessingService = imageProcessingService
+      console.log('✅ Image processing service started')
+    } catch (error) {
+      console.warn('⚠️ Image processing service failed to start:', error)
+      console.warn('⚠️ Image processing will be disabled')
     }
 
     server.listen(PORT, () => {
@@ -198,6 +236,9 @@ process.on('SIGINT', async () => {
   if (videoProcessingService) {
     await videoProcessingService.stop()
   }
+  if (imageProcessingService) {
+    await imageProcessingService.stop()
+  }
   await prisma.$disconnect()
   process.exit(0)
 })
@@ -206,6 +247,9 @@ process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down gracefully...')
   if (videoProcessingService) {
     await videoProcessingService.stop()
+  }
+  if (imageProcessingService) {
+    await imageProcessingService.stop()
   }
   await prisma.$disconnect()
   process.exit(0)
