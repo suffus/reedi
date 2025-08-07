@@ -1,7 +1,28 @@
 import sharp from 'sharp'
 import * as path from 'path'
 import * as fs from 'fs'
-import { ProcessingOutput, ImageMetadata } from '@/types/stagedProcessing'
+
+// Duplicate the types needed for standalone processing
+export interface ImageMetadata {
+  width: number
+  height: number
+  fileSize: number
+  mimeType: string
+  format: string
+  colorSpace?: string
+  hasAlpha?: boolean
+}
+
+export interface ProcessingOutput {
+  type: 'thumbnail' | 'scaled' | 'image_scaled'
+  s3Key: string
+  width: number
+  height: number
+  fileSize: number
+  mimeType: string
+  quality?: string
+  localPath?: string
+}
 
 interface StandaloneProcessingResult {
   success: boolean

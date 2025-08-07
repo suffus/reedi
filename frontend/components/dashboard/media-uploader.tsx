@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Image as ImageIcon, Video, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle } from 'lucide-react'
 import { useUploadMedia } from '../../lib/api-hooks'
 import { TagInput } from '../tag-input'
+//import { ModalEventCatcher } from '../common/modal-event-catcher'
 
 interface MediaUploaderProps {
   userId: string
@@ -1009,7 +1010,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
       return (
         <>
           <AnimatePresence>
-            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+              <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}

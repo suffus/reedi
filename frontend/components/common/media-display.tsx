@@ -39,6 +39,7 @@ interface FlexibleMedia {
   authorId?: string
   createdAt?: string
   updatedAt?: string
+  videoUrl?: string
 }
 
 interface MediaDisplayProps {
