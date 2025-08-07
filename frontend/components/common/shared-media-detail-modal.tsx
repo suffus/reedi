@@ -7,6 +7,7 @@ import { useMediaDetail } from './media-detail-context'
 import { LazyMedia } from '../lazy-media'
 import { Media } from '@/lib/types'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
+import { ModalEventCatcher } from './modal-event-catcher'
 
 // Flexible media type for messages and other contexts
 interface FlexibleMedia {
@@ -317,58 +318,50 @@ export function SharedMediaDetailModal() {
     }
   }
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return
+  // Custom keyboard handler for media-specific shortcuts
+  const handleCustomKeyDown = (e: KeyboardEvent) => {
+    if (!isOpen) return
 
-      // Don't handle keyboard shortcuts if user is typing in an input field
-      const activeElement = document.activeElement
-      const isTyping = activeElement && (
-        activeElement.tagName === 'INPUT' ||
-        activeElement.tagName === 'TEXTAREA' ||
-        activeElement.getAttribute('contenteditable') === 'true'
-      )
-      
-      if (isTyping) return
+    // Don't handle keyboard shortcuts if user is typing in an input field
+    const activeElement = document.activeElement
+    const isTyping = activeElement && (
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.getAttribute('contenteditable') === 'true'
+    )
+    
+    if (isTyping) return
 
-      switch (e.key) {
-        case 'Escape':
-          closeMediaDetail()
-          break
-        case 'ArrowLeft':
-          if (hasPrev) handlePrev()
-          break
-        case 'ArrowRight':
-          if (hasNext) handleNext()
-          break
-        case ' ':
-          if (currentMedia?.mediaType === 'VIDEO' || currentMedia?.mimeType?.startsWith('video/')) {
-            e.preventDefault()
-            handleTogglePlay()
-          } else if (currentMedia?.mediaType === 'IMAGE' || currentMedia?.mimeType?.startsWith('image/')) {
-            e.preventDefault()
-            slideshow.toggleSlideshow()
-          }
-          break
-        case 'c':
-        case 'C':
-          if (currentMedia?.mediaType === 'IMAGE' || currentMedia?.mimeType?.startsWith('image/')) {
-            toggleCropMode()
-          }
-          break
-        case 'r':
-        case 'R':
-          if (currentMedia?.mediaType === 'IMAGE' || currentMedia?.mimeType?.startsWith('image/')) {
-            resetView()
-          }
-          break
-      }
+    switch (e.key) {
+      case 'ArrowLeft':
+        if (hasPrev) handlePrev()
+        break
+      case 'ArrowRight':
+        if (hasNext) handleNext()
+        break
+      case ' ':
+        if (currentMedia?.mediaType === 'VIDEO' || currentMedia?.mimeType?.startsWith('video/')) {
+          e.preventDefault()
+          handleTogglePlay()
+        } else if (currentMedia?.mediaType === 'IMAGE' || currentMedia?.mimeType?.startsWith('image/')) {
+          e.preventDefault()
+          slideshow.toggleSlideshow()
+        }
+        break
+      case 'c':
+      case 'C':
+        if (currentMedia?.mediaType === 'IMAGE' || currentMedia?.mimeType?.startsWith('image/')) {
+          toggleCropMode()
+        }
+        break
+      case 'r':
+      case 'R':
+        if (currentMedia?.mediaType === 'IMAGE' || currentMedia?.mimeType?.startsWith('image/')) {
+          resetView()
+        }
+        break
     }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, hasNext, hasPrev, currentMedia?.mediaType, closeMediaDetail, slideshow])
+  }
 
   // Auto-hide controls for video
   useEffect(() => {
@@ -402,20 +395,42 @@ export function SharedMediaDetailModal() {
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black bg-opacity-90 z-50 flex"
-        onClick={closeMediaDetail}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={(e) => {
-          handleMouseMove(e)
-          handleVideoMouseMove()
-        }}
-        onMouseUp={handleMouseUp}
+      <ModalEventCatcher
+        onEscape={closeMediaDetail}
+        onBackdropClick={closeMediaDetail}
+        allowScroll={true} // Allow wheel events for zooming
+        allowKeys={[
+          'Escape',
+          'ArrowLeft', // Previous image/video
+          'ArrowRight', // Next image/video
+          'Space', ' ', // Play/pause for videos
+          'Home', // First media
+          'End', // Last media
+          'r', 'R', // Reset view
+          'c', 'C', // Toggle crop mode
+          's', 'S', // Toggle slideshow
+          'f', 'F', // Toggle fullscreen
+          'm', 'M', // Toggle mute
+          'Tab', // Allow tab navigation
+          'Enter' // Allow form submission
+        ]}
+        onCustomKeyDown={handleCustomKeyDown}
+        className="bg-black/90" // Dark backdrop for media viewing
       >
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex"
+          onClick={closeMediaDetail}
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={(e) => {
+            handleMouseMove(e)
+            handleVideoMouseMove()
+          }}
+          onMouseUp={handleMouseUp}
+        >
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -643,7 +658,8 @@ export function SharedMediaDetailModal() {
             )}
           </div>
         </motion.div>
-      </motion.div>
+        </motion.div>
+      </ModalEventCatcher>
     </AnimatePresence>
   )
 } 

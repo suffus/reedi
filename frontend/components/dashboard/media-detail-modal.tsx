@@ -1,5 +1,6 @@
 import React from 'react'
 import { ImageDetailModal } from './image-detail-modal'
+import { ImageDetailModalWithEventCatcher } from './image-detail-modal-with-event-catcher'
 import { VideoDetailModal } from './video-detail-modal'
 import { Media } from '@/lib/types'
 
