@@ -496,6 +496,13 @@ export function SharedMediaDetailModal() {
                     transition: isDragging ? 'none' : 'transform 0.1s ease-out'
                   }}
                   onLoad={() => slideshow.handleMediaLoad()}
+                  onClick={(e) => {
+                    // Only reset view if image is zoomed and not in crop mode
+                    if (zoom > 1 && !isCropMode && !isDragging) {
+                      e.stopPropagation()
+                      resetView()
+                    }
+                  }}
                 />
                 
                 {/* Crop overlay */}
