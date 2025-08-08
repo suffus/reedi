@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send } from 'lucide-react'
+import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send, Lock, Unlock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostMedia } from '../../lib/api-hooks'
 import { MediaDetailModal } from './media-detail-modal'
@@ -19,9 +19,16 @@ interface Post {
   publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
   visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   authorId: string
+  isLocked?: boolean
+  unlockPrice?: number
+  unlockedBy?: {
+    id: string
+    unlockedAt: string
+    paidAmount: number
+  }[]
   media: {
     id: string
-    s3Key: string
+    s3Key?: string
     thumbnailS3Key?: string | null
     originalFilename?: string | null
     altText?: string | null
@@ -43,6 +50,7 @@ interface Post {
     framerate?: number | null
     videoUrl?: string | null
     videoS3Key?: string | null
+    isLocked?: boolean
   }[]
   createdAt: string
   author: {
@@ -218,6 +226,27 @@ export function PersonalFeed() {
     const identifier = authorUsername || authorId
     router.push(`/user/${identifier}`)
   }
+
+  const handleUnlockPost = async (postId: string) => {
+    try {
+      const response = await fetch(`/api/posts/${postId}/unlock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to unlock post');
+      }
+
+      // Refresh the posts feed
+      window.location.reload();
+    } catch (error) {
+      console.error('Error unlocking post:', error);
+      alert('Failed to unlock post. Please try again.');
+    }
+  };
 
   const handleMediaClick = async (media: any, postId?: string, postMedia?: any[]) => {
     try {
@@ -411,7 +440,7 @@ export function PersonalFeed() {
       
       // Persist the new order to the backend
       try {
-        const mediaIds = newMedia.map(mediaItem => typeof mediaItem === 'string' ? mediaItem : mediaItem.id)
+        const mediaIds = newMedia.map(mediaItem => typeof mediaItem === 'string' ? mediaItem : mediaItem.id).filter((id): id is string => id !== undefined)
         await reorderMediaMutation.mutateAsync({ postId, mediaIds })
         // Show success feedback (you could add a toast notification here)
         console.log('Media order updated successfully')
@@ -466,7 +495,8 @@ export function PersonalFeed() {
       
       for (const post of posts) {
         for (const mediaItem of post.media) {
-          if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id]) {
+          // Skip locked media without IDs
+          if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id] && !mediaItem.isLocked) {
             try {
               const qualityUrl = await getVideoUrlWithQuality(mediaItem.id, '540p')
               newVideoUrls[mediaItem.id] = qualityUrl
@@ -663,21 +693,31 @@ export function PersonalFeed() {
                   onDragEnd={handleDragEnd}
                   className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                 >
-                  <LazyMedia
-                    src={mediaUrl}
-                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
-                    className={`rounded-lg object-cover transition-opacity ${
-                      isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
-                    } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
-                    style={{
-                      width: '100%',
-                      aspectRatio: '1 / 1'
-                    }}
-                    onClick={() => onMediaClick(mediaItem)}
-                    mediaType={mediaItem.mediaType || 'IMAGE'}
-                    videoUrl={videoUrl}
-                    showPlayButton={isVideo}
-                  />
+                  {mediaUrl ? (
+                    <LazyMedia
+                      src={mediaUrl}
+                      alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
+                      className={`rounded-lg object-cover transition-opacity ${
+                        isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
+                      } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                      style={{
+                        width: '100%',
+                        aspectRatio: '1 / 1'
+                      }}
+                      onClick={() => onMediaClick(mediaItem)}
+                      mediaType={mediaItem.mediaType || 'IMAGE'}
+                      videoUrl={videoUrl}
+                      showPlayButton={isVideo}
+                    />
+                  ) : (
+                    // Locked media placeholder
+                    <div className="w-full bg-gray-100 rounded-lg aspect-square flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
+                      <div className="text-center">
+                        <Lock className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                        <p className="text-xs text-gray-500">Locked</p>
+                      </div>
+                    </div>
+                  )}
                   {/* Insertion marker */}
                   {dragOverIndex === actualIndex && draggedMedia?.id !== mediaItem.id && (
                     <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
@@ -707,20 +747,30 @@ export function PersonalFeed() {
             onDragEnd={handleDragEnd}
             className={`relative mb-2 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           >
-            <LazyMedia
-              src={mainMediaUrl}
-              alt={typeof main === 'string' ? 'Main post media' : (main.caption || main.altText || 'Main post media')}
-              className={`w-full rounded-lg object-contain transition-opacity ${
-                isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
-              } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
-              style={typeof main === 'string' ? undefined : { aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
-              onClick={() => onMediaClick(main)}
-              mediaType={main.mediaType || 'IMAGE'}
-              isMainMedia={true}
-              videoUrl={mainVideoUrl}
-              showVideoControls={isMainVideo}
-              showPlayButton={isMainVideo}
-            />
+            {mainMediaUrl ? (
+              <LazyMedia
+                src={mainMediaUrl}
+                alt={typeof main === 'string' ? 'Main post media' : (main.caption || main.altText || 'Main post media')}
+                className={`w-full rounded-lg object-contain transition-opacity ${
+                  isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
+                } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                style={typeof main === 'string' ? undefined : { aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
+                onClick={() => onMediaClick(main)}
+                mediaType={main.mediaType || 'IMAGE'}
+                isMainMedia={true}
+                videoUrl={mainVideoUrl}
+                showVideoControls={isMainVideo}
+                showPlayButton={isMainVideo}
+              />
+            ) : (
+              // Locked media placeholder
+              <div className="w-full bg-gray-100 rounded-lg aspect-video flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
+                <div className="text-center">
+                  <Lock className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Locked Content</p>
+                </div>
+              </div>
+            )}
             {/* Insertion marker */}
             {dragOverIndex === 0 && draggedMedia?.id !== main.id && (
               <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
@@ -746,20 +796,30 @@ export function PersonalFeed() {
                   className={`relative flex-shrink-0 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                   style={{ width: '17.5%' }}
                 >
-                  <LazyMedia
-                    src={mediaUrl}
-                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
-                    className={`w-full rounded-lg object-cover border border-gray-200 transition-opacity ${
-                      isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
-                    } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
-                    style={{
-                      aspectRatio: '1 / 1'
-                    }}
-                    onClick={() => onMediaClick(mediaItem)}
-                    mediaType={mediaItem.mediaType || 'IMAGE'}
-                    videoUrl={videoUrl}
-                    showPlayButton={isVideo}
-                  />
+                  {mediaUrl ? (
+                    <LazyMedia
+                      src={mediaUrl}
+                      alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
+                      className={`w-full rounded-lg object-cover border border-gray-200 transition-opacity ${
+                        isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
+                      } ${isDragging ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
+                      style={{
+                        aspectRatio: '1 / 1'
+                      }}
+                      onClick={() => onMediaClick(mediaItem)}
+                      mediaType={mediaItem.mediaType || 'IMAGE'}
+                      videoUrl={videoUrl}
+                      showPlayButton={isVideo}
+                    />
+                  ) : (
+                    // Locked media placeholder
+                    <div className="w-full bg-gray-100 rounded-lg aspect-square flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border border-gray-200">
+                      <div className="text-center">
+                        <Lock className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                        <p className="text-xs text-gray-500">Locked</p>
+                      </div>
+                    </div>
+                  )}
                   {/* Insertion marker */}
                   {dragOverIndex === actualIndex && draggedMedia?.id !== mediaItem.id && (
                     <div className="absolute inset-0 border-2 border-blue-500 bg-blue-100 bg-opacity-20 rounded-lg pointer-events-none" />
@@ -771,6 +831,84 @@ export function PersonalFeed() {
         </div>
       );
     }
+  }
+
+  // Component to display locked media
+  function LockedMediaDisplay({ 
+    media, 
+    postId, 
+    isOwner,
+    isUnlocked,
+    unlockPrice,
+    onUnlock
+  }: { 
+    media: Post["media"], 
+    postId: string,
+    isOwner: boolean,
+    isUnlocked: boolean,
+    unlockPrice?: number,
+    onUnlock: (postId: string) => void
+  }) {
+    const lockedMedia = media.filter(m => m.isLocked);
+    const unlockedMedia = media.filter(m => !m.isLocked);
+
+    return (
+      <div className="space-y-4">
+        {/* Show unlocked media normally */}
+        {unlockedMedia.length > 0 && (
+          <PostMediaDisplay 
+            media={unlockedMedia} 
+            onMediaClick={(mediaItem) => handleMediaClick(mediaItem, postId, media)}
+            postId={postId}
+            isOwner={isOwner}
+          />
+        )}
+
+        {/* Show locked media as placeholder cards for non-owners who haven't unlocked */}
+        {lockedMedia.length > 0 && !isUnlocked && !isOwner && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center space-x-2">
+                <Lock className="h-5 w-5 text-gray-500" />
+                <span className="text-sm text-gray-600">
+                  {lockedMedia.length} locked media item{lockedMedia.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              {unlockPrice && (
+                <button
+                  onClick={() => onUnlock(postId)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  Unlock for {unlockPrice} tokens
+                </button>
+              )}
+            </div>
+            
+            {/* Locked media placeholders */}
+            <div className="grid grid-cols-2 gap-2">
+              {lockedMedia.map((mediaItem, index) => (
+                <div key={mediaItem.id || `locked-${index}`} className="relative bg-gray-100 rounded-lg aspect-square flex items-center justify-center">
+                  <div className="text-center">
+                    <Lock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-xs text-gray-500">Locked Content</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Show locked media normally if unlocked OR if owner */}
+        {lockedMedia.length > 0 && (isUnlocked || isOwner) && (
+          <PostMediaDisplay 
+            media={lockedMedia} 
+            onMediaClick={(mediaItem) => handleMediaClick(mediaItem, postId, media)}
+            postId={postId}
+            isOwner={isOwner}
+          />
+        )}
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -846,6 +984,12 @@ export function PersonalFeed() {
                         Paused
                       </span>
                     )}
+                    {post.isLocked && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <Lock className="h-3 w-3 mr-1" />
+                        Locked
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -866,12 +1010,23 @@ export function PersonalFeed() {
             
             {/* Post Media */}
             {post.media && post.media.length > 0 && (
-              <PostMediaDisplay 
-                media={post.media} 
-                onMediaClick={(mediaItem) => handleMediaClick(mediaItem, post.id, post.media)}
-                postId={post.id}
-                isOwner={post.author.id === user?.id}
-              />
+              post.isLocked ? (
+                <LockedMediaDisplay 
+                  media={post.media} 
+                  postId={post.id}
+                  isOwner={post.author.id === user?.id}
+                  isUnlocked={!!(post.unlockedBy && post.unlockedBy.length > 0)}
+                  unlockPrice={post.unlockPrice}
+                  onUnlock={handleUnlockPost}
+                />
+              ) : (
+                <PostMediaDisplay 
+                  media={post.media} 
+                  onMediaClick={(mediaItem) => handleMediaClick(mediaItem, post.id, post.media)}
+                  postId={post.id}
+                  isOwner={post.author.id === user?.id}
+                />
+              )
             )}
           </div>
 

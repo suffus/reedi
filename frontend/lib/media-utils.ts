@@ -57,6 +57,10 @@ export function getBestThumbnailUrl(media: Media): string | null {
  */
 export function getSmartMediaUrl(media: any, context: 'main' | 'small' | 'thumbnail' | 'detail' = 'main'): string {
   if (!media || !media.id) {
+    // For locked media without ID, return empty string to prevent URL construction
+    if (media?.isLocked) {
+      return ''
+    }
     return media?.url || ''
   }
 
@@ -93,6 +97,10 @@ export function getSmartMediaUrl(media: any, context: 'main' | 'small' | 'thumbn
  */
 export function getQualityUrl(media: any, preferredQuality: string): string {
   if (!media || !media.id) {
+    // For locked media without ID, return empty string to prevent URL construction
+    if (media?.isLocked) {
+      return ''
+    }
     return media?.url || ''
   }
 

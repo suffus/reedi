@@ -145,6 +145,11 @@ export const getMediaUrlFromMedia = (media: any, useThumbnail: boolean = false):
     return ''
   }
   
+  // For locked media without ID, return empty string to prevent URL construction
+  if (media.isLocked && !media.id) {
+    return ''
+  }
+  
   // If media has an ID, use the new backend serving endpoint
   if (media.id) {
     const endpoint = useThumbnail ? '/thumbnail' : ''

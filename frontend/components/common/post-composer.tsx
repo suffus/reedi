@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Image as ImageIcon, Send, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
+import { X, Image as ImageIcon, Send, ArrowUp, ArrowDown, Trash2, Lock, Unlock } from 'lucide-react'
 import { MediaPicker } from './media-picker'
 import { useAuth } from '@/lib/api-hooks'
 import { getMediaUrlFromMedia } from '@/lib/api'
@@ -11,7 +11,7 @@ import { LazyMedia } from '../lazy-media'
 interface PostComposerProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (content: string, mediaIds: string[]) => void
+  onSubmit: (content: string, mediaIds: string[], isLocked?: boolean, unlockPrice?: number, lockedMediaIds?: string[]) => void
   mode: 'post' | 'message'
   title?: string
   placeholder?: string
@@ -49,6 +49,9 @@ export function PostComposer({
   const [selectedMedia, setSelectedMedia] = useState<ComposerMedia[]>([])
   const [showMediaPicker, setShowMediaPicker] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const [unlockPrice, setUnlockPrice] = useState<number>(0)
+  const [lockedMediaIds, setLockedMediaIds] = useState<string[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-resize textarea
@@ -71,14 +74,29 @@ export function PostComposer({
     e.preventDefault()
     if ((!content.trim() && selectedMedia.length === 0)) return
 
+    // Validate locked post requirements
+    if (isLocked) {
+      if (!unlockPrice || unlockPrice <= 0) {
+        alert('Please set a valid unlock price for locked posts')
+        return
+      }
+      if (lockedMediaIds.length === 0) {
+        alert('Locked posts must have at least one locked media item')
+        return
+      }
+    }
+
     setIsSubmitting(true)
     try {
       const mediaIds = selectedMedia.map(media => media.id)
-      await onSubmit(content.trim(), mediaIds)
+      await onSubmit(content.trim(), mediaIds, isLocked, unlockPrice, lockedMediaIds)
       
       // Reset form
       setContent('')
       setSelectedMedia([])
+      setIsLocked(false)
+      setUnlockPrice(0)
+      setLockedMediaIds([])
       onClose()
     } catch (error) {
       console.error('Failed to submit:', error)
@@ -172,6 +190,20 @@ export function PostComposer({
                       {selectedMedia.length}/{maxMedia} media
                     </span>
                   )}
+                  {mode === 'post' && selectedMedia.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsLocked(!isLocked)}
+                      className={`p-2 rounded-full transition-colors ${
+                        isLocked 
+                          ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                      title={isLocked ? 'Unlock post' : 'Lock post'}
+                    >
+                      {isLocked ? <Unlock className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+                    </button>
+                  )}
                 </div>
                 <span className="text-sm text-gray-500">
                   {content.length}/{maxLength}
@@ -198,27 +230,32 @@ export function PostComposer({
                 {/* Media Layout Preview */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   {selectedMedia.length === 1 ? (
-                    <div className="space-y-2">
-                      <div className="relative group">
-                        <LazyMedia
-                          src={selectedMedia[0].thumbnail}
-                          alt={selectedMedia[0].altText || 'Media'}
-                          className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                          style={{
-                            height: 'auto',
-                            maxHeight: '400px'
-                          }}
-                          mediaType={selectedMedia[0].mediaType}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeMedia(0)}
-                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                                          <div className="space-y-2">
+                        <div className="relative group">
+                          <LazyMedia
+                            src={selectedMedia[0].thumbnail}
+                            alt={selectedMedia[0].altText || 'Media'}
+                            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                            style={{
+                              height: 'auto',
+                              maxHeight: '400px'
+                            }}
+                            mediaType={selectedMedia[0].mediaType}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(0)}
+                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                          {isLocked && lockedMediaIds.includes(selectedMedia[0].id) && (
+                            <div className="absolute top-2 left-2 bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                              <Lock className="h-3 w-3" />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
                   ) : selectedMedia.length === 2 ? (
                     <div className="grid grid-cols-2 gap-2">
                       {selectedMedia.map((media, index) => (
@@ -237,6 +274,11 @@ export function PostComposer({
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
+                          {isLocked && lockedMediaIds.includes(media.id) && (
+                            <div className="absolute top-2 left-2 bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                              <Lock className="h-3 w-3" />
+                            </div>
+                          )}
                           {index > 0 && (
                             <button
                               type="button"
@@ -338,6 +380,69 @@ export function PostComposer({
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Locked Post Controls */}
+            {isLocked && mode === 'post' && (
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-blue-900">
+                    Locked Post Settings
+                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <Lock className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm text-blue-700">Locked</span>
+                  </div>
+                </div>
+                
+                {/* Unlock Price */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Unlock Price (tokens)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={unlockPrice}
+                    onChange={(e) => setUnlockPrice(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter unlock price"
+                  />
+                </div>
+
+                {/* Media Locking */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Lock Media Items
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedMedia.map((media, index) => (
+                      <div key={media.id} className="flex items-center space-x-2 p-2 bg-white rounded border">
+                        <input
+                          type="checkbox"
+                          id={`lock-${media.id}`}
+                          checked={lockedMediaIds.includes(media.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setLockedMediaIds(prev => [...prev, media.id])
+                            } else {
+                              setLockedMediaIds(prev => prev.filter(id => id !== media.id))
+                            }
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <label htmlFor={`lock-${media.id}`} className="text-sm text-gray-700 flex-1 truncate">
+                          {media.altText || `Media ${index + 1}`}
+                        </label>
+                        <Lock className={`h-3 w-3 ${lockedMediaIds.includes(media.id) ? 'text-blue-600' : 'text-gray-400'}`} />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    At least one media item must be locked for locked posts.
+                  </p>
                 </div>
               </div>
             )}

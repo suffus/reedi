@@ -24,6 +24,7 @@ model User {
   website   String?
   isPrivate Boolean  @default(false)
   isVerified Boolean @default(false)
+  canPublishLockedMedia Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -69,6 +70,10 @@ model User {
   messageDeliveryStatus MessageDeliveryStatus[] @relation("MessageDeliveryStatus")
   messageReactions MessageReaction[] @relation("MessageReactions")
   userSessions UserSession[] @relation("UserSessions")
+  
+  // Locked content relations
+  unlockedPosts UnlockedPost[] @relation("UnlockedPosts")
+  unlockedMessages UnlockedMessage[] @relation("UnlockedMessages")
 
   @@map("users")
 }
@@ -80,6 +85,8 @@ model Post {
   publicationStatus PublicationStatus @default(PUBLIC)
   visibility        Visibility        @default(PUBLIC)
   authorId          String
+  isLocked          Boolean           @default(false)
+  unlockPrice       Int?              // Price in tokens to unlock the post
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -91,6 +98,7 @@ model Post {
   hashtags  Hashtag[]
   mentions  Mention[]
   notifications Notification[]
+  unlockedBy UnlockedPost[] @relation("UnlockedPosts")
 
   @@map("posts")
 }
@@ -303,6 +311,7 @@ model PostMedia {
   postId String
   mediaId String
   order  Int    @default(0)
+  isLocked Boolean @default(false)
 
   // Relations
   post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -442,6 +451,8 @@ model Message {
   replyToId         String?
   encryptedContent  String?       // For future E2E encryption
   encryptionVersion Int           @default(1)
+  isLocked          Boolean       @default(false)
+  unlockPrice       Int?          // Price in tokens to unlock the message
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   isDeleted         Boolean       @default(false)
@@ -453,6 +464,7 @@ model Message {
   mediaItems        MessageMedia[] @relation("MessageMediaItems")
   deliveryStatus    MessageDeliveryStatus[]
   reactions         MessageReaction[]
+  unlockedBy        UnlockedMessage[] @relation("UnlockedMessages")
 
   @@map("messages")
 }
@@ -462,6 +474,7 @@ model MessageMedia {
   messageId String
   mediaId String
   order  Int    @default(0)
+  isLocked Boolean @default(false)
 
   // Relations
   message Message @relation("MessageMediaItems", fields: [messageId], references: [id], onDelete: Cascade)
@@ -500,6 +513,36 @@ model MessageReaction {
 
   @@unique([messageId, userId, reaction])
   @@map("message_reactions")
+}
+
+model UnlockedPost {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  paidAmount Int     // Amount paid in tokens
+  unlockedAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation("UnlockedPosts", fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation("UnlockedPosts", fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@map("unlocked_posts")
+}
+
+model UnlockedMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  messageId String
+  paidAmount Int     // Amount paid in tokens
+  unlockedAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation("UnlockedMessages", fields: [userId], references: [id], onDelete: Cascade)
+  message   Message  @relation("UnlockedMessages", fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@map("unlocked_messages")
 }
 
 model UserSession {

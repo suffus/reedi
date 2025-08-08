@@ -16,7 +16,7 @@ export interface Media {
   mediaType: 'IMAGE' | 'VIDEO'
   processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
   duration?: number | null
-  codec?: string | null
+  codec?: number | null
   bitrate?: number | null
   framerate?: number | null
   videoUrl?: string | null
@@ -29,6 +29,7 @@ export interface Media {
   createdAt: string
   updatedAt: string
   authorId: string
+  isLocked?: boolean
 }
 
 export interface GalleryMedia extends Media {

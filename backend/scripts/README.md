@@ -1,84 +1,57 @@
-# Image Processing Scripts
+# Backend Scripts
 
-This directory contains scripts for managing image processing in the Reedi application.
+This directory contains utility scripts for managing the application.
 
-## Scripts
+## Locked Posts Scripts
 
-### 1. `reprocess-images.js`
+### Find User
+Find a user by email or username to get their ID.
 
-Sends unprocessed images to the media processor for processing.
-
-**Usage:**
 ```bash
-# Process 10 images (default)
-node scripts/reprocess-images.js
-
-# Process 50 images
-node scripts/reprocess-images.js 50
-
-# Process 100 images
-node scripts/reprocess-images.js 100
+node find-user.js <email_or_username>
 ```
 
-**What it does:**
-- Finds images with `imageProcessingStatus` of `null`, `PENDING`, or `FAILED`
-- Updates their status to `PENDING`
-- Sends them to the RabbitMQ processing queue
-- Processes oldest images first
-- Provides a summary of success/failure counts
-
-**Prerequisites:**
-- RabbitMQ server running
-- Media processor service running
-- Database connection configured
-
-### 2. `check-image-status.js`
-
-Shows the current status of image processing in the database.
-
-**Usage:**
+Example:
 ```bash
-node scripts/check-image-status.js
+node find-user.js user@example.com
 ```
 
-**What it shows:**
-- Count of images by processing status
-- Sample images for each status
-- Images that have processed versions
-- Quality count for processed images
+### Grant Locked Posts Permission
+Grant a user permission to create locked posts.
 
-## Examples
-
-### Check current status
 ```bash
-cd backend
-node scripts/check-image-status.js
+node grant-locked-posts-permission.js <userId>
 ```
 
-### Process first 10 unprocessed images
+Example:
 ```bash
-cd backend
-node scripts/reprocess-images.js 10
+node grant-locked-posts-permission.js cmdyyo75f00e011mgeek77lse
 ```
 
-### Process first 100 unprocessed images
+## Image Processing Scripts
+
+### Reprocess Images
+Send unprocessed images to the media processor.
+
 ```bash
-cd backend
-node scripts/reprocess-images.js 100
+node reprocess-images.js [limit]
 ```
 
-## Status Meanings
+Example:
+```bash
+node reprocess-images.js 10
+```
 
-- `null` - Never processed
-- `PENDING` - Currently being processed
-- `PROCESSING` - In progress
-- `COMPLETED` - Successfully processed
-- `FAILED` - Processing failed
-- `REJECTED` - Processing rejected
+### Check Image Status
+Check the processing status of images in the database.
 
-## Notes
+```bash
+node check-image-status.js
+```
 
-- Images are processed in order of creation date (oldest first)
-- The script includes a small delay between queueing images to avoid overwhelming the processor
-- Failed images can be retried by running the script again
-- Only images with valid `s3Key` values are processed 
+### Check Jobs
+Inspect media processing job records.
+
+```bash
+node check-jobs.js
+``` 

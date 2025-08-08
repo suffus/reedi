@@ -150,7 +150,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
     if (selectedMediaIds.size === filteredMedia.length) {
       setSelectedMediaIds(new Set())
     } else {
-      setSelectedMediaIds(new Set(filteredMedia.map(m => m.id)))
+      setSelectedMediaIds(new Set(filteredMedia.map(m => m.id).filter((id): id is string => id !== undefined)))
     }
   }
 
