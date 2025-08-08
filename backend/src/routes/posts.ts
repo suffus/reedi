@@ -59,35 +59,18 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
         },
         media: {
           include: { 
-            media: {
-              select: {
-                id: true,
-                s3Key: true,
-                thumbnailS3Key: true,
-                originalFilename: true,
-                altText: true,
-                caption: true,
-                tags: true,
-                visibility: true,
-                createdAt: true,
-                updatedAt: true,
-                width: true,
-                height: true,
-                size: true,
-                mimeType: true,
-                authorId: true,
-                mediaType: true,
-                processingStatus: true,
-                duration: true,
-                codec: true,
-                bitrate: true,
-                framerate: true,
-                videoUrl: true,
-                videoS3Key: true
-              }
-            }
+            media: true
           },
           orderBy: { order: 'asc' }
+        },
+        unlockedBy: {
+          where: { userId: req.user?.id },
+          select: {
+            id: true,
+            userId: true,
+            paidAmount: true,
+            unlockedAt: true
+          }
         }
       },
       skip: offset,
@@ -102,11 +85,61 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
     })
   ])
 
-  // Map media to array of media objects in order
-  const postsWithOrderedMedia = posts.map(post => ({
-    ...post,
-    media: post.media.map(pm => pm.media)
-  }))
+  // Map media to array of media objects in order, filtering locked media data
+  const postsWithOrderedMedia = posts.map(post => {
+    const userId = req.user?.id
+    const isUnlocked = post.unlockedBy && post.unlockedBy.length > 0
+    const isOwner = userId ? post.authorId === userId : false
+    const isPostLocked = post.isLocked
+
+    return {
+      ...post,
+      media: post.media.map(pm => {
+        const mediaItem = pm.media
+        // Check if this specific media item is locked (from PostMedia.isLocked)
+        const isMediaLocked = pm.isLocked
+
+        // If media is locked and user hasn't unlocked it and isn't the owner,
+        // return a placeholder media object with locked content IDs
+        if (isMediaLocked && !isUnlocked && !isOwner) {
+          const isVideo = mediaItem.mediaType === 'VIDEO'
+          const lockedId = isVideo ? 'locked-video' : 'locked-image'
+          
+          return {
+            id: lockedId,
+            originalFilename: mediaItem.originalFilename,
+            altText: mediaItem.altText,
+            caption: mediaItem.caption,
+            tags: mediaItem.tags,
+            visibility: mediaItem.visibility,
+            createdAt: mediaItem.createdAt,
+            updatedAt: mediaItem.updatedAt,
+            width: mediaItem.width,
+            height: mediaItem.height,
+            size: mediaItem.size,
+            mimeType: mediaItem.mimeType,
+            authorId: mediaItem.authorId,
+            mediaType: mediaItem.mediaType,
+            processingStatus: mediaItem.processingStatus,
+            duration: mediaItem.duration,
+            codec: mediaItem.codec,
+            bitrate: mediaItem.bitrate,
+            framerate: mediaItem.framerate,
+            videoUrl: mediaItem.videoUrl,
+            videoS3Key: mediaItem.videoS3Key,
+            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
+            isLocked: true
+          }
+        }
+
+        // For unlocked media or media owned by the user, return full data
+        return {
+          ...mediaItem,
+          isLocked: isMediaLocked
+        }
+      })
+    }
+  })
 
   res.json({
     success: true,
@@ -237,35 +270,18 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
         },
         media: {
           include: { 
-            media: {
-              select: {
-                id: true,
-                s3Key: true,
-                thumbnailS3Key: true,
-                originalFilename: true,
-                altText: true,
-                caption: true,
-                tags: true,
-                visibility: true,
-                createdAt: true,
-                updatedAt: true,
-                width: true,
-                height: true,
-                size: true,
-                mimeType: true,
-                authorId: true,
-                mediaType: true,
-                processingStatus: true,
-                duration: true,
-                codec: true,
-                bitrate: true,
-                framerate: true,
-                videoUrl: true,
-                videoS3Key: true
-              }
-            }
+            media: true
           },
           orderBy: { order: 'asc' }
+        },
+        unlockedBy: {
+          where: { userId: userId },
+          select: {
+            id: true,
+            userId: true,
+            paidAmount: true,
+            unlockedAt: true
+          }
         }
       },
       skip: offset,
@@ -330,11 +346,60 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
     })
   ])
 
-  // Map media to array of media objects in order
-  const postsWithOrderedMedia = posts.map(post => ({
-    ...post,
-    media: post.media.map(pm => pm.media)
-  }))
+  // Map media to array of media objects in order, filtering locked media data
+  const postsWithOrderedMedia = posts.map(post => {
+    const isUnlocked = post.unlockedBy && post.unlockedBy.length > 0
+    const isOwner = post.authorId === userId
+    const isPostLocked = post.isLocked
+
+    return {
+      ...post,
+      media: post.media.map(pm => {
+        const mediaItem = pm.media
+        // Check if this specific media item is locked (from PostMedia.isLocked)
+        const isMediaLocked = pm.isLocked
+
+        // If media is locked and user hasn't unlocked it and isn't the owner,
+        // return a placeholder media object with locked content IDs
+        if (isMediaLocked && !isUnlocked && !isOwner) {
+          const isVideo = mediaItem.mediaType === 'VIDEO'
+          const lockedId = isVideo ? 'locked-video' : 'locked-image'
+          
+          return {
+            id: lockedId,
+            originalFilename: mediaItem.originalFilename,
+            altText: mediaItem.altText,
+            caption: mediaItem.caption,
+            tags: mediaItem.tags,
+            visibility: mediaItem.visibility,
+            createdAt: mediaItem.createdAt,
+            updatedAt: mediaItem.updatedAt,
+            width: mediaItem.width,
+            height: mediaItem.height,
+            size: mediaItem.size,
+            mimeType: mediaItem.mimeType,
+            authorId: mediaItem.authorId,
+            mediaType: mediaItem.mediaType,
+            processingStatus: mediaItem.processingStatus,
+            duration: mediaItem.duration,
+            codec: mediaItem.codec,
+            bitrate: mediaItem.bitrate,
+            framerate: mediaItem.framerate,
+            videoUrl: mediaItem.videoUrl,
+            videoS3Key: mediaItem.videoS3Key,
+            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
+            isLocked: true
+          }
+        }
+
+        // For unlocked media or media owned by the user, return full data
+        return {
+          ...mediaItem,
+          isLocked: isMediaLocked
+        }
+      })
+    }
+  })
 
   res.json({
     success: true,
@@ -355,7 +420,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
 // Create a new post
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { title, content, visibility, hashtags, mentions, mediaIds } = req.body
+  const { title, content, visibility, hashtags, mentions, mediaIds, isLocked, unlockPrice, lockedMediaIds } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -363,6 +428,38 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
       error: 'User not authenticated'
     })
     return
+  }
+
+  // Check if user can publish locked media
+  if (isLocked) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { canPublishLockedMedia: true }
+    })
+
+    if (!user?.canPublishLockedMedia) {
+      res.status(403).json({
+        success: false,
+        error: 'You do not have permission to create locked posts'
+      })
+      return
+    }
+
+    if (!unlockPrice || unlockPrice <= 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Locked posts must have a valid unlock price'
+      })
+      return
+    }
+
+    if (!lockedMediaIds || lockedMediaIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Locked posts must have at least one locked media item'
+      })
+      return
+    }
   }
 
   // Validate that all media belong to the user
@@ -393,6 +490,8 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
         content,
         visibility: visibility || 'PUBLIC',
         authorId: userId,
+        isLocked: isLocked || false,
+        unlockPrice: isLocked ? unlockPrice : null,
         hashtags: {
           connectOrCreate: hashtags?.map((tag: string) => ({
             where: { name: tag.toLowerCase() },
@@ -419,7 +518,8 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
         data: mediaIds.map((mediaId: string, index: number) => ({
           postId: post.id,
           mediaId,
-          order: index
+          order: index,
+          isLocked: isLocked ? lockedMediaIds.includes(mediaId) : false
         }))
       })
     }
@@ -1216,8 +1316,19 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
           }
         },
         media: {
-          include: { media: true },
+          include: { 
+            media: true
+          },
           orderBy: { order: 'asc' }
+        },
+        unlockedBy: {
+          where: { userId: viewerId },
+          select: {
+            id: true,
+            userId: true,
+            paidAmount: true,
+            unlockedAt: true
+          }
         }
       },
       skip: offset,
@@ -1229,10 +1340,60 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
 
   console.log('Found posts:', posts.length, 'Total:', total)
 
-  const postsWithOrderedMedia = posts.map(post => ({
-    ...post,
-    media: (post.media || []).map((pm: any) => pm.media)
-  }))
+  // Map media to array of media objects in order, filtering locked media data
+  const postsWithOrderedMedia = posts.map(post => {
+    const isUnlocked = post.unlockedBy && post.unlockedBy.length > 0
+    const isOwner = viewerId ? post.authorId === viewerId : false
+    const isPostLocked = post.isLocked
+
+    return {
+      ...post,
+      media: (post.media || []).map((pm: any) => {
+        const mediaItem = pm.media
+        // Check if this specific media item is locked (from PostMedia.isLocked)
+        const isMediaLocked = pm.isLocked
+
+        // If media is locked and user hasn't unlocked it and isn't the owner,
+        // return a placeholder media object with locked content IDs
+        if (isMediaLocked && !isUnlocked && !isOwner) {
+          const isVideo = mediaItem.mediaType === 'VIDEO'
+          const lockedId = isVideo ? 'locked-video' : 'locked-image'
+          
+          return {
+            id: lockedId,
+            originalFilename: mediaItem.originalFilename,
+            altText: mediaItem.altText,
+            caption: mediaItem.caption,
+            tags: mediaItem.tags,
+            visibility: mediaItem.visibility,
+            createdAt: mediaItem.createdAt,
+            updatedAt: mediaItem.updatedAt,
+            width: mediaItem.width,
+            height: mediaItem.height,
+            size: mediaItem.size,
+            mimeType: mediaItem.mimeType,
+            authorId: mediaItem.authorId,
+            mediaType: mediaItem.mediaType,
+            processingStatus: mediaItem.processingStatus,
+            duration: mediaItem.duration,
+            codec: mediaItem.codec,
+            bitrate: mediaItem.bitrate,
+            framerate: mediaItem.framerate,
+            videoUrl: mediaItem.videoUrl,
+            videoS3Key: mediaItem.videoS3Key,
+            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
+            isLocked: true
+          }
+        }
+
+        // For unlocked media or media owned by the user, return full data
+        return {
+          ...mediaItem,
+          isLocked: isMediaLocked
+        }
+      })
+    }
+  })
 
   res.json({
     success: true,
@@ -1271,10 +1432,12 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
           }
         },
         media: {
-          include: {
+          include: { 
             media: true
-          }
+          },
+          orderBy: { order: 'asc' }
         },
+
         hashtags: true,
         _count: {
           select: {
@@ -1295,10 +1458,54 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
     })
   ])
 
-  const formattedPosts = posts.map(post => ({
-    ...post,
-    media: post.media.map(pi => pi.media)
-  }))
+  // Map media to array of media objects in order, filtering locked media data
+  const formattedPosts = posts.map(post => {
+    const isPostLocked = post.isLocked
+
+    return {
+      ...post,
+      media: post.media.map((pm: any) => {
+        const mediaItem = pm.media
+        // If the post is locked, all media in it is considered locked
+        const isMediaLocked = isPostLocked
+
+        // For public endpoint (unauthenticated users), all locked media should be filtered
+        if (isMediaLocked) {
+          return {
+            id: mediaItem.id,
+            originalFilename: mediaItem.originalFilename,
+            altText: mediaItem.altText,
+            caption: mediaItem.caption,
+            tags: mediaItem.tags,
+            visibility: mediaItem.visibility,
+            createdAt: mediaItem.createdAt,
+            updatedAt: mediaItem.updatedAt,
+            width: mediaItem.width,
+            height: mediaItem.height,
+            size: mediaItem.size,
+            mimeType: mediaItem.mimeType,
+            authorId: mediaItem.authorId,
+            mediaType: mediaItem.mediaType,
+            processingStatus: mediaItem.processingStatus,
+            duration: mediaItem.duration,
+            codec: mediaItem.codec,
+            bitrate: mediaItem.bitrate,
+            framerate: mediaItem.framerate,
+            videoUrl: mediaItem.videoUrl,
+            videoS3Key: mediaItem.videoS3Key,
+            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
+            isLocked: true
+          }
+        }
+
+        // For unlocked media, return full data
+        return {
+          ...mediaItem,
+          isLocked: isMediaLocked
+        }
+      })
+    }
+  })
 
   res.json({
     success: true,
@@ -1313,6 +1520,70 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
         hasPrev: Number(page) > 1
       }
     }
+  })
+}))
+
+// Unlock a post
+router.post('/:postId/unlock', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { postId } = req.params
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Check if post exists and is locked
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    include: {
+      unlockedBy: {
+        where: { userId: userId }
+      }
+    }
+  })
+
+  if (!post) {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
+  if (!post.isLocked) {
+    res.status(400).json({
+      success: false,
+      error: 'Post is not locked'
+    })
+    return
+  }
+
+  // Check if user has already unlocked this post
+  if (post.unlockedBy.length > 0) {
+    res.status(400).json({
+      success: false,
+      error: 'Post is already unlocked for this user'
+    })
+    return
+  }
+
+  // For now, just create the unlock record without payment processing
+  const unlockRecord = await prisma.unlockedPost.create({
+    data: {
+      userId: userId,
+      postId: postId,
+      paidAmount: post.unlockPrice || 0
+    }
+  })
+
+  res.json({
+    success: true,
+    data: { unlockRecord },
+    message: 'Post unlocked successfully'
   })
 }))
 

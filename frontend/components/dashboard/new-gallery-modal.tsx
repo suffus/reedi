@@ -99,7 +99,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
       if (selectedMedia.length > 0) {
         await addMediaToGalleryMutation.mutateAsync({
           galleryId: galleryResult.data.gallery.id,
-          mediaIds: selectedMedia.map(media => media.id)
+          mediaIds: selectedMedia.map(media => media.id).filter((id): id is string => id !== undefined)
         })
       }
 

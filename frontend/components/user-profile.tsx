@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Heart, MessageCircle, Share, Clock, User } from 'lucide-react'
+import { Heart, MessageCircle, Share, Clock, User, Lock } from 'lucide-react'
 import { API_BASE_URL, getAuthHeaders, getMediaUrlFromMedia } from '@/lib/api'
 import { usePublicUserPosts, usePublicUserMedia, useAuth } from '@/lib/api-hooks'
 import { LazyMedia } from './lazy-media'
@@ -74,7 +74,8 @@ export default function UserProfile() {
       
       for (const post of posts) {
         for (const mediaItem of post.media) {
-          if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id]) {
+          // Skip locked media without IDs
+          if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id] && !mediaItem.isLocked) {
             try {
               const qualityUrl = await getVideoUrlWithQuality(mediaItem.id, '540p')
               newVideoUrls[mediaItem.id] = qualityUrl
@@ -349,6 +350,11 @@ export default function UserProfile() {
     if (!media || media.length === 0) return null;
     
     const getBestMediaUrl = (mediaItem: any, useThumbnail: boolean = false) => {
+      // For locked media without ID, return empty string to show placeholder
+      if (mediaItem.isLocked && !mediaItem.id) {
+        return ''
+      }
+      
       if (useThumbnail) {
         // For thumbnails, use the smart thumbnail URL
         return getSmartMediaUrl(mediaItem, 'thumbnail')
@@ -380,22 +386,32 @@ export default function UserProfile() {
       
       return (
         <div className="mb-4">
-          <LazyMedia
-            src={mediaUrl}
-            alt={img.altText || img.caption || 'Post media'}
-            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
-            style={{
-              height: 'auto',
-              width: '100%',
-              display: 'block'
-            }}
-            onClick={() => onMediaClick(img, media)}
-            mediaType={img.mediaType || 'IMAGE'}
-            isMainMedia={true}
-            videoUrl={videoUrl}
-            showVideoControls={isVideo}
-            showPlayButton={isVideo}
-          />
+          {mediaUrl ? (
+            <LazyMedia
+              src={mediaUrl}
+              alt={img.altText || img.caption || 'Post media'}
+              className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              style={{
+                height: 'auto',
+                width: '100%',
+                display: 'block'
+              }}
+              onClick={() => onMediaClick(img, media)}
+              mediaType={img.mediaType || 'IMAGE'}
+              isMainMedia={true}
+              videoUrl={videoUrl}
+              showVideoControls={isVideo}
+              showPlayButton={isVideo}
+            />
+          ) : (
+            // Locked media placeholder
+            <div className="w-full bg-gray-100 rounded-lg aspect-video flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
+              <div className="text-center">
+                <Lock className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">Locked Content</p>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -410,19 +426,29 @@ export default function UserProfile() {
               const videoUrl = getCachedVideoUrl(img);
               
               return (
-                <div key={img.id}>
-                  <LazyMedia
-                    src={mediaUrl}
-                    alt={img.altText || img.caption || `Post media ${idx + 1}`}
-                    className="w-full rounded-lg object-contain max-h-72 cursor-pointer hover:opacity-90 transition-opacity"
-                    style={{ aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
-                    onClick={() => onMediaClick(img, media)}
-                    mediaType={img.mediaType || 'IMAGE'}
-                    isMainMedia={idx === 0} // First item is main media
-                    videoUrl={videoUrl}
-                    showVideoControls={isVideo && idx === 0} // Only show controls for main video
-                    showPlayButton={isVideo}
-                  />
+                <div key={img.id || `media-${idx}`}>
+                  {mediaUrl ? (
+                    <LazyMedia
+                      src={mediaUrl}
+                      alt={img.altText || img.caption || `Post media ${idx + 1}`}
+                      className="w-full rounded-lg object-contain max-h-72 cursor-pointer hover:opacity-90 transition-opacity"
+                      style={{ aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
+                      onClick={() => onMediaClick(img, media)}
+                      mediaType={img.mediaType || 'IMAGE'}
+                      isMainMedia={idx === 0} // First item is main media
+                      videoUrl={videoUrl}
+                      showVideoControls={isVideo && idx === 0} // Only show controls for main video
+                      showPlayButton={isVideo}
+                    />
+                  ) : (
+                    // Locked media placeholder
+                    <div className="w-full bg-gray-100 rounded-lg aspect-square flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
+                      <div className="text-center">
+                        <Lock className="h-8 w-8 text-gray-400 mx-auto mb-1" />
+                        <p className="text-xs text-gray-500">Locked</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

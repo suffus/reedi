@@ -17,12 +17,15 @@ export function PostAuthorForm({ userId, onPostCreated }: PostAuthorFormProps) {
 
   const createPostMutation = useCreatePost()
 
-  const handleComposerSubmit = async (content: string, mediaIds: string[]) => {
+  const handleComposerSubmit = async (content: string, mediaIds: string[], isLocked?: boolean, unlockPrice?: number, lockedMediaIds?: string[]) => {
     try {
       await createPostMutation.mutateAsync({
         content,
         visibility: postVisibility,
-        mediaIds
+        mediaIds,
+        isLocked,
+        unlockPrice,
+        lockedMediaIds
       })
       setNewPost('')
       onPostCreated?.()

@@ -175,6 +175,42 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
   const { id } = req.params
   const viewerId = req.user?.id
 
+  // Handle locked media placeholders
+  if (id === 'locked-image' || id === 'locked-video') {
+    const isVideo = id === 'locked-video'
+    
+    // Generate a simple locked placeholder image
+    const svg = `
+      <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f3f4f6"/>
+        <rect x="100" y="100" width="200" height="200" fill="#e5e7eb" rx="20"/>
+        <rect x="150" y="120" width="100" height="60" fill="#6b7280" rx="8"/>
+        <circle cx="200" cy="150" r="8" fill="#9ca3af"/>
+        <rect x="190" y="160" width="20" height="10" fill="#9ca3af" rx="2"/>
+        ${isVideo ? `
+          <circle cx="200" cy="220" r="30" fill="#6b7280"/>
+          <polygon points="190,210 190,230 210,220" fill="white"/>
+        ` : `
+          <rect x="170" y="200" width="60" height="40" fill="#6b7280" rx="4"/>
+          <circle cx="185" cy="215" r="3" fill="#9ca3af"/>
+          <circle cx="195" cy="215" r="3" fill="#9ca3af"/>
+          <circle cx="205" cy="215" r="3" fill="#9ca3af"/>
+          <rect x="175" y="225" width="50" height="8" fill="#9ca3af" rx="2"/>
+        `}
+        <text x="200" y="280" font-family="Arial, sans-serif" font-size="16" fill="#6b7280" text-anchor="middle">Locked Content</text>
+      </svg>
+    `
+    
+    const svgBuffer = Buffer.from(svg, 'utf-8')
+    
+    res.setHeader('Content-Type', 'image/svg+xml')
+    res.setHeader('Content-Length', svgBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    
+    res.end(svgBuffer)
+    return
+  }
+
   // Check if user can view this media
   const canView = await canViewMedia(id, viewerId)
   if (!canView) {
@@ -259,6 +295,42 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
   const viewerId = req.user?.id
+
+  // Handle locked media placeholders
+  if (id === 'locked-image' || id === 'locked-video') {
+    const isVideo = id === 'locked-video'
+    
+    // Generate a smaller locked placeholder image for thumbnails
+    const svg = `
+      <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f3f4f6"/>
+        <rect x="50" y="50" width="100" height="100" fill="#e5e7eb" rx="10"/>
+        <rect x="75" y="60" width="50" height="30" fill="#6b7280" rx="4"/>
+        <circle cx="100" cy="75" r="4" fill="#9ca3af"/>
+        <rect x="95" y="80" width="10" height="5" fill="#9ca3af" rx="1"/>
+        ${isVideo ? `
+          <circle cx="100" cy="110" r="15" fill="#6b7280"/>
+          <polygon points="95,105 95,115 105,110" fill="white"/>
+        ` : `
+          <rect x="85" y="100" width="30" height="20" fill="#6b7280" rx="2"/>
+          <circle cx="92" cy="107" r="1.5" fill="#9ca3af"/>
+          <circle cx="97" cy="107" r="1.5" fill="#9ca3af"/>
+          <circle cx="102" cy="107" r="1.5" fill="#9ca3af"/>
+          <rect x="87" y="112" width="26" height="4" fill="#9ca3af" rx="1"/>
+        `}
+        <text x="100" y="140" font-family="Arial, sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">Locked</text>
+      </svg>
+    `
+    
+    const svgBuffer = Buffer.from(svg, 'utf-8')
+    
+    res.setHeader('Content-Type', 'image/svg+xml')
+    res.setHeader('Content-Length', svgBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    
+    res.end(svgBuffer)
+    return
+  }
 
   // Check if user can view this media
   const canView = await canViewMedia(id, viewerId)
@@ -827,6 +899,42 @@ router.get('/:id/image-qualities', optionalAuthMiddleware, asyncHandler(async (r
 router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id, quality } = req.params
   const viewerId = req.user?.id
+
+  // Handle locked media placeholders
+  if (id === 'locked-image' || id === 'locked-video') {
+    const isVideo = id === 'locked-video'
+    
+    // Generate a locked placeholder image (same as main endpoint)
+    const svg = `
+      <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f3f4f6"/>
+        <rect x="100" y="100" width="200" height="200" fill="#e5e7eb" rx="20"/>
+        <rect x="150" y="120" width="100" height="60" fill="#6b7280" rx="8"/>
+        <circle cx="200" cy="150" r="8" fill="#9ca3af"/>
+        <rect x="190" y="160" width="20" height="10" fill="#9ca3af" rx="2"/>
+        ${isVideo ? `
+          <circle cx="200" cy="220" r="30" fill="#6b7280"/>
+          <polygon points="190,210 190,230 210,220" fill="white"/>
+        ` : `
+          <rect x="170" y="200" width="60" height="40" fill="#6b7280" rx="4"/>
+          <circle cx="185" cy="215" r="3" fill="#9ca3af"/>
+          <circle cx="195" cy="215" r="3" fill="#9ca3af"/>
+          <circle cx="205" cy="215" r="3" fill="#9ca3af"/>
+          <rect x="175" y="225" width="50" height="8" fill="#9ca3af" rx="2"/>
+        `}
+        <text x="200" y="280" font-family="Arial, sans-serif" font-size="16" fill="#6b7280" text-anchor="middle">Locked Content</text>
+      </svg>
+    `
+    
+    const svgBuffer = Buffer.from(svg, 'utf-8')
+    
+    res.setHeader('Content-Type', 'image/svg+xml')
+    res.setHeader('Content-Length', svgBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    
+    res.end(svgBuffer)
+    return
+  }
 
   // Check if user can view this media
   const canView = await canViewMedia(id, viewerId)

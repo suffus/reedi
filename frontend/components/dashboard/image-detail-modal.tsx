@@ -32,6 +32,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
+  const [hasDragged, setHasDragged] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [isCropMode, setIsCropMode] = useState(false)
   const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 })
@@ -67,6 +68,11 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setHasUnsavedChanges(false)
     setShowUnsavedChangesDialog(false)
     setPendingNavigation(null)
+    // Reset view state when navigating to a new media
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+    setActiveCrop(null)
   }, [media?.id, media?.altText, media?.caption, media?.tags])
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -75,7 +81,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [controlsVisible, setControlsVisible] = useState(true)
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
-  const { data: commentsData, isLoading: commentsLoading } = useMediaComments(media.id)
+  const { data: commentsData, isLoading: commentsLoading } = useMediaComments(media.id || '')
   const createCommentMutation = useCreateComment()
   const updateMediaMutation = useUpdateMedia()
   const { data: authData } = useAuth()
@@ -218,7 +224,6 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setPan({ x: 0, y: 0 })
     setCropArea({ x: 0, y: 0, width: 0, height: 0 })
     setActiveCrop(null)
-    // Don't reset crop mode here - let toggleCropMode handle it
   }
 
   const handleClose = useCallback(() => {
@@ -351,6 +356,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
   const handleSaveEdit = async () => {
     try {
+      if (!media.id) return
       await updateMediaMutation.mutateAsync({
         mediaId: media.id,
         title: editTitle,
@@ -365,7 +371,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       setHasUnsavedChanges(false)
       
       // Update the media prop if updateMedia function is provided
-      if (updateMedia) {
+      if (updateMedia && media.id) {
         updateMedia(media.id, {
           altText: editTitle,
           caption: editDescription,
@@ -466,6 +472,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         const newPanY = (pan.y + viewportCenterY - cropCenterY) * newScale / zoom
         
         // Apply the new scale and pan
+        console.log('newScale', newScale, newPanX, newPanY)
         setZoom(newScale)
         setPan({ x: newPanX, y: newPanY })
       }
@@ -479,6 +486,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       handleCropMouseDown(e)
       return
     }
+
     
     if (zoom > 1) {
       e.preventDefault()
@@ -495,6 +503,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     
     if (isDragging) {
       e.preventDefault()
+      setHasDragged(true)
       setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
     }
   }
@@ -505,7 +514,13 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       return
     }
     
+    // Only reset view if no drag occurred (just a click)
+    if (!hasDragged) {
+      resetView()
+    }
+    
     setIsDragging(false)
+    setHasDragged(false)
     setDragStart({ x: 0, y: 0 })
   }
 
@@ -733,10 +748,10 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               }}
               onLoad={handleImageLoad}
               onClick={(e) => {
-                // Only reset view if image is zoomed and not in crop mode
+                // Only reset view if image is zoomed, not in crop mode, not dragging, and no drag occurred
                 if (zoom > 1 && !isCropMode && !isDragging) {
                   e.stopPropagation()
-                  resetView()
+                  //resetView()
                 }
               }}
             />

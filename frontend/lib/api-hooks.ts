@@ -45,6 +45,13 @@ interface Post {
   publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
   visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   authorId: string
+  isLocked?: boolean
+  unlockPrice?: number
+  unlockedBy?: {
+    id: string
+    unlockedAt: string
+    paidAmount: number
+  }[]
   createdAt: string
   updatedAt: string
   author: User
@@ -101,6 +108,7 @@ interface Media {
   framerate?: number | null
   videoUrl?: string | null
   videoS3Key?: string | null
+  isLocked?: boolean
   createdAt: string
   updatedAt: string
   authorId: string
@@ -319,7 +327,7 @@ export const useCreatePost = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (postData: { title?: string; content: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; hashtags?: string[]; mediaIds?: string[] }) => {
+    mutationFn: async (postData: { title?: string; content: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; hashtags?: string[]; mediaIds?: string[]; isLocked?: boolean; unlockPrice?: number; lockedMediaIds?: string[] }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
