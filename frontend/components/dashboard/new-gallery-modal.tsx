@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus } from 'lucide-react'
 import { useCreateGallery, useAddMediaToGallery, useUserMedia } from '../../lib/api-hooks'
@@ -33,6 +33,24 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
 
   const createGalleryMutation = useCreateGallery()
   const addMediaToGalleryMutation = useAddMediaToGallery()
+  
+  // Reset form state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      // Small delay to ensure proper state reset
+      const timer = setTimeout(() => {
+        setGalleryName('')
+        setGalleryDescription('')
+        setGalleryVisibility('PUBLIC')
+        setSelectedMedia([])
+        setSearchQuery('')
+        setFilterTags([])
+        setShowFilters(false)
+      }, 0)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen])
   
   const { 
     data: galleryData, 
@@ -85,12 +103,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
         })
       }
 
-      // Reset form and close modal
-      setGalleryName('')
-      setGalleryDescription('')
-      setGalleryVisibility('PUBLIC')
-      setSelectedMedia([])
-      setSearchQuery('')
+      // Close modal and notify parent
       onClose()
       onGalleryCreated?.()
     } catch (error) {
@@ -99,11 +112,10 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
     }
   }
 
-  if (!isOpen) return null
-
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 overflow-y-auto">
+    <AnimatePresence mode="wait">
+      {isOpen && (
+        <div key="new-gallery-modal" className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex min-h-screen items-center justify-center p-4">
           {/* Backdrop */}
           <motion.div
@@ -330,6 +342,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
           </motion.div>
         </div>
       </div>
+      )}
     </AnimatePresence>
   )
 } 

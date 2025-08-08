@@ -21,10 +21,12 @@ interface UploadFile {
   description: string
   tags: string[]
   mediaType: 'IMAGE' | 'VIDEO'
+  id: string // Unique identifier for stable ordering
+  isPreviewReady: boolean // Track if preview is loaded
 }
 
 interface UploadProgress {
-  [key: number]: {
+  [key: string]: { // Use file ID instead of index for stable tracking
     status: 'pending' | 'uploading' | 'success' | 'error'
     progress?: number
     error?: string
@@ -105,6 +107,24 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
 
   const handleFiles = (files: File[]) => {
     console.log('handleFiles called with:', files.length, 'files')
+    
+    // Check for 100-item limit
+    const currentCount = uploadFiles.length
+    const newFilesCount = files.length
+    const totalCount = currentCount + newFilesCount
+    
+    if (totalCount > 100) {
+      const allowedCount = 100 - currentCount
+      if (allowedCount <= 0) {
+        alert('Maximum of 100 files allowed. Please remove some files before adding more.')
+        return
+      }
+      
+      const message = `You selected ${newFilesCount} files, but only ${allowedCount} can be added (maximum 100 total). Only the first ${allowedCount} files will be added.`
+      alert(message)
+      files = files.slice(0, allowedCount)
+    }
+    
     // Reset last applied metadata when new files are added
     setLastAppliedSharedMetadata({ title: '', description: '', tags: [] })
     
@@ -156,10 +176,30 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' })
     })
     
-    // Process files in sorted order
-    sortedFiles.forEach(file => {
+    // Create placeholder tiles immediately for better UX
+    const newFiles: UploadFile[] = sortedFiles.map(file => {
       const isVideo = file.type.startsWith('video/')
       const mediaType: 'IMAGE' | 'VIDEO' = isVideo ? 'VIDEO' : 'IMAGE'
+      
+      return {
+        file,
+        preview: '', // Will be loaded asynchronously
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        description: '',
+        tags: [],
+        mediaType,
+        id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        isPreviewReady: false
+      }
+    })
+    
+    // Add all files immediately to show tiles
+    setUploadFiles(prev => [...prev, ...newFiles])
+    
+    // Load previews asynchronously
+    newFiles.forEach((uploadFile, index) => {
+      const file = uploadFile.file
+      const isVideo = file.type.startsWith('video/')
       
       if (isVideo) {
         // For videos, create a video element to get thumbnail
@@ -177,21 +217,21 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
             ctx.drawImage(video, 0, 0)
             const preview = canvas.toDataURL('image/jpeg', 0.8)
             
-            const newFile: UploadFile = {
-              file,
-              preview,
-              title: file.name.replace(/\.[^/.]+$/, ''),
-              description: '',
-              tags: [],
-              mediaType
-            }
-            setUploadFiles(prev => [...prev, newFile])
+            setUploadFiles(prev => prev.map(f => 
+              f.id === uploadFile.id 
+                ? { ...f, preview, isPreviewReady: true }
+                : f
+            ))
           }
         }
         
         video.onerror = () => {
           console.error(`Failed to load video: ${file.name}`)
-          alert(`Failed to load video: ${file.name}. This format may not be supported by your browser.`)
+          setUploadFiles(prev => prev.map(f => 
+            f.id === uploadFile.id 
+              ? { ...f, isPreviewReady: true } // Mark as ready even if preview failed
+              : f
+          ))
         }
         
         video.src = URL.createObjectURL(file)
@@ -199,27 +239,31 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
         // For images, use FileReader as before
         const reader = new FileReader()
         reader.onload = (e) => {
-          const newFile: UploadFile = {
-            file,
-            preview: e.target?.result as string,
-            title: file.name.replace(/\.[^/.]+$/, ''),
-            description: '',
-            tags: [],
-            mediaType
-          }
-          setUploadFiles(prev => [...prev, newFile])
+          setUploadFiles(prev => prev.map(f => 
+            f.id === uploadFile.id 
+              ? { ...f, preview: e.target?.result as string, isPreviewReady: true }
+              : f
+          ))
+        }
+        reader.onerror = () => {
+          console.error(`Failed to load image: ${file.name}`)
+          setUploadFiles(prev => prev.map(f => 
+            f.id === uploadFile.id 
+              ? { ...f, isPreviewReady: true } // Mark as ready even if preview failed
+              : f
+          ))
         }
         reader.readAsDataURL(file)
       }
     })
   }
 
-  const removeFile = (index: number) => {
-    setUploadFiles(prev => prev.filter((_, i) => i !== index))
+  const removeFile = (fileId: string) => {
+    setUploadFiles(prev => prev.filter(f => f.id !== fileId))
     // Clear progress for removed file
     setUploadProgress(prev => {
       const newProgress = { ...prev }
-      delete newProgress[index]
+      delete newProgress[fileId]
       return newProgress
     })
     
@@ -227,14 +271,14 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
     setLastAppliedSharedMetadata({ title: '', description: '', tags: [] })
   }
 
-  const updateFile = (index: number, updates: Partial<UploadFile>) => {
-    setUploadFiles(prev => prev.map((file, i) => 
-      i === index ? { ...file, ...updates } : file
+  const updateFile = (fileId: string, updates: Partial<UploadFile>) => {
+    setUploadFiles(prev => prev.map(file => 
+      file.id === fileId ? { ...file, ...updates } : file
     ))
   }
 
-  const updateTags = (index: number, tags: string[]) => {
-    updateFile(index, { tags })
+  const updateTags = (fileId: string, tags: string[]) => {
+    updateFile(fileId, { tags })
   }
 
   // Sort upload files by filename to maintain proper order
@@ -348,8 +392,8 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
     
     // Initialize progress for all files
     const initialProgress: UploadProgress = {}
-    files.forEach((_, index) => {
-      initialProgress[index] = { status: 'pending' }
+    files.forEach(file => {
+      initialProgress[file.id] = { status: 'pending' }
     })
     setUploadProgress(initialProgress)
 
@@ -363,7 +407,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
         // Update status to uploading
         setUploadProgress(prev => ({
           ...prev,
-          [i]: { status: 'uploading', progress: 0 }
+          [uploadFile.id]: { status: 'uploading', progress: 0 }
         }))
 
         try {
@@ -379,9 +423,9 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
           const progressInterval = setInterval(() => {
             setUploadProgress(prev => ({
               ...prev,
-              [i]: { 
-                ...prev[i], 
-                progress: Math.min((prev[i]?.progress || 0) + Math.random() * 20, 90)
+              [uploadFile.id]: { 
+                ...prev[uploadFile.id], 
+                progress: Math.min((prev[uploadFile.id]?.progress || 0) + Math.random() * 20, 90)
               }
             }))
           }, 200)
@@ -395,18 +439,18 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
           // Mark as success
           setUploadProgress(prev => ({
             ...prev,
-            [i]: { status: 'success', progress: 100 }
+            [uploadFile.id]: { status: 'success', progress: 100 }
           }))
           
           results.push(result)
         } catch (error) {
           hasErrors = true
-          console.error(`Upload failed for file ${i}:`, error)
+          console.error(`Upload failed for file ${uploadFile.file.name}:`, error)
           
           // Mark as error
           setUploadProgress(prev => ({
             ...prev,
-            [i]: { 
+            [uploadFile.id]: { 
               status: 'error', 
               error: error instanceof Error ? error.message : 'Upload failed'
             }
@@ -484,10 +528,10 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                   Upload Progress
                 </h3>
                 <div className="space-y-3">
-                  {uploadFiles.map((file, index) => {
-                    const progress = uploadProgress[index]
+                  {uploadFiles.map((file) => {
+                    const progress = uploadProgress[file.id]
                     return (
-                      <div key={index} className="bg-gray-50 rounded-lg p-4">
+                      <div key={file.id} className="bg-gray-50 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
                             {getFileIcon(file.mediaType)}
@@ -597,10 +641,18 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">
                         {uploadFiles.length} {uploadFiles.length === 1 ? 'file' : 'files'} selected
+                        {uploadFiles.length >= 100 && (
+                          <span className="text-sm text-orange-600 ml-2">(Maximum reached)</span>
+                        )}
                       </h3>
                       {uploadFiles.length > 1 && (
                         <p className="text-xs text-gray-500 mt-1">
                           Files will be uploaded in filename order (e.g., DSC_5689.JPG before DSC_5690.JPG)
+                        </p>
+                      )}
+                      {uploadFiles.length >= 90 && uploadFiles.length < 100 && (
+                        <p className="text-xs text-orange-600 mt-1">
+                          {100 - uploadFiles.length} more files can be added
                         </p>
                       )}
                     </div>
@@ -634,7 +686,12 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                   <button
                     type="button"
                     onClick={handleAddMore}
-                    className="text-primary-600 hover:text-primary-700 font-medium"
+                    disabled={uploadFiles.length >= 100}
+                    className={`font-medium transition-colors duration-200 ${
+                      uploadFiles.length >= 100
+                        ? 'text-gray-400 cursor-not-allowed'
+                        : 'text-primary-600 hover:text-primary-700'
+                    }`}
                   >
                     Add More
                   </button>
@@ -741,20 +798,27 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                 {/* Files Display */}
                 {effectiveViewMode === 'table' ? (
                   <div className="space-y-4">
-                    {uploadFiles.map((file, index) => (
-                      <div key={index} className="bg-gray-50 rounded-lg p-4">
+                    {uploadFiles.map((file) => (
+                      <div key={file.id} className="bg-gray-50 rounded-lg p-4">
                         <div className="flex space-x-4">
                           <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 relative">
-                            {file.mediaType === 'VIDEO' && (
+                            {!file.isPreviewReady && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                              </div>
+                            )}
+                            {file.mediaType === 'VIDEO' && file.isPreviewReady && (
                               <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
                                 <Video className="h-6 w-6 text-white" />
                               </div>
                             )}
-                            <img
-                              src={file.preview}
-                              alt={file.title}
-                              className="w-full h-full object-cover"
-                            />
+                            {file.isPreviewReady && file.preview && (
+                              <img
+                                src={file.preview}
+                                alt={file.title}
+                                className="w-full h-full object-cover"
+                              />
+                            )}
                           </div>
                           
                           <div className="flex-1 space-y-3">
@@ -772,7 +836,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                               <input
                                 type="text"
                                 value={file.title}
-                                onChange={(e) => updateFile(index, { title: e.target.value })}
+                                onChange={(e) => updateFile(file.id, { title: e.target.value })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -783,7 +847,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                               </label>
                               <textarea
                                 value={file.description}
-                                onChange={(e) => updateFile(index, { description: e.target.value })}
+                                onChange={(e) => updateFile(file.id, { description: e.target.value })}
                                 rows={2}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
@@ -795,7 +859,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                               </label>
                               <TagInput
                                 tags={file.tags}
-                                onTagsChange={(tags) => updateTags(index, tags)}
+                                onTagsChange={(tags) => updateTags(file.id, tags)}
                                 placeholder="Enter tags..."
                                 className="w-full"
                               />
@@ -845,7 +909,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                           
                           <button
                             type="button"
-                            onClick={() => removeFile(index)}
+                            onClick={() => removeFile(file.id)}
                             className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors duration-200"
                           >
                             <X className="h-5 w-5" />
@@ -856,27 +920,34 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                    {uploadFiles.map((file, index) => (
-                      <div key={index} className="bg-gray-50 rounded-lg p-3 relative">
+                    {uploadFiles.map((file) => (
+                      <div key={file.id} className="bg-gray-50 rounded-lg p-3 relative">
                         <button
                           type="button"
-                          onClick={() => removeFile(index)}
+                          onClick={() => removeFile(file.id)}
                           className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors duration-200 z-10"
                         >
                           <X className="h-4 w-4" />
                         </button>
                         
                         <div className="aspect-square bg-gray-200 rounded-lg overflow-hidden mb-3 relative">
-                          {file.mediaType === 'VIDEO' && (
+                          {!file.isPreviewReady && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                            </div>
+                          )}
+                          {file.mediaType === 'VIDEO' && file.isPreviewReady && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
                               <Video className="h-6 w-6 text-white" />
                             </div>
                           )}
-                          <img
-                            src={file.preview}
-                            alt={file.title}
-                            className="w-full h-full object-cover"
-                          />
+                          {file.isPreviewReady && file.preview && (
+                            <img
+                              src={file.preview}
+                              alt={file.title}
+                              className="w-full h-full object-cover"
+                            />
+                          )}
                         </div>
                         
                         <div className="space-y-2">
@@ -894,7 +965,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                             <input
                               type="text"
                               value={file.title}
-                              onChange={(e) => updateFile(index, { title: e.target.value })}
+                              onChange={(e) => updateFile(file.id, { title: e.target.value })}
                               className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-primary-500 focus:border-transparent"
                             />
                           </div>
@@ -905,7 +976,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                             </label>
                             <textarea
                               value={file.description}
-                              onChange={(e) => updateFile(index, { description: e.target.value })}
+                              onChange={(e) => updateFile(file.id, { description: e.target.value })}
                               rows={2}
                               className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-primary-500 focus:border-transparent"
                             />
@@ -917,7 +988,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                             </label>
                             <TagInput
                               tags={file.tags}
-                              onTagsChange={(tags) => updateTags(index, tags)}
+                              onTagsChange={(tags) => updateTags(file.id, tags)}
                               placeholder="Enter tags..."
                               className="w-full"
                             />

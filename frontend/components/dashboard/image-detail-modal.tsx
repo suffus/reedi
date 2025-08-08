@@ -732,6 +732,13 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 cursor: slideshow.isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'))
               }}
               onLoad={handleImageLoad}
+              onClick={(e) => {
+                // Only reset view if image is zoomed and not in crop mode
+                if (zoom > 1 && !isCropMode && !isDragging) {
+                  e.stopPropagation()
+                  resetView()
+                }
+              }}
             />
             
             {/* Crop Overlay */}
