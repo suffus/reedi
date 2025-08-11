@@ -55,3 +55,71 @@ export interface Comment {
     avatar: string | null
   }
 } 
+
+export interface Post {
+  id: string
+  content: string
+  publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
+  visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
+  authorId: string
+  isLocked?: boolean
+  unlockPrice?: number
+  unlockedBy?: {
+    id: string
+    unlockedAt: string
+    paidAmount: number
+  }[]
+  media: {
+    id: string
+    s3Key?: string
+    thumbnailS3Key?: string | null
+    originalFilename?: string | null
+    altText?: string | null
+    caption?: string | null
+    tags?: string[]
+    visibility?: string
+    createdAt?: string
+    updatedAt?: string
+    width?: number | null
+    height?: number | null
+    size?: number | null
+    mimeType?: string | null
+    authorId?: string
+    mediaType: 'IMAGE' | 'VIDEO'
+    processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+    duration?: number | null
+    codec?: string | null
+    bitrate?: number | null
+    framerate?: number | null
+    videoUrl?: string | null
+    videoS3Key?: string | null
+    isLocked?: boolean
+  }[]
+  createdAt: string
+  author: {
+    id: string
+    name: string
+    username: string | null
+    avatar: string | null
+  }
+  reactions: {
+    id: string
+    type: string
+    authorId: string
+  }[]
+  comments: {
+    id: string
+    content: string
+    createdAt: string
+    author: {
+      id: string
+      name: string
+      username: string | null
+      avatar: string | null
+    }
+  }[]
+  _count: {
+    reactions: number
+    comments: number
+  }
+}

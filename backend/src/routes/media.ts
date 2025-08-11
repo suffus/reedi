@@ -6,6 +6,7 @@ import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 import { processImage, deleteImageFiles } from '@/utils/imageProcessor'
 import { generatePresignedUrl, getImageFromS3, uploadToS3 } from '@/utils/s3Service'
+import { multipartUploadService } from '@/utils/multipartUploadService'
 
 const router = Router()
 
@@ -48,6 +49,15 @@ const upload = multer({
     
     cb(new Error('Only image and video files are allowed'))
   }
+})
+
+// Configure multer for chunk uploads (no file type validation needed)
+const chunkUpload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit for chunks (should be enough for 5MB chunks)
+  }
+  // No fileFilter - chunks are just binary data
 })
 
 // Get user's media with optional filtering
@@ -300,7 +310,15 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
 
   if (isVideo) {
     // For videos, upload to S3 and set status to PENDING
-    const s3Key = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype, userId)
+    const s3Key = await uploadToS3(
+      req.file.buffer, 
+      req.file.originalname, 
+      req.file.mimetype, 
+      userId,
+      (progress) => {
+        console.log(`Video upload progress: ${progress.percentage}% (${progress.uploadedBytes}/${progress.totalBytes} bytes)`)
+      }
+    )
     
     media = await prisma.media.create({
       data: {
@@ -343,7 +361,15 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
 
   } else {
     // For images, upload to S3 and queue for processing
-    const s3Key = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype, userId)
+    const s3Key = await uploadToS3(
+      req.file.buffer, 
+      req.file.originalname, 
+      req.file.mimetype, 
+      userId,
+      (progress) => {
+        console.log(`Image upload progress: ${progress.percentage}% (${progress.uploadedBytes}/${progress.totalBytes} bytes)`)
+      }
+    )
     
     media = await prisma.media.create({
       data: {
@@ -427,6 +453,179 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     data: { media },
     message: 'Media created successfully'
   })
+}))
+
+// Chunked upload endpoints
+router.post('/upload/initiate', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  if (!userId) {
+    res.status(401).json({ success: false, error: 'User not authenticated' })
+    return
+  }
+
+  const { filename, contentType, fileSize, metadata } = req.body
+  
+  if (!filename || !contentType || !fileSize) {
+    res.status(400).json({ success: false, error: 'Missing required fields: filename, contentType, fileSize' })
+    return
+  }
+
+  const timestamp = Date.now()
+  const fileExtension = filename.split('.').pop() || 'bin'
+  const key = `uploads/${userId}/${timestamp}.${fileExtension}`
+
+  try {
+    const uploadId = await multipartUploadService.initiateMultipartUpload(key, contentType, metadata)
+    
+    res.json({
+      success: true,
+      uploadId,
+      key,
+      chunkSize: multipartUploadService.getConfig().chunkSize,
+      maxConcurrentChunks: multipartUploadService.getConfig().maxConcurrentChunks
+    })
+  } catch (error) {
+    console.error('Failed to initiate multipart upload:', error)
+    res.status(500).json({ success: false, error: 'Failed to initiate upload' })
+  }
+}))
+
+router.post('/upload/chunk', authMiddleware, chunkUpload.single('chunk'), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  if (!userId) {
+    res.status(401).json({ success: false, error: 'User not authenticated' })
+    return
+  }
+
+  const { uploadId, key, partNumber } = req.body
+  
+  if (!uploadId || !key || !partNumber) {
+    res.status(400).json({ success: false, error: 'Missing required fields' })
+    return
+  }
+
+  // Check if we have a file in the request (binary data)
+  if (!req.file) {
+    res.status(400).json({ success: false, error: 'No chunk file provided' })
+    return
+  }
+
+  try {
+    const chunkBuffer = req.file.buffer
+    
+    if (!chunkBuffer) {
+      res.status(400).json({ success: false, error: 'Invalid chunk data' })
+      return
+    }
+    
+    const etag = await multipartUploadService.uploadChunk(key, uploadId, partNumber, chunkBuffer)
+    
+    res.json({
+      success: true,
+      partNumber,
+      etag,
+      size: chunkBuffer.length
+    })
+  } catch (error) {
+    console.error('Failed to upload chunk:', error)
+    res.status(500).json({ success: false, error: 'Failed to upload chunk' })
+  }
+}))
+
+router.post('/upload/complete', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  if (!userId) {
+    res.status(401).json({ success: false, error: 'User not authenticated' })
+    return
+  }
+
+  const { uploadId, key, parts, filename, contentType, fileSize, metadata } = req.body
+  
+  if (!uploadId || !key || !parts || !filename || !contentType || !fileSize) {
+    res.status(400).json({ success: false, error: 'Missing required fields' })
+    return
+  }
+
+  try {
+    // Complete the multipart upload
+    const s3Key = await multipartUploadService.completeMultipartUpload(key, uploadId, parts)
+    
+    // Create media record
+    const isVideo = contentType.startsWith('video/')
+    const mediaType = isVideo ? 'VIDEO' : 'IMAGE'
+    
+    const media = await prisma.media.create({
+      data: {
+        url: s3Key,
+        s3Key: s3Key,
+        originalFilename: filename,
+        altText: metadata?.title || 'Uploaded media',
+        caption: metadata?.description || '',
+        tags: metadata?.tags || [],
+        size: fileSize,
+        mimeType: contentType,
+        mediaType: mediaType,
+        processingStatus: 'PENDING',
+        authorId: userId
+      }
+    })
+
+    // Queue processing if needed
+    if (isVideo) {
+      const videoProcessingService = req.app.locals.videoProcessingService
+      if (videoProcessingService) {
+        try {
+          await videoProcessingService.createProcessingJob(
+            media.id,
+            userId,
+            s3Key,
+            filename,
+            contentType,
+            fileSize,
+            true,
+            5
+          )
+        } catch (error) {
+          console.error(`Failed to queue video processing job:`, error)
+        }
+      }
+    } else {
+      // Queue image processing
+      // This would integrate with your existing image processing service
+    }
+
+    res.json({
+      success: true,
+      media,
+      s3Key
+    })
+  } catch (error) {
+    console.error('Failed to complete multipart upload:', error)
+    res.status(500).json({ success: false, error: 'Failed to complete upload' })
+  }
+}))
+
+router.post('/upload/abort', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  if (!userId) {
+    res.status(401).json({ success: false, error: 'User not authenticated' })
+    return
+  }
+
+  const { uploadId, key } = req.body
+  
+  if (!uploadId || !key) {
+    res.status(400).json({ success: false, error: 'Missing required fields' })
+    return
+  }
+
+  try {
+    await multipartUploadService.abortMultipartUpload(key, uploadId)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Failed to abort multipart upload:', error)
+    res.status(500).json({ success: false, error: 'Failed to abort upload' })
+  }
 }))
 
 // Get media by ID

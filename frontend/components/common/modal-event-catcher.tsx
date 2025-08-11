@@ -23,16 +23,11 @@ export function ModalEventCatcher({
   className = '',
   style = {}
 }: ModalEventCatcherProps) {
-  const backdropRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: React.KeyboardEvent) => {
       // Allow specific keys to pass through
       if (allowKeys.includes(event.key) || allowKeys.includes(event.code)) {
         // Call custom handler for allowed keys
-        if (onCustomKeyDown) {
-          onCustomKeyDown(event)
-        }
         return
       }
 
@@ -49,63 +44,33 @@ export function ModalEventCatcher({
       event.stopPropagation()
     }
 
-    const handleWheel = (event: WheelEvent) => {
+    const handleWheel = (event: React.WheelEvent) => {
       //if (!allowScroll) {
-        //event.preventDefault()
+        event.preventDefault()
         //event.preventDefault()
         event.stopPropagation()
       //}
     }
 
-    const handleTouchMove = (event: TouchEvent) => {
+    const handleTouchMove = (event: React.TouchEvent) => {
       if (!allowScroll) {
         event.preventDefault()
         event.stopPropagation()
       }
     }
 
-    const handleContextMenu = (event: MouseEvent) => {
+    const handleContextMenu = (event: React.MouseEvent) => {
       // Prevent right-click context menu
       event.preventDefault()
       event.stopPropagation()
     }
 
-    const handleBackdropClick = (event: MouseEvent) => {
+    const handleBackdropClick = (event: React.MouseEvent) => {
       // Only trigger if clicking the backdrop itself, not its children
-      if (event.target === backdropRef.current && onBackdropClick) {
-        onBackdropClick()
-      }
     }
-
-    // Add event listeners to the backdrop element
-    const backdrop = backdropRef.current
-    if (backdrop) {
-      backdrop.addEventListener('keydown', handleKeyDown)
-      backdrop.addEventListener('wheel', handleWheel)
-      backdrop.addEventListener('touchmove', handleTouchMove, { passive: false })
-      backdrop.addEventListener('contextmenu', handleContextMenu)
-      backdrop.addEventListener('click', handleBackdropClick)
-
-      // Focus the backdrop to capture keyboard events
-      backdrop.focus()
-    }
-
-    // Cleanup
-    return () => {
-      if (backdrop) {
-        backdrop.removeEventListener('keydown', handleKeyDown)
-        backdrop.removeEventListener('wheel', handleWheel)
-        backdrop.removeEventListener('touchmove', handleTouchMove)
-        backdrop.removeEventListener('contextmenu', handleContextMenu)
-        backdrop.removeEventListener('click', handleBackdropClick)
-      }
-    }
-  }, [onEscape, onBackdropClick, allowScroll, allowKeys, onCustomKeyDown])
-
 
   return (
     <div
-      ref={backdropRef}
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 ${className}`}
       style={{
         ...style,
@@ -115,6 +80,11 @@ export function ModalEventCatcher({
       tabIndex={-1} // Make it focusable but not in tab order
       role="dialog"
       aria-modal="true"
+      onWheel={handleWheel}
+      onTouchMove={handleTouchMove}
+      onContextMenu={handleContextMenu}
+      onClick={handleBackdropClick}
+      onKeyDown={handleKeyDown}
     >
       {children}
     </div>
