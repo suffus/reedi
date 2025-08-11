@@ -10,6 +10,7 @@ import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
+import { ModalEventCatcher } from '@/components/common/modal-event-catcher'
 
 interface ImageDetailModalProps {
   media: Media | null
@@ -46,6 +47,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [localTitle, setLocalTitle] = useState(media?.altText || '')
   const [localDescription, setLocalDescription] = useState(media?.caption || '')
   const [localTags, setLocalTags] = useState<string[]>(media?.tags || [])
+  const modalRef = useRef<HTMLDivElement>(null)
   
   // Unsaved changes tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -508,14 +510,24 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }
 
-  const handleMouseUp = (e?: React.MouseEvent) => {
+  const handleMouseLeave = (e?: React.MouseEvent) => {
+    if(isCropMode) {
+      handleCropMouseUp()
+      return
+    }
+    setIsDragging(false)
+    setHasDragged(false)
+    setDragStart({ x: 0, y: 0 })
+  }
+
+  const handleMouseUp = (e?: React.MouseEvent, noReset?: boolean) => {
     if (isCropMode) {
       handleCropMouseUp()
       return
     }
     
     // Only reset view if no drag occurred (just a click)
-    if (!hasDragged) {
+    if (!hasDragged && !noReset) {
       resetView()
     }
     
@@ -570,16 +582,14 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const mappedMedia = mapMediaData(media)
 
   return (
+    <ModalEventCatcher>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        ref={modalRef}
         className="fixed inset-0 z-50 flex"
-        onWheel={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-        }}
         onKeyDown={(e) => {
           e.stopPropagation()
         }}
@@ -613,7 +623,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onMouseLeave={() => {if(isDragging) { handleMouseUp() }}}
             onWheel={handleWheel}
             animate={{ 
               cursor: slideshow.isSlideshowActive && !controlsVisible ? 'none' : 'default'
@@ -657,7 +667,8 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 </button>
               )}
               <button
-                onClick={toggleCropMode}
+                //onClick={(e) => {toggleCropMode()}}
+                onMouseUp={(e) => {toggleCropMode(); handleMouseUp(e, true); e.stopPropagation()}}
                 className={`p-2 rounded-full transition-all duration-200 pointer-events-auto ${
                   isCropMode 
                     ? 'bg-blue-600 hover:bg-blue-700 text-white' 
@@ -1058,5 +1069,6 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         )}
       </AnimatePresence>
     </AnimatePresence>
+    </ModalEventCatcher>
   )
 } 

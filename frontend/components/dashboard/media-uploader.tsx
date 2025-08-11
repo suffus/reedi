@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Image as ImageIcon, Video, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle } from 'lucide-react'
 import { useUploadMedia } from '../../lib/api-hooks'
+import { chunkedUploadService, UploadProgress as ChunkedUploadProgress } from '../../lib/chunkedUploadService'
 import { TagInput } from '../tag-input'
 //import { ModalEventCatcher } from '../common/modal-event-catcher'
 
@@ -30,6 +31,13 @@ interface UploadProgress {
     status: 'pending' | 'uploading' | 'success' | 'error'
     progress?: number
     error?: string
+    chunkProgress?: {
+      uploadedBytes: number
+      totalBytes: number
+      percentage: number
+      currentChunk: number
+      totalChunks: number
+    }
   }
 }
 
@@ -411,30 +419,68 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
         }))
 
         try {
-          const formData = new FormData()
-          formData.append('media', uploadFile.file)
-          formData.append('title', uploadFile.title)
-          formData.append('description', uploadFile.description)
-          formData.append('tags', JSON.stringify(uploadFile.tags))
-          formData.append('userId', userId)
-          formData.append('visibility', mediaVisibility)
-
-          // Simulate progress updates (since we can't get real progress from the mutation)
-          const progressInterval = setInterval(() => {
-            setUploadProgress(prev => ({
-              ...prev,
-              [uploadFile.id]: { 
-                ...prev[uploadFile.id], 
-                progress: Math.min((prev[uploadFile.id]?.progress || 0) + Math.random() * 20, 90)
+          // Check if we should use chunked upload
+          if (chunkedUploadService.shouldUseChunkedUpload(uploadFile.file.size)) {
+            console.log(`Using chunked upload for large file: ${uploadFile.file.name} (${uploadFile.file.size} bytes)`)
+            
+            // Use chunked upload service
+            const result = await chunkedUploadService.uploadFile(
+              uploadFile.file,
+              {
+                title: uploadFile.title,
+                description: uploadFile.description,
+                tags: uploadFile.tags,
+                userId: userId,
+                visibility: mediaVisibility
+              },
+              (progress: ChunkedUploadProgress) => {
+                // Update progress with chunk information
+                setUploadProgress(prev => ({
+                  ...prev,
+                  [uploadFile.id]: {
+                    status: progress.status === 'completed' ? 'success' : 'uploading',
+                    progress: progress.percentage,
+                    chunkProgress: {
+                      uploadedBytes: progress.uploadedBytes,
+                      totalBytes: progress.totalBytes,
+                      percentage: progress.percentage,
+                      currentChunk: progress.currentChunk,
+                      totalChunks: progress.totalChunks
+                    }
+                  }
+                }))
               }
-            }))
-          }, 200)
+            )
+            
+            results.push(result)
+          } else {
+            console.log(`Using regular upload for file: ${uploadFile.file.name} (${uploadFile.file.size} bytes)`)
+            
+            // Use existing upload method for small files
+            const formData = new FormData()
+            formData.append('media', uploadFile.file)
+            formData.append('title', uploadFile.title)
+            formData.append('description', uploadFile.description)
+            formData.append('tags', JSON.stringify(uploadFile.tags))
+            formData.append('userId', userId)
+            formData.append('visibility', mediaVisibility)
 
-          const result = await uploadMediaMutation.mutateAsync(formData)
-          
-          console.log('Upload result:', result)
-          
-          clearInterval(progressInterval)
+            // Simulate progress updates (since we can't get real progress from the mutation)
+            const progressInterval = setInterval(() => {
+              setUploadProgress(prev => ({
+                ...prev,
+                [uploadFile.id]: { 
+                  ...prev[uploadFile.id], 
+                  progress: Math.min((prev[uploadFile.id]?.progress || 0) + Math.random() * 20, 90)
+                }
+              }))
+            }, 200)
+
+            const result = await uploadMediaMutation.mutateAsync(formData)
+            
+            clearInterval(progressInterval)
+            results.push(result)
+          }
           
           // Mark as success
           setUploadProgress(prev => ({
@@ -442,7 +488,6 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
             [uploadFile.id]: { status: 'success', progress: 100 }
           }))
           
-          results.push(result)
         } catch (error) {
           hasErrors = true
           console.error(`Upload failed for file ${uploadFile.file.name}:`, error)
@@ -490,6 +535,14 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
 
   const getFileTypeLabel = (mediaType: 'IMAGE' | 'VIDEO') => {
     return mediaType === 'VIDEO' ? 'Video' : 'Image'
+  }
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
   const canClose = !isUploading && uploadFiles.length === 0
@@ -559,11 +612,39 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                         </div>
                         
                         {progress?.status === 'uploading' && (
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${progress.progress || 0}%` }}
-                            />
+                          <div className="space-y-2">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${progress.progress || 0}%` }}
+                              />
+                            </div>
+                            
+                            {/* Show chunk progress for large files */}
+                            {progress.chunkProgress && (
+                              <div className="text-xs text-gray-600 space-y-1">
+                                <div className="flex justify-between">
+                                  <span>Chunk {progress.chunkProgress.currentChunk} of {progress.chunkProgress.totalChunks}</span>
+                                  <span>{progress.chunkProgress.percentage}%</span>
+                                </div>
+                                <div className="flex justify-between text-gray-500">
+                                  <span>{formatFileSize(progress.chunkProgress.uploadedBytes)} / {formatFileSize(progress.chunkProgress.totalBytes)}</span>
+                                  <span>{formatFileSize(file.file.size)}</span>
+                                </div>
+                                {chunkedUploadService.shouldUseChunkedUpload(file.file.size) && (
+                                  <div className="text-blue-600">
+                                    Using chunked upload ({chunkedUploadService.getConfig().chunkSize / (1024 * 1024)}MB chunks)
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Show regular progress for small files */}
+                            {!progress.chunkProgress && (
+                              <div className="text-xs text-gray-600 text-right">
+                                {progress.progress || 0}%
+                              </div>
+                            )}
                           </div>
                         )}
                         
@@ -603,7 +684,11 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                   Drop images and videos here or click to browse
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  Upload JPG, PNG, GIF, MP4, WebM, or MOV files up to 500MB each
+                  Upload JPG, PNG, GIF, MP4, WebM, or MOV files up to 5GB each
+                  <br />
+                  <span className="text-sm text-blue-600">
+                    Large files (&gt;5MB) use automatic chunked uploads for reliability
+                  </span>
                 </p>
                 <button
                   type="button"

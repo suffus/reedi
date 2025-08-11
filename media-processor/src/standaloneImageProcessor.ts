@@ -116,7 +116,8 @@ export class StandaloneImageProcessor {
     colorSpace?: string
     hasAlpha?: boolean
   }> {
-    const metadata = await sharp(imagePath).metadata()
+    // Get metadata with EXIF orientation applied
+    const metadata = await sharp(imagePath).rotate().metadata()
     
     return {
       width: metadata.width || 0,
@@ -240,6 +241,7 @@ export class StandaloneImageProcessor {
     options: { width: number; height: number; quality: number }
   ): Promise<void> {
     await sharp(inputPath)
+      .rotate() // Automatically rotate based on EXIF orientation
       .resize(options.width, options.height, {
         fit: 'inside',
         withoutEnlargement: true

@@ -2,6 +2,7 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import sharp from 'sharp'
 import { config } from 'dotenv'
+import { multipartUploadService } from './multipartUploadService'
 
 config()
 
@@ -99,17 +100,33 @@ export async function processImageForS3(
 
 /**
  * Upload any file to S3 (generic function for videos, etc.)
+ * Now supports multipart uploads for large files
  */
 export async function uploadToS3(
   buffer: Buffer,
   originalName: string,
   mimeType: string,
-  userId: string
+  userId: string,
+  onProgress?: (progress: any) => void
 ): Promise<string> {
   const timestamp = Date.now()
   const fileExtension = originalName.split('.').pop() || 'bin'
   const key = `uploads/${userId}/${timestamp}.${fileExtension}`
 
+  // Use multipart upload service for large files
+  if (multipartUploadService.shouldUseMultipart(buffer.length)) {
+    console.log(`Using multipart upload for large file: ${originalName} (${buffer.length} bytes)`)
+    return multipartUploadService.uploadFileInChunks(
+      buffer,
+      key,
+      mimeType,
+      { originalName },
+      onProgress
+    )
+  }
+
+  // Use regular upload for small files
+  console.log(`Using regular upload for file: ${originalName} (${buffer.length} bytes)`)
   const cmdArg = {
     Bucket: BUCKET_NAME,
     Key: key,

@@ -6,6 +6,42 @@ import { AuthenticatedRequest } from '@/types'
 
 const router = Router()
 
+/**
+ * Creates a locked media placeholder object with the appropriate locked ID
+ * @param mediaItem - The original media item
+ * @returns A locked media placeholder object
+ */
+function createLockedMediaPlaceholder(mediaItem: any) {
+  const isVideo = mediaItem.mediaType === 'VIDEO'
+  const lockedId = isVideo ? 'locked-video' : 'locked-image'
+  
+  return {
+    id: lockedId,
+    originalFilename: mediaItem.originalFilename,
+    altText: mediaItem.altText,
+    caption: mediaItem.caption,
+    tags: mediaItem.tags,
+    visibility: mediaItem.visibility,
+    createdAt: mediaItem.createdAt,
+    updatedAt: mediaItem.updatedAt,
+    width: mediaItem.width,
+    height: mediaItem.height,
+    size: mediaItem.size,
+    mimeType: mediaItem.mimeType,
+    authorId: mediaItem.authorId,
+    mediaType: mediaItem.mediaType,
+    processingStatus: mediaItem.processingStatus,
+    duration: mediaItem.duration,
+    codec: mediaItem.codec,
+    bitrate: mediaItem.bitrate,
+    framerate: mediaItem.framerate,
+    videoUrl: mediaItem.videoUrl,
+    videoS3Key: mediaItem.videoS3Key,
+    // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
+    isLocked: true
+  }
+}
+
 // Get all posts (public feed)
 router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { page = 1, limit = 20 } = req.query
@@ -102,34 +138,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
         // If media is locked and user hasn't unlocked it and isn't the owner,
         // return a placeholder media object with locked content IDs
         if (isMediaLocked && !isUnlocked && !isOwner) {
-          const isVideo = mediaItem.mediaType === 'VIDEO'
-          const lockedId = isVideo ? 'locked-video' : 'locked-image'
-          
-          return {
-            id: lockedId,
-            originalFilename: mediaItem.originalFilename,
-            altText: mediaItem.altText,
-            caption: mediaItem.caption,
-            tags: mediaItem.tags,
-            visibility: mediaItem.visibility,
-            createdAt: mediaItem.createdAt,
-            updatedAt: mediaItem.updatedAt,
-            width: mediaItem.width,
-            height: mediaItem.height,
-            size: mediaItem.size,
-            mimeType: mediaItem.mimeType,
-            authorId: mediaItem.authorId,
-            mediaType: mediaItem.mediaType,
-            processingStatus: mediaItem.processingStatus,
-            duration: mediaItem.duration,
-            codec: mediaItem.codec,
-            bitrate: mediaItem.bitrate,
-            framerate: mediaItem.framerate,
-            videoUrl: mediaItem.videoUrl,
-            videoS3Key: mediaItem.videoS3Key,
-            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
-            isLocked: true
-          }
+          return createLockedMediaPlaceholder(mediaItem)
         }
 
         // For unlocked media or media owned by the user, return full data
@@ -362,34 +371,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
         // If media is locked and user hasn't unlocked it and isn't the owner,
         // return a placeholder media object with locked content IDs
         if (isMediaLocked && !isUnlocked && !isOwner) {
-          const isVideo = mediaItem.mediaType === 'VIDEO'
-          const lockedId = isVideo ? 'locked-video' : 'locked-image'
-          
-          return {
-            id: lockedId,
-            originalFilename: mediaItem.originalFilename,
-            altText: mediaItem.altText,
-            caption: mediaItem.caption,
-            tags: mediaItem.tags,
-            visibility: mediaItem.visibility,
-            createdAt: mediaItem.createdAt,
-            updatedAt: mediaItem.updatedAt,
-            width: mediaItem.width,
-            height: mediaItem.height,
-            size: mediaItem.size,
-            mimeType: mediaItem.mimeType,
-            authorId: mediaItem.authorId,
-            mediaType: mediaItem.mediaType,
-            processingStatus: mediaItem.processingStatus,
-            duration: mediaItem.duration,
-            codec: mediaItem.codec,
-            bitrate: mediaItem.bitrate,
-            framerate: mediaItem.framerate,
-            videoUrl: mediaItem.videoUrl,
-            videoS3Key: mediaItem.videoS3Key,
-            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
-            isLocked: true
-          }
+          return createLockedMediaPlaceholder(mediaItem)
         }
 
         // For unlocked media or media owned by the user, return full data
@@ -1356,34 +1338,7 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
         // If media is locked and user hasn't unlocked it and isn't the owner,
         // return a placeholder media object with locked content IDs
         if (isMediaLocked && !isUnlocked && !isOwner) {
-          const isVideo = mediaItem.mediaType === 'VIDEO'
-          const lockedId = isVideo ? 'locked-video' : 'locked-image'
-          
-          return {
-            id: lockedId,
-            originalFilename: mediaItem.originalFilename,
-            altText: mediaItem.altText,
-            caption: mediaItem.caption,
-            tags: mediaItem.tags,
-            visibility: mediaItem.visibility,
-            createdAt: mediaItem.createdAt,
-            updatedAt: mediaItem.updatedAt,
-            width: mediaItem.width,
-            height: mediaItem.height,
-            size: mediaItem.size,
-            mimeType: mediaItem.mimeType,
-            authorId: mediaItem.authorId,
-            mediaType: mediaItem.mediaType,
-            processingStatus: mediaItem.processingStatus,
-            duration: mediaItem.duration,
-            codec: mediaItem.codec,
-            bitrate: mediaItem.bitrate,
-            framerate: mediaItem.framerate,
-            videoUrl: mediaItem.videoUrl,
-            videoS3Key: mediaItem.videoS3Key,
-            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
-            isLocked: true
-          }
+          return createLockedMediaPlaceholder(mediaItem)
         }
 
         // For unlocked media or media owned by the user, return full data
@@ -1467,35 +1422,11 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
       media: post.media.map((pm: any) => {
         const mediaItem = pm.media
         // If the post is locked, all media in it is considered locked
-        const isMediaLocked = isPostLocked
+        const isMediaLocked = pm.isLocked
 
         // For public endpoint (unauthenticated users), all locked media should be filtered
         if (isMediaLocked) {
-          return {
-            id: mediaItem.id,
-            originalFilename: mediaItem.originalFilename,
-            altText: mediaItem.altText,
-            caption: mediaItem.caption,
-            tags: mediaItem.tags,
-            visibility: mediaItem.visibility,
-            createdAt: mediaItem.createdAt,
-            updatedAt: mediaItem.updatedAt,
-            width: mediaItem.width,
-            height: mediaItem.height,
-            size: mediaItem.size,
-            mimeType: mediaItem.mimeType,
-            authorId: mediaItem.authorId,
-            mediaType: mediaItem.mediaType,
-            processingStatus: mediaItem.processingStatus,
-            duration: mediaItem.duration,
-            codec: mediaItem.codec,
-            bitrate: mediaItem.bitrate,
-            framerate: mediaItem.framerate,
-            videoUrl: mediaItem.videoUrl,
-            videoS3Key: mediaItem.videoS3Key,
-            // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
-            isLocked: true
-          }
+          return createLockedMediaPlaceholder(mediaItem)
         }
 
         // For unlocked media, return full data

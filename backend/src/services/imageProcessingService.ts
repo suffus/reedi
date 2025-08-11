@@ -115,24 +115,35 @@ export class ImageProcessingService {
           mediaUpdateData.thumbnailS3Key = thumbnailVersion.s3Key
         }
         
-        // Update main image fields - use highest quality available
+        // Update main image fields - use highest quality available for URL and size
         if (highQualityVersion) {
           mediaUpdateData.url = highQualityVersion.s3Key
-          mediaUpdateData.width = highQualityVersion.width
-          mediaUpdateData.height = highQualityVersion.height
           mediaUpdateData.size = highQualityVersion.fileSize
         } else if (mediumQualityVersion) {
           mediaUpdateData.url = mediumQualityVersion.s3Key
-          mediaUpdateData.width = mediumQualityVersion.width
-          mediaUpdateData.height = mediumQualityVersion.height
           mediaUpdateData.size = mediumQualityVersion.fileSize
         } else if (image_versions.length > 0) {
           // Fallback to first available version
           const firstVersion = image_versions[0]
           mediaUpdateData.url = firstVersion.s3Key
+          mediaUpdateData.size = firstVersion.fileSize
+        }
+        
+        // Use original corrected dimensions from metadata (with EXIF orientation applied)
+        if (metadata && metadata.width && metadata.height) {
+          mediaUpdateData.width = metadata.width
+          mediaUpdateData.height = metadata.height
+        } else if (highQualityVersion) {
+          // Fallback to processed version dimensions if metadata not available
+          mediaUpdateData.width = highQualityVersion.width
+          mediaUpdateData.height = highQualityVersion.height
+        } else if (mediumQualityVersion) {
+          mediaUpdateData.width = mediumQualityVersion.width
+          mediaUpdateData.height = mediumQualityVersion.height
+        } else if (image_versions.length > 0) {
+          const firstVersion = image_versions[0]
           mediaUpdateData.width = firstVersion.width
           mediaUpdateData.height = firstVersion.height
-          mediaUpdateData.size = firstVersion.fileSize
         }
       }
 
