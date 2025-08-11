@@ -8,6 +8,7 @@ import { processImage, deleteImageFiles } from '@/utils/imageProcessor'
 import { generatePresignedUrl, getImageFromS3, uploadToS3 } from '@/utils/s3Service'
 import { multipartUploadService } from '@/utils/multipartUploadService'
 
+
 const router = Router()
 
 // Configure multer for file uploads (support both images and videos)
@@ -328,7 +329,7 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
         altText: req.body.title || req.body.altText || 'Uploaded video',
         caption: req.body.description || req.body.caption || '',
         tags: tags,
-        size: req.file.size,
+        size: Math.ceil(req.file.size / 1024), // Convert bytes to kilobytes
         mimeType: req.file.mimetype,
         mediaType: 'VIDEO',
         processingStatus: 'PENDING',
@@ -379,7 +380,7 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
         altText: req.body.title || req.body.altText || 'Uploaded image',
         caption: req.body.description || req.body.caption || '',
         tags: tags,
-        size: req.file.size,
+        size: Math.ceil(req.file.size / 1024), // Convert bytes to kilobytes
         mimeType: req.file.mimetype,
         mediaType: 'IMAGE',
         processingStatus: 'PENDING',
@@ -562,7 +563,7 @@ router.post('/upload/complete', authMiddleware, asyncHandler(async (req: Authent
         altText: metadata?.title || 'Uploaded media',
         caption: metadata?.description || '',
         tags: metadata?.tags || [],
-        size: fileSize,
+        size: Math.ceil(fileSize / 1024), // Convert bytes to kilobytes
         mimeType: contentType,
         mediaType: mediaType,
         processingStatus: 'PENDING',
@@ -590,8 +591,24 @@ router.post('/upload/complete', authMiddleware, asyncHandler(async (req: Authent
         }
       }
     } else {
-      // Queue image processing
-      // This would integrate with your existing image processing service
+      // Queue image processing job
+      const imageProcessingService = req.app.locals.imageProcessingService
+      if (imageProcessingService) {
+        try {
+          await imageProcessingService.requestImageProcessing(
+            media.id,
+            userId,
+            s3Key,
+            filename
+          )
+          console.log(`Image processing job queued for media ${media.id}`)
+        } catch (error) {
+          console.error(`Failed to queue image processing job for media ${media.id}:`, error)
+          // Don't fail the upload, just log the error
+        }
+      } else {
+        console.warn('Image processing service not available, skipping image processing')
+      }
     }
 
     res.json({

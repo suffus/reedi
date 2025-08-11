@@ -4,6 +4,7 @@ import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 
+
 const router = Router()
 
 // Shared function to get galleries with image/video counts

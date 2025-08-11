@@ -4,6 +4,7 @@ import { asyncHandler } from '@/middleware/errorHandler'
 import { optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 
+
 const router = Router()
 
 // Search media by tags

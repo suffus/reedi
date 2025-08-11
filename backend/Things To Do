@@ -4,3 +4,29 @@
 
 1. Improve upload widget to be faster, more economical, and more responsive.
 2. Stop wheel movements propagating to components behind the gallery modal, the upload modal, and any other modal. 
+3. Bulk edit should also accept shift-click to select multiple media.
+3. Make the user gallery update consistently when the upload widget closes and there have been any new media added, or when media has been deleted from the user gallery.
+4. Make download from gallery/user gallery work properly instead of killing the UX by replacing it with a media item.
+5. [DONE] Fix the error in media selector where there is a query and media do not load, or everything loads and is filtered.
+
+
+## Messager Service
+
+1.  [DONE] Add a message service.  See MessagerServiceSpec.md
+1.  [DONE] The Message Feed is a feed of posts between two or more users.
+2.  Users may post text and media, or repost previous posts to a message feed.
+3.  Users may post the same message to some or all of their followers, subscribers or a subset of them.
+4.  Once posted, a user may delete or edit a messsage they have 
+
+## Locked posts and media
+
+Some posts may be locked and only viewable if the viewer pays a fee determined by the user, or the viewer performs some other action.
+
+1.  Implement the concept of locked posts that are only viewable if the viewer performs an event (such as makes a payment).
+2.  Implement this concept both for the user's feed, and for their messager.
+3.  
+
+
+## Backend
+
+1. Facilitate JWT Rotation

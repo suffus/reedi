@@ -4,6 +4,7 @@ import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 
+
 const router = Router()
 
 /**
@@ -31,6 +32,7 @@ function createLockedMediaPlaceholder(mediaItem: any) {
     authorId: mediaItem.authorId,
     mediaType: mediaItem.mediaType,
     processingStatus: mediaItem.processingStatus,
+    imageProcessingStatus: mediaItem.imageProcessingStatus,
     duration: mediaItem.duration,
     codec: mediaItem.codec,
     bitrate: mediaItem.bitrate,

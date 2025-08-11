@@ -16,7 +16,7 @@ export const uploadConfig = {
   chunkSizeThreshold: parseInt(process.env.UPLOAD_CHUNK_SIZE_THRESHOLD || '5242880'),
   
   // Maximum file size allowed (5GB default - 1000 parts * 5MB chunks)
-  maxFileSize: parseInt(process.env.UPLOAD_MAX_FILE_SIZE || '5368709120'),
+  maxFileSize: parseInt(process.env.UPLOAD_CHUNK_SIZE_THRESHOLD || '5368709120'),
   
   // Allowed file types
   allowedTypes: {
