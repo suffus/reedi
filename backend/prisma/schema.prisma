@@ -1,79 +1,49 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  // Optimize connection pool settings for high concurrency
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
   relationMode = "prisma"
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  username  String?  @unique
-  password  String
-  avatar    String?
-  bio       String?
-  location  String?
-  website   String?
-  isPrivate Boolean  @default(false)
-  isVerified Boolean @default(false)
-  canPublishLockedMedia Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Posts
-  posts Post[]
-
-  // Comments
-  comments Comment[]
-
-  // Reactions
-  reactions Reaction[]
-
-  // Media (renamed from Images)
-  media Media[]
-
-  // Galleries
-  galleries Gallery[]
-
-  // Followers/Following (self-referencing many-to-many)
-  followers Follows[] @relation("UserFollowers")
-  following Follows[] @relation("UserFollowing")
-
-  // Friend requests
-  friendRequestsSent     FriendRequest[] @relation("UserFriendRequestsSent")
-  friendRequestsReceived FriendRequest[] @relation("UserFriendRequestsReceived")
-
-  // Notifications
-  notifications Notification[]
-
-  // Search history
-  searchHistory SearchHistory[]
-  
-  // Mentions
-  mentions Mention[]
-
-  // Video processing jobs
-  mediaProcessingJobs MediaProcessingJob[]
-
-  // Messaging relations
-  conversationsCreated Conversation[] @relation("ConversationCreator")
+  id                       String                    @id @default(cuid())
+  email                    String                    @unique
+  name                     String
+  username                 String?                   @unique
+  password                 String
+  avatar                   String?
+  bio                      String?
+  location                 String?
+  website                  String?
+  isPrivate                Boolean                   @default(false)
+  isVerified               Boolean                   @default(false)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  canPublishLockedMedia    Boolean                   @default(false)
+  posts                    Post[]
+  comments                 Comment[]
+  reactions                Reaction[]
+  media                    Media[]
+  galleries                Gallery[]
+  followers                Follows[]                 @relation("UserFollowers")
+  following                Follows[]                 @relation("UserFollowing")
+  friendRequestsSent       FriendRequest[]           @relation("UserFriendRequestsSent")
+  friendRequestsReceived   FriendRequest[]           @relation("UserFriendRequestsReceived")
+  notifications            Notification[]
+  searchHistory            SearchHistory[]
+  mentions                 Mention[]
+  mediaProcessingJobs      MediaProcessingJob[]
+  conversationsCreated     Conversation[]            @relation("ConversationCreator")
   conversationParticipants ConversationParticipant[] @relation("ConversationParticipants")
-  messagesSent Message[] @relation("MessageSender")
-  messageDeliveryStatus MessageDeliveryStatus[] @relation("MessageDeliveryStatus")
-  messageReactions MessageReaction[] @relation("MessageReactions")
-  userSessions UserSession[] @relation("UserSessions")
-  
-  // Locked content relations
-  unlockedPosts UnlockedPost[] @relation("UnlockedPosts")
-  unlockedMessages UnlockedMessage[] @relation("UnlockedMessages")
+  messagesSent             Message[]                 @relation("MessageSender")
+  messageDeliveryStatus    MessageDeliveryStatus[]   @relation("MessageDeliveryStatus")
+  messageReactions         MessageReaction[]         @relation("MessageReactions")
+  userSessions             UserSession[]             @relation("UserSessions")
+  unlockedPosts            UnlockedPost[]            @relation("UnlockedPosts")
+  unlockedMessages         UnlockedMessage[]         @relation("UnlockedMessages")
 
   @@map("users")
 }
@@ -85,58 +55,52 @@ model Post {
   publicationStatus PublicationStatus @default(PUBLIC)
   visibility        Visibility        @default(PUBLIC)
   authorId          String
-  isLocked          Boolean           @default(false)
-  unlockPrice       Int?              // Price in tokens to unlock the post
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
-
-  // Relations
-  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comments  Comment[]
-  reactions Reaction[]
-  media     PostMedia[]
-  hashtags  Hashtag[]
-  mentions  Mention[]
-  notifications Notification[]
-  unlockedBy UnlockedPost[] @relation("UnlockedPosts")
+  isLocked          Boolean           @default(false)
+  unlockPrice       Int?
+  author            User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments          Comment[]
+  reactions         Reaction[]
+  media             PostMedia[]
+  hashtags          Hashtag[]
+  mentions          Mention[]
+  notifications     Notification[]
+  unlockedBy        UnlockedPost[]    @relation("UnlockedPosts")
 
   @@map("posts")
 }
 
 model Comment {
-  id        String   @id @default(cuid())
-  content   String
-  postId    String?
-  mediaId   String?
-  authorId  String
-  parentId  String?  // For nested comments
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  post     Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  media    Media?    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  replies  Comment[] @relation("CommentReplies")
-  reactions Reaction[]
+  id            String         @id @default(cuid())
+  content       String
+  postId        String?
+  authorId      String
+  parentId      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  mediaId       String?
+  post          Post?          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media         Media?         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent        Comment?       @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replies       Comment[]      @relation("CommentReplies")
+  reactions     Reaction[]
   notifications Notification[]
 
   @@map("comments")
 }
 
 model Reaction {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   type      ReactionType
   postId    String?
   commentId String?
   authorId  String
-  createdAt DateTime @default(now())
-
-  // Relations
-  post     Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  comment  Comment? @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  post      Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment   Comment?     @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@unique([postId, authorId])
   @@unique([commentId, authorId])
@@ -144,78 +108,65 @@ model Reaction {
 }
 
 model Media {
-  id             String     @id @default(cuid())
-  url            String     // Path to the full-size media file
-  thumbnail      String?    // Path to the thumbnail file
-  s3Key          String?    // S3 key for the original media
-  thumbnailS3Key String?    // S3 key for the thumbnail
-  originalFilename String?  // Original filename from user's device
-  altText        String?
-  caption        String?
-  width          Int?
-  height         Int?
-  size           Int?       // File size in bytes
-  mimeType       String?
-  tags           String[]   @default([])  // Array of tag strings
-  visibility     Visibility @default(PUBLIC)
-  postId         String?
-  authorId       String
-  galleryId      String?
-  order          Int        @default(0)
-  
-  // Media type and processing status
-  mediaType      MediaType  @default(IMAGE)
-  processingStatus ProcessingStatus @default(COMPLETED)
-  
-  // Video-specific fields
-  duration       Float?     // Duration in seconds
-  codec          String?    // Video codec (e.g., "h264", "h265")
-  bitrate        Int?       // Bitrate in kbps
-  framerate      Float?     // Frames per second
-  videoUrl       String?    // Path to processed video file
-  videoS3Key     String?    // S3 key for processed video
-  
-  // Video processing fields
-  videoProcessingStatus ProcessingStatus? // Status of video processing
-  videoThumbnails Json?    // Array of thumbnail S3 keys and metadata
-  videoVersions   Json?    // Array of video version S3 keys and metadata
-  videoMetadata   Json?    // Video metadata
-  
-  // Image processing fields
-  imageProcessingStatus ProcessingStatus? // Status of image processing
-  imageVersions   Json?    // Array of image version S3 keys and metadata
-  imageMetadata   Json?    // Image metadata
-  
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-
-  // Relations
-  posts     PostMedia[]
-  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  gallery  Gallery?  @relation(fields: [galleryId], references: [id], onDelete: SetNull)
-  coverForGallery Gallery? @relation("GalleryCover")
-  comments Comment[]
-  mediaProcessingJobs MediaProcessingJob[]
-  messages Message[] @relation("MessageMedia")
-  messageMediaItems MessageMedia[] @relation("MessageMediaItems")
+  id                    String               @id @default(cuid())
+  url                   String
+  thumbnail             String?
+  s3Key                 String?
+  thumbnailS3Key        String?
+  originalFilename      String?
+  altText               String?
+  caption               String?
+  width                 Int?
+  height                Int?
+  size                  Int?
+  mimeType              String?
+  tags                  String[]             @default([])
+  visibility            Visibility           @default(PUBLIC)
+  postId                String?
+  authorId              String
+  galleryId             String?
+  order                 Int                  @default(0)
+  mediaType             MediaType            @default(IMAGE)
+  processingStatus      ProcessingStatus     @default(COMPLETED)
+  duration              Float?
+  codec                 String?
+  bitrate               Int?
+  framerate             Float?
+  videoUrl              String?
+  videoS3Key            String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  videoMetadata         Json?
+  videoProcessingStatus ProcessingStatus?
+  videoThumbnails       Json?
+  videoVersions         Json?
+  imageMetadata         Json?
+  imageProcessingStatus ProcessingStatus?
+  imageVersions         Json?
+  posts                 PostMedia[]
+  author                User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  gallery               Gallery?             @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+  coverForGallery       Gallery?             @relation("GalleryCover")
+  comments              Comment[]
+  mediaProcessingJobs   MediaProcessingJob[]
+  messages              Message[]            @relation("MessageMedia")
+  messageMediaItems     MessageMedia[]       @relation("MessageMediaItems")
 
   @@map("media")
 }
 
 model Gallery {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  visibility  Visibility @default(PUBLIC)
-  coverMediaId String?  @unique
-  authorId    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  author     User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  media      Media[]
-  coverMedia Media?  @relation("GalleryCover", fields: [coverMediaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  id           String     @id @default(cuid())
+  name         String
+  description  String?
+  visibility   Visibility @default(PUBLIC)
+  authorId     String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  coverMediaId String?    @unique
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  media        Media[]
+  coverMedia   Media?     @relation("GalleryCover", fields: [coverMediaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("galleries")
 }
@@ -224,9 +175,7 @@ model Hashtag {
   id        String   @id @default(cuid())
   name      String   @unique
   createdAt DateTime @default(now())
-
-  // Relations
-  posts Post[]
+  posts     Post[]
 
   @@map("hashtags")
 }
@@ -236,10 +185,8 @@ model Mention {
   postId    String
   userId    String
   createdAt DateTime @default(now())
-
-  // Relations
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
   @@map("mentions")
@@ -250,26 +197,22 @@ model Follows {
   followerId  String
   followingId String
   createdAt   DateTime @default(now())
-
-  // Relations
-  follower  User @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
-  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+  follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@unique([followerId, followingId])
   @@map("follows")
 }
 
 model FriendRequest {
-  id          String           @id @default(cuid())
-  senderId    String
-  receiverId  String
-  status      FriendRequestStatus @default(PENDING)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-
-  // Relations
-  sender   User @relation("UserFriendRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver User @relation("UserFriendRequestsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+  id         String              @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     FriendRequestStatus @default(PENDING)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  sender     User                @relation("UserFriendRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User                @relation("UserFriendRequestsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, receiverId])
   @@map("friend_requests")
@@ -285,11 +228,9 @@ model Notification {
   postId    String?
   commentId String?
   createdAt DateTime         @default(now())
-
-  // Relations
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  post    Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
-  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment   Comment?         @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("notifications")
 }
@@ -299,60 +240,194 @@ model SearchHistory {
   query     String
   userId    String
   createdAt DateTime @default(now())
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("search_history")
 }
 
 model PostMedia {
-  id     String @id @default(cuid())
-  postId String
-  mediaId String
-  order  Int    @default(0)
+  id       String  @id @default(cuid())
+  postId   String
+  mediaId  String
+  order    Int     @default(0)
   isLocked Boolean @default(false)
-
-  // Relations
-  post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
-  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  post     Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media    Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@unique([postId, mediaId])
   @@map("post_media")
 }
 
 model MediaProcessingJob {
-  id                String           @id @default(cuid())
-  mediaId           String
-  userId            String
-  mediaType         MediaType        // IMAGE or VIDEO
-  s3Key             String           // S3 key of the original media
-  originalFilename  String
-  status            ProcessingStatus @default(PENDING)
-  progress          Int              @default(0) // 0-100
-  currentStep       String?
-  errorMessage      String?
-  
-  // Video-specific fields
-  thumbnails        Json?            // Array of thumbnail S3 keys and metadata
-  videoVersions     Json?            // Array of video version S3 keys and metadata
-  
-  // Image-specific fields
-  imageVersions     Json?            // Array of image version S3 keys and metadata
-  
-  metadata          Json?            // Media metadata
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  completedAt       DateTime?
-
-  // Relations
-  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String           @id @default(cuid())
+  mediaId          String
+  userId           String
+  mediaType        MediaType
+  s3Key            String
+  originalFilename String
+  status           ProcessingStatus @default(PENDING)
+  progress         Int              @default(0)
+  currentStep      String?
+  errorMessage     String?
+  thumbnails       Json?
+  videoVersions    Json?
+  imageVersions    Json?
+  metadata         Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  completedAt      DateTime?
+  media            Media            @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("media_processing_jobs")
 }
 
-// Enums
+model Conversation {
+  id            String                    @id @default(cuid())
+  type          ConversationType          @default(DIRECT)
+  name          String?
+  avatarUrl     String?
+  createdById   String
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  lastMessageAt DateTime?
+  isActive      Boolean                   @default(true)
+  createdBy     User                      @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  participants  ConversationParticipant[]
+  messages      Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String          @id @default(cuid())
+  conversationId String
+  userId         String
+  role           ParticipantRole @default(MEMBER)
+  joinedAt       DateTime        @default(now())
+  leftAt         DateTime?
+  isActive       Boolean         @default(true)
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User            @relation("ConversationParticipants", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id                String                  @id @default(cuid())
+  conversationId    String
+  senderId          String
+  content           String?
+  messageType       MessageType             @default(TEXT)
+  mediaId           String?
+  replyToId         String?
+  encryptedContent  String?
+  encryptionVersion Int                     @default(1)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  isDeleted         Boolean                 @default(false)
+  isLocked          Boolean                 @default(false)
+  unlockPrice       Int?
+  conversation      Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender            User                    @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  media             Media?                  @relation("MessageMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  mediaItems        MessageMedia[]          @relation("MessageMediaItems")
+  deliveryStatus    MessageDeliveryStatus[]
+  reactions         MessageReaction[]
+  unlockedBy        UnlockedMessage[]       @relation("UnlockedMessages")
+
+  @@map("messages")
+}
+
+model MessageMedia {
+  id        String  @id @default(cuid())
+  messageId String
+  mediaId   String
+  order     Int     @default(0)
+  isLocked  Boolean @default(false)
+  message   Message @relation("MessageMediaItems", fields: [messageId], references: [id], onDelete: Cascade)
+  media     Media   @relation("MessageMediaItems", fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, mediaId])
+  @@map("message_media")
+}
+
+model MessageDeliveryStatus {
+  id          String         @id @default(cuid())
+  messageId   String
+  userId      String
+  status      DeliveryStatus @default(SENT)
+  deliveredAt DateTime?
+  readAt      DateTime?
+  message     Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User           @relation("MessageDeliveryStatus", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_delivery_status")
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  reaction  String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation("MessageReactions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, reaction])
+  @@map("message_reactions")
+}
+
+model UnlockedPost {
+  id         String   @id @default(cuid())
+  userId     String
+  postId     String
+  paidAmount Int
+  unlockedAt DateTime @default(now())
+  user       User     @relation("UnlockedPosts", fields: [userId], references: [id], onDelete: Cascade)
+  post       Post     @relation("UnlockedPosts", fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@map("unlocked_posts")
+}
+
+model UnlockedMessage {
+  id         String   @id @default(cuid())
+  userId     String
+  messageId  String
+  paidAmount Int
+  unlockedAt DateTime @default(now())
+  user       User     @relation("UnlockedMessages", fields: [userId], references: [id], onDelete: Cascade)
+  message    Message  @relation("UnlockedMessages", fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@map("unlocked_messages")
+}
+
+model UserSession {
+  id         String   @id @default(cuid())
+  userId     String
+  sessionId  String   @unique
+  deviceInfo Json?
+  lastSeen   DateTime @default(now())
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  user       User     @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+}
+
+model HashtagToPost {
+  A String
+  B String
+
+  @@unique([A, B], map: "_HashtagToPost_AB_unique")
+  @@index([B], map: "_HashtagToPost_B_index")
+  @@map("_HashtagToPost")
+}
+
 enum ReactionType {
   LIKE
   LOVE
@@ -404,163 +479,6 @@ enum ProcessingStatus {
   FAILED
 }
 
-// Messaging Models
-model Conversation {
-  id              String            @id @default(cuid())
-  type            ConversationType  @default(DIRECT)
-  name            String?           // For group chats
-  avatarUrl       String?           // For group chats
-  createdById     String
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  lastMessageAt   DateTime?
-  isActive        Boolean           @default(true)
-
-  // Relations
-  createdBy       User              @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  participants    ConversationParticipant[]
-  messages        Message[]
-
-  @@map("conversations")
-}
-
-model ConversationParticipant {
-  id              String            @id @default(cuid())
-  conversationId  String
-  userId          String
-  role            ParticipantRole   @default(MEMBER)
-  joinedAt        DateTime          @default(now())
-  leftAt          DateTime?
-  isActive        Boolean           @default(true)
-
-  // Relations
-  conversation    Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user            User              @relation("ConversationParticipants", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, userId])
-  @@map("conversation_participants")
-}
-
-model Message {
-  id                String        @id @default(cuid())
-  conversationId    String
-  senderId          String
-  content           String?
-  messageType       MessageType   @default(TEXT)
-  mediaId           String?
-  replyToId         String?
-  encryptedContent  String?       // For future E2E encryption
-  encryptionVersion Int           @default(1)
-  isLocked          Boolean       @default(false)
-  unlockPrice       Int?          // Price in tokens to unlock the message
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  isDeleted         Boolean       @default(false)
-
-  // Relations
-  conversation      Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender            User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  media             Media?        @relation("MessageMedia", fields: [mediaId], references: [id], onDelete: SetNull)
-  mediaItems        MessageMedia[] @relation("MessageMediaItems")
-  deliveryStatus    MessageDeliveryStatus[]
-  reactions         MessageReaction[]
-  unlockedBy        UnlockedMessage[] @relation("UnlockedMessages")
-
-  @@map("messages")
-}
-
-model MessageMedia {
-  id     String @id @default(cuid())
-  messageId String
-  mediaId String
-  order  Int    @default(0)
-  isLocked Boolean @default(false)
-
-  // Relations
-  message Message @relation("MessageMediaItems", fields: [messageId], references: [id], onDelete: Cascade)
-  media   Media   @relation("MessageMediaItems", fields: [mediaId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, mediaId])
-  @@map("message_media")
-}
-
-model MessageDeliveryStatus {
-  id          String          @id @default(cuid())
-  messageId   String
-  userId      String
-  status      DeliveryStatus  @default(SENT)
-  deliveredAt DateTime?
-  readAt      DateTime?
-
-  // Relations
-  message     Message         @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user        User            @relation("MessageDeliveryStatus", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
-  @@map("message_delivery_status")
-}
-
-model MessageReaction {
-  id        String   @id @default(cuid())
-  messageId String
-  userId    String
-  reaction  String   // Emoji
-  createdAt DateTime @default(now())
-
-  // Relations
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation("MessageReactions", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId, reaction])
-  @@map("message_reactions")
-}
-
-model UnlockedPost {
-  id        String   @id @default(cuid())
-  userId    String
-  postId    String
-  paidAmount Int     // Amount paid in tokens
-  unlockedAt DateTime @default(now())
-
-  // Relations
-  user      User     @relation("UnlockedPosts", fields: [userId], references: [id], onDelete: Cascade)
-  post      Post     @relation("UnlockedPosts", fields: [postId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, postId])
-  @@map("unlocked_posts")
-}
-
-model UnlockedMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  messageId String
-  paidAmount Int     // Amount paid in tokens
-  unlockedAt DateTime @default(now())
-
-  // Relations
-  user      User     @relation("UnlockedMessages", fields: [userId], references: [id], onDelete: Cascade)
-  message   Message  @relation("UnlockedMessages", fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, messageId])
-  @@map("unlocked_messages")
-}
-
-model UserSession {
-  id         String   @id @default(cuid())
-  userId     String
-  sessionId  String   @unique
-  deviceInfo Json?
-  lastSeen   DateTime @default(now())
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-
-  // Relations
-  user       User     @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_sessions")
-}
-
-// Messaging Enums
 enum ConversationType {
   DIRECT
   GROUP
@@ -577,12 +495,12 @@ enum MessageType {
   VIDEO
   AUDIO
   FILE
-  POST
   SYSTEM
+  POST
 }
 
 enum DeliveryStatus {
   SENT
   DELIVERED
   READ
-} 
+}

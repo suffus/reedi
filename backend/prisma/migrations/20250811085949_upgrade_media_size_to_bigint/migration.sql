@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "media" ALTER COLUMN "size" SET DATA TYPE BIGINT;
