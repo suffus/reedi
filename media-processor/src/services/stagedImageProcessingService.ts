@@ -9,21 +9,25 @@ import {
 } from '../types/stagedProcessing'
 import logger from '../utils/logger'
 import * as fs from 'fs'
+import * as path from 'path'
 
 export class StagedImageProcessingService {
   private rabbitmqService: EnhancedRabbitMQService
   private s3Service: S3ProcessorService
   private imageProcessor: StandaloneImageProcessor
   private queueConfig: QueueConfig
+  private tempDir: string
 
   constructor(
     rabbitmqService: EnhancedRabbitMQService,
-    s3Service: S3ProcessorService
+    s3Service: S3ProcessorService,
+    tempDir: string = '/tmp'
   ) {
     this.rabbitmqService = rabbitmqService
     this.s3Service = s3Service
-    this.imageProcessor = new StandaloneImageProcessor()
+    this.imageProcessor = new StandaloneImageProcessor(tempDir, tempDir)
     this.queueConfig = rabbitmqService.getQueueConfig()
+    this.tempDir = tempDir
   }
 
   async start(): Promise<void> {
@@ -32,17 +36,23 @@ export class StagedImageProcessingService {
     // Start consumers for each stage
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.download,
-      (job) => this.handleDownloadStage(job)
+      async (job) => {
+        await this.handleDownloadStage(job)
+      }
     )
     
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.processing,
-      (job) => this.handleProcessingStage(job)
+      async (job) => {
+        await this.handleProcessingStage(job)
+      }
     )
     
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.upload,
-      (job) => this.handleUploadStage(job)
+      async (job) => {
+        await this.handleUploadStage(job)
+      }
     )
 
     logger.info('Staged image processing service started')
@@ -63,6 +73,8 @@ export class StagedImageProcessingService {
     logger.info(`Received job data: ${JSON.stringify(job)}`)
     logger.info(`Extracted jobId: ${jobId}, mediaId: ${mediaId}, s3Key: ${s3Key}`)
     
+    let localImagePath: string | undefined
+    
     try {
       logger.info(`Starting download stage for job ${jobId}, media ${mediaId}`)
       
@@ -70,7 +82,7 @@ export class StagedImageProcessingService {
       await this.sendProgressUpdate(jobId, mediaId, 'processing', 0, 'downloading_image')
       
       // Download image from S3
-      const localImagePath = await this.s3Service.downloadImage(s3Key)
+      localImagePath = await this.s3Service.downloadImage(s3Key)
       
       // Extract basic metadata
       const metadata = await this.extractBasicMetadata(localImagePath)
@@ -95,6 +107,9 @@ export class StagedImageProcessingService {
       
     } catch (error) {
       logger.error(`Download stage failed for job ${jobId}:`, error)
+      
+      // Clean up any downloaded files on failure
+      await this.cleanupJobTempFiles(jobId, mediaId, localImagePath)
       
       const result: StageResult = {
         success: false,
@@ -155,6 +170,9 @@ export class StagedImageProcessingService {
     } catch (error) {
       logger.error(`Processing stage failed for job ${jobId}:`, error)
       
+      // Clean up any files on failure
+      await this.cleanupJobTempFiles(jobId, mediaId, localMediaPath)
+      
       const result: StageResult = {
         success: false,
         stage: 'FAILED',
@@ -198,16 +216,16 @@ export class StagedImageProcessingService {
         job.metadata as ImageMetadata
       )
       
-      // Clean up temp files
-      const localMediaPath = job.localMediaPath
-      if (localMediaPath && fs.existsSync(localMediaPath)) {
-        fs.unlinkSync(localMediaPath)
-      }
+      // Clean up temp files using the comprehensive cleanup method
+      await this.cleanupJobTempFiles(jobId, mediaId, job.localMediaPath, outputs)
       
       logger.info(`Upload stage completed for job ${jobId}`)
       
     } catch (error) {
       logger.error(`Upload stage failed for job ${jobId}:`, error)
+      
+      // Clean up any files on failure
+      await this.cleanupJobTempFiles(jobId, mediaId, job.localMediaPath, outputs)
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'upload_failed', undefined, undefined, error instanceof Error ? error.message : 'Unknown error')
     }
@@ -258,9 +276,8 @@ export class StagedImageProcessingService {
             mimeType: output.mimeType
           })
           
-          // Clean up local file
-          fs.unlinkSync(localPath)
-          logger.info(`Successfully uploaded and cleaned up: ${output.s3Key}`)
+          // Note: Cleanup is now handled by cleanupJobTempFiles in the stage handlers
+          logger.info(`Successfully uploaded: ${output.s3Key}`)
         } else {
           logger.warn(`Local file not found for: ${output.s3Key} at path: ${localPath}`)
         }
@@ -275,6 +292,7 @@ export class StagedImageProcessingService {
     const queue = this.getQueueForStage(nextStage)
     const jobId = result.jobId || (result as any).id || (result as any).job_id
     const mediaId = result.mediaId || (result as any).media_id
+    
     const job = {
       ...result,
       job_id: jobId,
@@ -328,7 +346,130 @@ export class StagedImageProcessingService {
     }
     
     await this.rabbitmqService.publishProgressUpdate( update )
+  }
 
+  /**
+   * Comprehensive cleanup of all temporary files for a job
+   */
+  private async cleanupJobTempFiles(
+    jobId: string, 
+    mediaId: string, 
+    originalImagePath?: string, 
+    outputs?: ProcessingOutput[]
+  ): Promise<void> {
+    try {
+      const filesToCleanup: string[] = []
+      
+      // Add original image file if it exists
+      if (originalImagePath && fs.existsSync(originalImagePath)) {
+        filesToCleanup.push(originalImagePath)
+      }
+      
+      // Add all output files that were created during processing
+      if (outputs) {
+        for (const output of outputs) {
+          const localPath = (output as any).localPath
+          if (localPath && fs.existsSync(localPath)) {
+            filesToCleanup.push(localPath)
+          }
+        }
+      }
+      
+      // Clean up all files
+      for (const filePath of filesToCleanup) {
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath)
+            logger.debug(`Cleaned up temp file: ${filePath}`)
+          }
+        } catch (error) {
+          logger.warn(`Failed to clean up temp file ${filePath}:`, error)
+        }
+      }
+      
+      logger.info(`Cleaned up ${filesToCleanup.length} temp files for job ${jobId}`)
+      
+    } catch (error) {
+      logger.warn(`Error during cleanup for job ${jobId}:`, error)
+    }
+  }
+
+  /**
+   * Periodic cleanup of old temporary files
+   * This can be called periodically to clean up any files that might have been left behind
+   */
+  async cleanupOldTempFiles(maxAgeHours: number = 24): Promise<void> {
+    try {
+      if (!fs.existsSync(this.tempDir)) {
+        return
+      }
+      
+      const now = Date.now()
+      const maxAgeMs = maxAgeHours * 60 * 60 * 1000
+      let cleanedCount = 0
+      
+      const files = fs.readdirSync(this.tempDir)
+      for (const file of files) {
+        const filePath = path.join(this.tempDir, file)
+        try {
+          if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath)
+            if (stat.isFile()) {
+              const fileAge = now - stat.mtime.getTime()
+              if (fileAge > maxAgeMs) {
+                fs.unlinkSync(filePath)
+                cleanedCount++
+                logger.debug(`Cleaned up old temp file: ${filePath} (age: ${Math.round(fileAge / 1000 / 60)} minutes)`)
+              }
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to clean up old file ${filePath}:`, error)
+        }
+      }
+      
+      if (cleanedCount > 0) {
+        logger.info(`Periodic cleanup completed: removed ${cleanedCount} old temp files`)
+      }
+      
+    } catch (error) {
+      logger.warn(`Error during periodic cleanup:`, error)
+    }
+  }
+
+  /**
+   * Emergency cleanup - remove all temporary files
+   * Use this only when you need to clear all temp files
+   */
+  async emergencyCleanup(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.tempDir)) {
+        return
+      }
+      
+      const files = fs.readdirSync(this.tempDir)
+      let cleanedCount = 0
+      
+      for (const file of files) {
+        const filePath = path.join(this.tempDir, file)
+        try {
+          if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath)
+            if (stat.isFile()) {
+              fs.unlinkSync(filePath)
+              cleanedCount++
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to clean up file ${filePath}:`, error)
+        }
+      }
+      
+      logger.info(`Emergency cleanup completed: removed ${cleanedCount} temp files`)
+      
+    } catch (error) {
+      logger.error(`Error during emergency cleanup:`, error)
+    }
   }
 
 

@@ -78,12 +78,20 @@ export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
       case 'VIDEO':
         return (
           <div className="max-w-md">
-            <video
-              src={message.media?.url}
-              controls
-              className="rounded-lg max-w-full h-auto"
-              poster={message.media?.thumbnail}
-            />
+            <div className="flex items-center justify-center">
+              <video
+                src={message.media?.url}
+                controls
+                className="w-auto h-auto max-w-full h-auto rounded-lg object-contain"
+                style={{
+                  // Ensure video maintains aspect ratio and fits within container
+                  maxWidth: '100%',
+                  height: 'auto',
+                  width: 'auto'
+                }}
+                poster={message.media?.thumbnail}
+              />
+            </div>
             {message.content && (
               <p className="text-sm text-gray-600 mt-2">{message.content}</p>
             )}

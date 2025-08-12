@@ -117,7 +117,8 @@ async function main() {
 
     imageProcessingService = new StagedImageProcessingService(
       imageRabbitmqService,
-      s3Service
+      s3Service,
+      config.processing.tempDir
     )
 
     // Start the image processing service
@@ -193,9 +194,31 @@ async function main() {
 
     logger.info('All media processing services started successfully')
 
+    // Set up periodic cleanup every 6 hours
+    const cleanupInterval = setInterval(async () => {
+      try {
+        logger.info('Running periodic cleanup of old temporary files...')
+        await videoProcessingService?.cleanupOldTempFiles(6) // Clean up files older than 6 hours
+        await imageProcessingService?.cleanupOldTempFiles(6)
+      } catch (error) {
+        logger.error('Error during periodic cleanup:', error)
+      }
+    }, 6 * 60 * 60 * 1000) // 6 hours
+
     // Handle graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}. Shutting down gracefully...`)
+      
+      clearInterval(cleanupInterval)
+
+      // Run final cleanup before shutdown
+      try {
+        logger.info('Running final cleanup before shutdown...')
+        await videoProcessingService?.cleanupOldTempFiles(0) // Clean up all files
+        await imageProcessingService?.cleanupOldTempFiles(0)
+      } catch (error) {
+        logger.error('Error during final cleanup:', error)
+      }
       
       if (videoProcessingService) {
         await videoProcessingService.stop()

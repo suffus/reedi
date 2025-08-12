@@ -94,6 +94,9 @@ export class StagedVideoProcessingService {
     } catch (error) {
       logger.error(`Download stage failed for job ${jobId}:`, error)
       
+      // Clean up any temp files that might have been created during download
+      await this.cleanupJobTempFiles(jobId, mediaId)
+      
       const result: StageResult = {
         success: false,
         stage: 'FAILED',
@@ -151,6 +154,9 @@ export class StagedVideoProcessingService {
     } catch (error) {
       logger.error(`Processing stage failed for job ${jobId}:`, error)
       
+      // Clean up temp files on processing failure
+      await this.cleanupJobTempFiles(jobId, mediaId, localVideoPath)
+      
       const result: StageResult = {
         success: false,
         stage: 'FAILED',
@@ -165,7 +171,7 @@ export class StagedVideoProcessingService {
   }
 
   private async handleUploadStage(job: StagedProcessingJob): Promise<void> {
-    const { id: jobId, mediaId, outputs } = job
+    const { id: jobId, mediaId, outputs, localMediaPath } = job
     
     if (!outputs || outputs.length === 0) {
       logger.error(`No outputs for job ${jobId}`)
@@ -202,6 +208,9 @@ export class StagedVideoProcessingService {
         videoVersions
       )
       
+      // Clean up all temp files after successful completion
+      await this.cleanupJobTempFiles(jobId, mediaId, localMediaPath as string, outputs)
+      
       // Send to completion stage
       await this.sendToNextStage(result, 'COMPLETED')
       
@@ -209,6 +218,9 @@ export class StagedVideoProcessingService {
       
     } catch (error) {
       logger.error(`Upload stage failed for job ${jobId}:`, error)
+      
+      // Clean up temp files on upload failure
+      await this.cleanupJobTempFiles(jobId, mediaId, localMediaPath as string, outputs)
       
       const result: StageResult = {
         success: false,
@@ -220,6 +232,164 @@ export class StagedVideoProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'upload_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
+    }
+  }
+
+  /**
+   * Comprehensive cleanup of all temporary files for a job
+   */
+  private async cleanupJobTempFiles(
+    jobId: string, 
+    mediaId: string, 
+    originalVideoPath?: string, 
+    outputs?: ProcessingOutput[]
+  ): Promise<void> {
+    try {
+      const filesToCleanup: string[] = []
+      
+      // Add original video file if it exists
+      if (originalVideoPath && fs.existsSync(originalVideoPath)) {
+        filesToCleanup.push(originalVideoPath)
+      }
+      
+      // Add all output files that were created during processing
+      if (outputs) {
+        for (const output of outputs) {
+          const localPath = this.findTempFile(output.s3Key, output.type === 'thumbnail' ? 'thumbnails' : 'videos')
+          if (localPath && fs.existsSync(localPath)) {
+            filesToCleanup.push(localPath)
+          }
+        }
+      }
+      
+      // Clean up all files
+      for (const filePath of filesToCleanup) {
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath)
+            logger.debug(`Cleaned up temp file: ${filePath}`)
+          }
+        } catch (error) {
+          logger.warn(`Failed to clean up temp file ${filePath}:`, error)
+        }
+      }
+      
+      // Also clean up any files in the temp directory that match the media ID pattern
+      await this.cleanupMediaIdFiles(mediaId)
+      
+      logger.info(`Cleaned up ${filesToCleanup.length} temp files for job ${jobId}`)
+      
+    } catch (error) {
+      logger.warn(`Error during cleanup for job ${jobId}:`, error)
+    }
+  }
+
+  /**
+   * Clean up any remaining files that match the media ID pattern
+   */
+  private async cleanupMediaIdFiles(mediaId: string): Promise<void> {
+    try {
+      if (!fs.existsSync(this.tempDir)) {
+        return
+      }
+      
+      const files = fs.readdirSync(this.tempDir)
+      for (const file of files) {
+        if (file.includes(mediaId)) {
+          const filePath = path.join(this.tempDir, file)
+          try {
+            if (fs.existsSync(filePath)) {
+              const stat = fs.statSync(filePath)
+              if (stat.isFile()) {
+                fs.unlinkSync(filePath)
+                logger.debug(`Cleaned up orphaned temp file: ${filePath}`)
+              }
+            }
+          } catch (error) {
+            logger.warn(`Failed to clean up orphaned file ${filePath}:`, error)
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(`Error cleaning up media ID files for ${mediaId}:`, error)
+    }
+  }
+
+  /**
+   * Periodic cleanup of old temporary files
+   * This can be called periodically to clean up any files that might have been left behind
+   */
+  async cleanupOldTempFiles(maxAgeHours: number = 24): Promise<void> {
+    try {
+      if (!fs.existsSync(this.tempDir)) {
+        return
+      }
+      
+      const now = Date.now()
+      const maxAgeMs = maxAgeHours * 60 * 60 * 1000
+      let cleanedCount = 0
+      
+      const files = fs.readdirSync(this.tempDir)
+      for (const file of files) {
+        const filePath = path.join(this.tempDir, file)
+        try {
+          if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath)
+            if (stat.isFile()) {
+              const fileAge = now - stat.mtime.getTime()
+              if (fileAge > maxAgeMs) {
+                fs.unlinkSync(filePath)
+                cleanedCount++
+                logger.debug(`Cleaned up old temp file: ${filePath} (age: ${Math.round(fileAge / 1000 / 60)} minutes)`)
+              }
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to clean up old file ${filePath}:`, error)
+        }
+      }
+      
+      if (cleanedCount > 0) {
+        logger.info(`Periodic cleanup completed: removed ${cleanedCount} old temp files`)
+      }
+      
+    } catch (error) {
+      logger.warn(`Error during periodic cleanup:`, error)
+    }
+  }
+
+  /**
+   * Emergency cleanup - remove all temporary files
+   * Use this only when you need to clear all temp files
+   */
+  async emergencyCleanup(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.tempDir)) {
+        return
+      }
+      
+      const files = fs.readdirSync(this.tempDir)
+      let cleanedCount = 0
+      
+      for (const file of files) {
+        const filePath = path.join(this.tempDir, file)
+        try {
+          if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath)
+            if (stat.isFile()) {
+              fs.unlinkSync(filePath)
+              cleanedCount++
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to clean up file ${filePath}:`, error)
+        }
+      }
+      
+      logger.info(`Emergency cleanup completed: removed ${cleanedCount} temp files`)
+      
+    } catch (error) {
+      logger.error(`Error during emergency cleanup:`, error)
     }
   }
 
@@ -248,28 +418,46 @@ export class StagedVideoProcessingService {
   ): Promise<{ thumbnails: any[], videoVersions: any[] }> {
     const thumbnails: any[] = []
     const videoVersions: any[] = []
+    const uploadedFiles: string[] = []
 
     for (const output of outputs) {
       const localPath = this.findTempFile(output.s3Key, output.type === 'thumbnail' ? 'thumbnails' : 'videos')
       
       if (localPath && fs.existsSync(localPath)) {
-        await this.s3Service.uploadFile(localPath, output.s3Key)
-        
-        if (output.type === 'thumbnail') {
-          thumbnails.push({
-            s3Key: output.s3Key,
-            width: output.width,
-            height: output.height,
-            fileSize: output.fileSize
-          })
-        } else {
-          videoVersions.push({
-            s3Key: output.s3Key,
-            quality: output.quality,
-            width: output.width,
-            height: output.height,
-            fileSize: output.fileSize
-          })
+        try {
+          await this.s3Service.uploadFile(localPath, output.s3Key)
+          
+          // Track successfully uploaded files for cleanup
+          uploadedFiles.push(localPath)
+          
+          if (output.type === 'thumbnail') {
+            thumbnails.push({
+              s3Key: output.s3Key,
+              width: output.width,
+              height: output.height,
+              fileSize: output.fileSize
+            })
+          } else {
+            videoVersions.push({
+              s3Key: output.s3Key,
+              quality: output.quality,
+              width: output.width,
+              height: output.height,
+              fileSize: output.fileSize
+            })
+          }
+          
+          // Clean up the file immediately after successful upload
+          try {
+            fs.unlinkSync(localPath)
+            logger.debug(`Cleaned up uploaded file: ${localPath}`)
+          } catch (cleanupError) {
+            logger.warn(`Failed to clean up uploaded file ${localPath}:`, cleanupError)
+          }
+          
+        } catch (uploadError) {
+          logger.error(`Failed to upload ${output.type} for media ${mediaId}:`, uploadError)
+          // Don't throw here, continue with other uploads
         }
       }
     }

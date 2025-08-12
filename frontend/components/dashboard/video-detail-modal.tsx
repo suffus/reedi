@@ -608,7 +608,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
           {/* Video Container */}
           <div 
             ref={containerRef}
-            className="flex-1 flex items-center justify-center relative"
+            className="flex-1 flex items-center justify-center relative overflow-hidden"
           >
             {/* Close Button */}
             <motion.button
@@ -740,31 +740,38 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 )}
               </div>
             ) : (
-              // Video player
-              <video
-                ref={videoRef}
-                className={`${
-                  isFullscreen 
-                    ? 'w-full h-full' 
-                    : 'max-w-full max-h-full object-contain'
-                }`}
-                style={{
-                  ...(isFullscreen && getFullscreenStyle())
-                }}
-                src={getCurrentVideoSource()}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => {
-                  setIsPlaying(false)
-                  // Notify slideshow that video ended
-                  slideshow.handleVideoEnd()
-                }}
-                onClick={handleTogglePlay}
-              >
-                Your browser does not support the video tag.
-              </video>
+              // Video player with improved sizing for portrait videos
+              <div className="w-full h-full flex items-center justify-center p-4">
+                <video
+                  ref={videoRef}
+                  className={`${
+                    isFullscreen 
+                      ? 'w-full h-full' 
+                      : 'w-auto h-auto max-w-full max-h-full object-contain'
+                  }`}
+                  style={{
+                    ...(isFullscreen && getFullscreenStyle()),
+                    // Ensure video maintains aspect ratio and fits within viewport
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    width: 'auto',
+                    height: 'auto'
+                  }}
+                  src={getCurrentVideoSource()}
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onEnded={() => {
+                    setIsPlaying(false)
+                    // Notify slideshow that video ended
+                    slideshow.handleVideoEnd()
+                  }}
+                  onClick={handleTogglePlay}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              </div>
             )}
 
             {/* Video Controls Overlay */}

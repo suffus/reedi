@@ -37,24 +37,61 @@ export class StandaloneImageProcessor {
   private readonly tempDir: string
   private readonly outputDir: string
   private readonly imageQualities = [
-    { name: '180p', width: 180, height: 180, quality: 85 },
-    { name: '360p', width: 360, height: 360, quality: 85 },
-    { name: '720p', width: 720, height: 720, quality: 90 },
-    { name: '1080p', width: 1080, height: 1080, quality: 95 }
+    { name: '180p', width: 180, height: 180, quality: 80 },
+    { name: '360p', width: 360, height: 360, quality: 80 },
+    { name: '720p', width: 720, height: 720, quality: 85 },
+    { name: '1080p', width: 1080, height: 1080, quality: 90 }
   ]
 
   constructor(tempDir: string = '/tmp', outputDir: string = '/tmp/output') {
     this.tempDir = tempDir
     this.outputDir = outputDir
-    // Ensure directories exist
-    if (!fs.existsSync(this.tempDir)) {
-      fs.mkdirSync(this.tempDir, { recursive: true })
-    }
-    if (!fs.existsSync(this.outputDir)) {
-      fs.mkdirSync(this.outputDir, { recursive: true })
-    }
-    if (!fs.existsSync(path.join(this.outputDir, 'images'))) {
-      fs.mkdirSync(path.join(this.outputDir, 'images'), { recursive: true })
+    
+    console.log(`Initializing StandaloneImageProcessor`)
+    console.log(`Temp directory: ${this.tempDir}`)
+    console.log(`Output directory: ${this.outputDir}`)
+    
+    try {
+      // Ensure directories exist
+      if (!fs.existsSync(this.tempDir)) {
+        console.log(`Creating temp directory: ${this.tempDir}`)
+        fs.mkdirSync(this.tempDir, { recursive: true })
+      }
+      
+      if (!fs.existsSync(this.outputDir)) {
+        console.log(`Creating output directory: ${this.outputDir}`)
+        fs.mkdirSync(this.outputDir, { recursive: true })
+      }
+      
+      const imagesDir = path.join(this.outputDir, 'images')
+      if (!fs.existsSync(imagesDir)) {
+        console.log(`Creating images subdirectory: ${imagesDir}`)
+        fs.mkdirSync(imagesDir, { recursive: true })
+      }
+      
+      // Verify directories are writable
+      try {
+        const testFile = path.join(this.tempDir, 'test_write.tmp')
+        fs.writeFileSync(testFile, 'test')
+        fs.unlinkSync(testFile)
+        console.log(`Temp directory is writable: ${this.tempDir}`)
+      } catch (error) {
+        throw new Error(`Temp directory is not writable: ${this.tempDir}`)
+      }
+      
+      try {
+        const testFile = path.join(imagesDir, 'test_write.tmp')
+        fs.writeFileSync(testFile, 'test')
+        fs.unlinkSync(testFile)
+        console.log(`Images directory is writable: ${imagesDir}`)
+      } catch (error) {
+        throw new Error(`Images directory is not writable: ${imagesDir}`)
+      }
+      
+      console.log(`StandaloneImageProcessor initialized successfully`)
+    } catch (error) {
+      console.error(`Failed to initialize StandaloneImageProcessor:`, error)
+      throw new Error(`Initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -64,21 +101,46 @@ export class StandaloneImageProcessor {
 
     try {
       console.log(`Starting image processing for media ${mediaId}`)
+      console.log(`Input image path: ${imagePath}`)
+      console.log(`Output directory: ${this.outputDir}`)
+
+      // Check if input file exists
+      if (!fs.existsSync(imagePath)) {
+        throw new Error(`Input image file does not exist: ${imagePath}`)
+      }
 
       // Get image metadata
       const metadata = await this.getImageMetadata(imagePath)
       console.log(`Image metadata: ${JSON.stringify(metadata)}`)
 
+      // Validate metadata
+      if (metadata.width === 0 || metadata.height === 0) {
+        throw new Error(`Invalid image dimensions: ${metadata.width}x${metadata.height}`)
+      }
+
       // Generate thumbnail
+      console.log(`Generating thumbnail for ${mediaId}...`)
       const thumbnail = await this.generateThumbnail(imagePath, mediaId)
       outputs.push(thumbnail)
+      console.log(`Thumbnail generated successfully: ${thumbnail.localPath}`)
 
       // Generate different quality versions
+      console.log(`Generating quality versions for ${mediaId}...`)
       const qualityVersions = await this.generateQualityVersions(imagePath, mediaId, metadata)
       outputs.push(...qualityVersions)
+      console.log(`Quality versions generated: ${qualityVersions.length}`)
+
+      // Validate outputs
+      if (outputs.length === 0) {
+        throw new Error('No outputs generated during processing')
+      }
 
       const processingTime = Date.now() - startTime
       console.log(`Image processing completed for media ${mediaId} in ${processingTime}ms`)
+      console.log(`Total outputs generated: ${outputs.length}`)
+      outputs.forEach((output, index) => {
+        console.log(`  Output ${index + 1}: ${output.type} - ${output.width}x${output.height} - ${output.localPath}`)
+      })
 
       return {
         success: true,
@@ -90,6 +152,20 @@ export class StandaloneImageProcessor {
 
     } catch (error) {
       console.error(`Image processing failed for media ${mediaId}:`, error)
+      console.error(`Error details:`, error instanceof Error ? error.stack : 'Unknown error')
+      
+      // Clean up any partial outputs
+      outputs.forEach(output => {
+        if (output.localPath && fs.existsSync(output.localPath)) {
+          try {
+            fs.unlinkSync(output.localPath)
+            console.log(`Cleaned up partial output: ${output.localPath}`)
+          } catch (cleanupError) {
+            console.error(`Failed to clean up partial output ${output.localPath}:`, cleanupError)
+          }
+        }
+      })
+
       return {
         success: false,
         mediaId,
@@ -141,6 +217,8 @@ export class StandaloneImageProcessor {
     const originalHeight = metadata.height
     const aspectRatio = originalWidth / originalHeight
 
+    console.log(`Generating quality versions for image ${mediaId}: ${originalWidth}x${originalHeight} (aspect ratio: ${aspectRatio.toFixed(2)})`)
+
     for (const quality of this.imageQualities) {
       try {
         // Calculate dimensions maintaining aspect ratio
@@ -163,8 +241,13 @@ export class StandaloneImageProcessor {
           }
         }
 
-        // Only process if the target size is smaller than original
-        if (targetWidth < originalWidth || targetHeight < originalHeight) {
+        console.log(`Target for ${quality.name}: ${targetWidth}x${targetHeight}`)
+
+        // Always process at least one version, even if it's the same size as original
+        // This ensures we have outputs for the upload stage
+        const shouldProcess = targetWidth <= originalWidth && targetHeight <= originalHeight
+        
+        if (shouldProcess) {
           const outputPath = path.join(this.outputDir, 'images', `${mediaId}_${quality.name}.jpg`)
           
           await this.generateQualityVersion(imagePath, outputPath, {
@@ -186,16 +269,41 @@ export class StandaloneImageProcessor {
             quality: quality.name
           })
 
-          console.log(`Generated ${quality.name} version: ${targetWidth}x${targetHeight}`)
+          console.log(`Generated ${quality.name} version: ${targetWidth}x${targetHeight} (${fileSize} bytes)`)
         } else {
-          console.log(`Skipping ${quality.name} - original is smaller than target`)
+          // For images smaller than target, create a version that's the same size as original
+          // but with optimized quality
+          const outputPath = path.join(this.outputDir, 'images', `${mediaId}_${quality.name}_optimized.jpg`)
+          
+          await this.generateQualityVersion(imagePath, outputPath, {
+            width: originalWidth,
+            height: originalHeight,
+            quality: quality.quality
+          })
+
+          const fileSize = fs.statSync(outputPath).size
+
+          outputs.push({
+            type: 'image_scaled',
+            localPath: outputPath,
+            s3Key: `processed/images/${mediaId}/${quality.name}_optimized.jpg`,
+            width: originalWidth,
+            height: originalHeight,
+            fileSize,
+            mimeType: 'image/jpeg',
+            quality: `${quality.name}_optimized`
+          })
+
+          console.log(`Generated optimized ${quality.name} version: ${originalWidth}x${originalHeight} (${fileSize} bytes)`)
         }
 
       } catch (error) {
         console.error(`Failed to generate ${quality.name} version:`, error)
+        // Continue with other qualities instead of failing completely
       }
     }
 
+    console.log(`Generated ${outputs.length} quality versions for image ${mediaId}`)
     return outputs
   }
 
@@ -205,33 +313,44 @@ export class StandaloneImageProcessor {
   ): Promise<ProcessingOutput> {
     const outputPath = path.join(this.outputDir, 'images', `${mediaId}_thumbnail.jpg`)
     
-    // Generate 300x300 thumbnail with cover fit
-    await sharp(imagePath)
-      .rotate() // Automatically rotate based on EXIF orientation
-      .resize(300, 300, { 
-        fit: 'cover',
-        withoutEnlargement: true 
-      })
-      .jpeg({ 
-        quality: 80,
-        progressive: true,
-        mozjpeg: true
-      })
-      .toFile(outputPath)
+    console.log(`Generating thumbnail at: ${outputPath}`)
+    
+    try {
+      // Generate 300x300 thumbnail with cover fit
+      await sharp(imagePath)
+        .rotate() // Automatically rotate based on EXIF orientation
+        .resize(300, 300, { 
+          fit: 'cover',
+          withoutEnlargement: true 
+        })
+        .jpeg({ 
+          quality: 80,
+          progressive: true,
+          mozjpeg: true
+        })
+        .toFile(outputPath)
 
-    const fileSize = fs.statSync(outputPath).size
+      // Verify the file was created
+      if (!fs.existsSync(outputPath)) {
+        throw new Error(`Thumbnail file was not created: ${outputPath}`)
+      }
 
-    console.log(`Generated thumbnail: 300x300`)
+      const fileSize = fs.statSync(outputPath).size
+      console.log(`Generated thumbnail: 300x300 (${fileSize} bytes) at ${outputPath}`)
 
-    return {
-      type: 'thumbnail',
-      localPath: outputPath,
-      s3Key: `processed/images/${mediaId}/thumbnail.jpg`,
-      width: 300,
-      height: 300,
-      fileSize,
-      mimeType: 'image/jpeg',
-      quality: 'thumbnail'
+      return {
+        type: 'thumbnail',
+        localPath: outputPath,
+        s3Key: `processed/images/${mediaId}/thumbnail.jpg`,
+        width: 300,
+        height: 300,
+        fileSize,
+        mimeType: 'image/jpeg',
+        quality: 'thumbnail'
+      }
+    } catch (error) {
+      console.error(`Failed to generate thumbnail for ${mediaId}:`, error)
+      throw new Error(`Thumbnail generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -240,13 +359,30 @@ export class StandaloneImageProcessor {
     outputPath: string, 
     options: { width: number; height: number; quality: number }
   ): Promise<void> {
-    await sharp(inputPath)
-      .rotate() // Automatically rotate based on EXIF orientation
-      .resize(options.width, options.height, {
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .jpeg({ quality: options.quality })
-      .toFile(outputPath)
+    console.log(`Generating quality version: ${options.width}x${options.height} at quality ${options.quality}`)
+    console.log(`Input: ${inputPath}`)
+    console.log(`Output: ${outputPath}`)
+    
+    try {
+      await sharp(inputPath)
+        .rotate() // Automatically rotate based on EXIF orientation
+        .resize(options.width, options.height, {
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ quality: options.quality })
+        .toFile(outputPath)
+
+      // Verify the file was created
+      if (!fs.existsSync(outputPath)) {
+        throw new Error(`Quality version file was not created: ${outputPath}`)
+      }
+
+      const fileSize = fs.statSync(outputPath).size
+      console.log(`Quality version generated successfully: ${options.width}x${options.height} (${fileSize} bytes)`)
+    } catch (error) {
+      console.error(`Failed to generate quality version ${options.width}x${options.height}:`, error)
+      throw new Error(`Quality version generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 } 

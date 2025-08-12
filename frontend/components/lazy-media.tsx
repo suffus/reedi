@@ -206,17 +206,22 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
     if (isMainMedia) {
       return (
         <div className="relative">
-          {/* Video element */}
+          {/* Video element with improved sizing for portrait videos */}
           <video
             ref={mediaRef as React.RefObject<HTMLVideoElement>}
             src={videoUrl || src}
             poster={thumbnailError ? generateVideoPlaceholder() : (src || generateVideoPlaceholder())}
-            className={className}
+            className={`${className} w-auto h-auto max-w-full max-h-full object-contain`}
             style={{
               ...style,
               opacity: isLoaded ? 1 : 0.7,
               transform: isLoaded ? 'scale(1)' : 'scale(0.98)',
               transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
+              // Ensure video maintains aspect ratio and fits within container
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: 'auto',
+              height: 'auto'
             }}
             onClick={(e) => onClick?.(e)}
             onLoadStart={handleLoad}
