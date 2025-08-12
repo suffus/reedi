@@ -104,6 +104,12 @@ export class MultipartUploadService {
    * Initialize multipart upload
    */
   async initiateMultipartUpload(key: string, contentType: string, metadata?: Record<string, string>): Promise<string> {
+    console.log('initiateMultipartUpload', key, contentType, metadata)
+    if(metadata &&  metadata['tags']) {
+      delete metadata['tags']
+      
+    }
+    
     const command = new CreateMultipartUploadCommand({
       Bucket: BUCKET_NAME,
       Key: key,

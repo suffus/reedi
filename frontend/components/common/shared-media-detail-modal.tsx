@@ -469,21 +469,30 @@ export function SharedMediaDetailModal() {
           {/* Media content */}
           <div className="relative max-w-full max-h-full">
             {isVideo ? (
-              <video
-                ref={videoRef}
-                src={currentMedia.url || ''}
-                poster={currentMedia.thumbnail || ''}
-                className="max-w-full max-h-[80vh] object-contain"
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => {
-                  setIsPlaying(false)
-                  slideshow.handleVideoEnd()
-                }}
-                onLoad={() => slideshow.handleMediaLoad()}
-              />
+              <div className="flex items-center justify-center">
+                <video
+                  ref={videoRef}
+                  src={currentMedia.url || ''}
+                  poster={currentMedia.thumbnail || ''}
+                  className="w-auto h-auto max-w-full max-h-[80vh] object-contain"
+                  style={{
+                    // Ensure video maintains aspect ratio and fits within viewport
+                    maxWidth: '100%',
+                    maxHeight: '80vh',
+                    width: 'auto',
+                    height: 'auto'
+                  }}
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onEnded={() => {
+                    setIsPlaying(false)
+                    slideshow.handleVideoEnd()
+                  }}
+                  onLoad={() => slideshow.handleMediaLoad()}
+                />
+              </div>
             ) : isImage ? (
               <div className="relative overflow-hidden">
                 <img

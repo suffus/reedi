@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostMedia } from '../../lib/api-hooks'
 import { MediaDetailModal } from './media-detail-modal'
 import { PostMenu } from './post-menu'
-import { PostMediaDisplay } from './post-media-display'
+import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { Post, Comment } from '@/lib/types'
 
 import { FullScreenWrapper } from '../full-screen-wrapper'

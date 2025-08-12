@@ -439,11 +439,11 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                   ...prev,
                   [uploadFile.id]: {
                     status: progress.status === 'completed' ? 'success' : 'uploading',
-                    progress: progress.percentage,
+                    progress: Math.round(progress.percentage),
                     chunkProgress: {
                       uploadedBytes: progress.uploadedBytes,
                       totalBytes: progress.totalBytes,
-                      percentage: progress.percentage,
+                      percentage: Math.round(progress.percentage),
                       currentChunk: progress.currentChunk,
                       totalChunks: progress.totalChunks
                     }
@@ -471,7 +471,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                 ...prev,
                 [uploadFile.id]: { 
                   ...prev[uploadFile.id], 
-                  progress: Math.min((prev[uploadFile.id]?.progress || 0) + Math.random() * 20, 90)
+                  progress: Math.min(Math.round((prev[uploadFile.id]?.progress || 0) + Math.random() * 20), 90)
                 }
               }))
             }, 200)
@@ -616,7 +616,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                             <div className="w-full bg-gray-200 rounded-full h-2">
                               <div 
                                 className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${progress.progress || 0}%` }}
+                                style={{ width: `${Math.round(progress.progress || 0)}%` }}
                               />
                             </div>
                             
@@ -625,7 +625,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                               <div className="text-xs text-gray-600 space-y-1">
                                 <div className="flex justify-between">
                                   <span>Chunk {progress.chunkProgress.currentChunk} of {progress.chunkProgress.totalChunks}</span>
-                                  <span>{progress.chunkProgress.percentage}%</span>
+                                  <span>{Math.round(progress.chunkProgress.percentage)}%</span>
                                 </div>
                                 <div className="flex justify-between text-gray-500">
                                   <span>{formatFileSize(progress.chunkProgress.uploadedBytes)} / {formatFileSize(progress.chunkProgress.totalBytes)}</span>
@@ -642,7 +642,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                             {/* Show regular progress for small files */}
                             {!progress.chunkProgress && (
                               <div className="text-xs text-gray-600 text-right">
-                                {progress.progress || 0}%
+                                {Math.round(progress.progress || 0)}%
                               </div>
                             )}
                           </div>

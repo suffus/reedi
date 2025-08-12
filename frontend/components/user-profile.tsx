@@ -9,6 +9,7 @@ import { usePublicUserPosts, usePublicUserMedia, useAuth } from '@/lib/api-hooks
 import { LazyMedia } from './lazy-media'
 import { MediaGrid } from './media-grid'
 import { MediaDetailModal } from './dashboard/media-detail-modal'
+import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { mapMediaData, getBestThumbnailUrl, getSmartMediaUrl } from '@/lib/media-utils'
 import { getVideoUrlWithQuality } from '@/lib/api'
 
@@ -339,240 +340,11 @@ export default function UserProfile() {
     setIsMediaDetailModalOpen(true)
   }
 
-  // Helper component for post image layout (simplified version for public viewing)
-  function PostMediaDisplay({ 
-    media, 
-    onMediaClick 
-  }: { 
-    media: any[], 
-    onMediaClick: (media: any, postMedia?: any[]) => void
-  }) {
-    if (!media || media.length === 0) return null;
-    
-    const getBestMediaUrl = (mediaItem: any, useThumbnail: boolean = false) => {
-      // For locked media without ID, return empty string to show placeholder
-      if (mediaItem.isLocked && !mediaItem.id) {
-        return ''
-      }
-      
-      if (useThumbnail) {
-        // For thumbnails, use the smart thumbnail URL
-        return getSmartMediaUrl(mediaItem, 'thumbnail')
-      }
-      
-      // For main images, use 1080p quality
-      return getSmartMediaUrl(mediaItem, 'main')
-    }
 
-    const getVideoUrl = (mediaItem: any) => {
-      // Return the video URL for video playback
-      return mediaItem.videoUrl || getMediaUrlFromMedia(mediaItem, false)
-    }
 
-    const getCachedVideoUrl = (mediaItem: any) => {
-      if (typeof mediaItem === 'string') {
-        return null
-      }
-      
-      // Return cached quality URL if available, otherwise fallback
-      return videoUrls[mediaItem.id] || mediaItem.videoUrl || getMediaUrlFromMedia(mediaItem, false)
-    }
     
-    if (media.length === 1) {
-      const img = media[0];
-      const isVideo = img.mediaType === 'VIDEO';
-      const mediaUrl = getBestMediaUrl(img, isVideo);
-      const videoUrl = getCachedVideoUrl(img);
-      
-      return (
-        <div className="mb-4">
-          {mediaUrl ? (
-            <LazyMedia
-              src={mediaUrl}
-              alt={img.altText || img.caption || 'Post media'}
-              className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
-              style={{
-                height: 'auto',
-                width: '100%',
-                display: 'block'
-              }}
-              onClick={() => onMediaClick(img, media)}
-              mediaType={img.mediaType || 'IMAGE'}
-              isMainMedia={true}
-              videoUrl={videoUrl}
-              showVideoControls={isVideo}
-              showPlayButton={isVideo}
-            />
-          ) : (
-            // Locked media placeholder
-            <div className="w-full bg-gray-100 rounded-lg aspect-video flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
-              <div className="text-center">
-                <Lock className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Locked Content</p>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
+
     
-    if (media.length === 2 || media.length === 3) {
-      return (
-        <div className="mb-4">
-          <div className={`grid grid-cols-${media.length} gap-2`}>
-            {media.map((img: any, idx: number) => {
-              const isVideo = img.mediaType === 'VIDEO';
-              const mediaUrl = getBestMediaUrl(img, isVideo);
-              const videoUrl = getCachedVideoUrl(img);
-              
-              return (
-                <div key={img.id || `media-${idx}`}>
-                  {mediaUrl ? (
-                    <LazyMedia
-                      src={mediaUrl}
-                      alt={img.altText || img.caption || `Post media ${idx + 1}`}
-                      className="w-full rounded-lg object-contain max-h-72 cursor-pointer hover:opacity-90 transition-opacity"
-                      style={{ aspectRatio: img.width && img.height ? `${img.width} / ${img.height}` : undefined }}
-                      onClick={() => onMediaClick(img, media)}
-                      mediaType={img.mediaType || 'IMAGE'}
-                      isMainMedia={idx === 0} // First item is main media
-                      videoUrl={videoUrl}
-                      showVideoControls={isVideo && idx === 0} // Only show controls for main video
-                      showPlayButton={isVideo}
-                    />
-                  ) : (
-                    // Locked media placeholder
-                    <div className="w-full bg-gray-100 rounded-lg aspect-square flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
-                      <div className="text-center">
-                        <Lock className="h-8 w-8 text-gray-400 mx-auto mb-1" />
-                        <p className="text-xs text-gray-500">Locked</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-    
-    // 4+ media items: Layout based on main media aspect ratio
-    const [main, ...thumbs] = media;
-    const isMainVideo = main.mediaType === 'VIDEO';
-    const mainMediaUrl = getBestMediaUrl(main, isMainVideo);
-    const mainVideoUrl = getCachedVideoUrl(main);
-    
-    // Calculate aspect ratio for main media
-    const mainAspectRatio = main.width && main.height ? main.width / main.height : 1;
-    const isPortrait = mainAspectRatio < 1;
-    
-    if (isPortrait) {
-      // Portrait layout: Main image scaled to 80% width with true aspect ratio, thumbnails on the right
-      return (
-        <div className="mb-4 flex gap-2">
-          {/* Main image container - 80% width */}
-          <div className="w-4/5 flex justify-center">
-            <LazyMedia
-              src={mainMediaUrl}
-              alt={main.altText || main.caption || 'Main post media'}
-              className="rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
-              style={{
-                width: '100%',
-                maxWidth: '100%',
-                height: 'auto',
-                aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined
-              }}
-              onClick={() => onMediaClick(main, media)}
-              mediaType={main.mediaType || 'IMAGE'}
-              isMainMedia={true}
-              videoUrl={mainVideoUrl}
-              showVideoControls={isMainVideo}
-              showPlayButton={isMainVideo}
-            />
-          </div>
-          
-          {/* Thumbnails - 17.5% of post width, vertical stack */}
-          <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
-            {thumbs.map((img: any, idx: number) => {
-              const isVideo = img.mediaType === 'VIDEO';
-              const mediaUrl = getSmartMediaUrl(img, 'small');
-              const videoUrl = getCachedVideoUrl(img);
-              
-              return (
-                <div key={img.id}>
-                  <LazyMedia
-                    src={mediaUrl}
-                    alt={img.altText || img.caption || `Thumbnail ${idx + 2}`}
-                    className="rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                    style={{
-                      width: '100%',
-                      aspectRatio: '1 / 1'
-                    }}
-                    onClick={() => onMediaClick(img, media)}
-                    mediaType={img.mediaType || 'IMAGE'}
-                    videoUrl={videoUrl}
-                    showPlayButton={isVideo}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    } else {
-      // Landscape layout: Main image full width, thumbnails below at 25% height
-      return (
-        <div className="mb-4">
-          {/* Main image - full width */}
-          <div className="mb-2">
-            <LazyMedia
-              src={mainMediaUrl}
-              alt={main.altText || main.caption || 'Main post media'}
-              className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
-              style={{ aspectRatio: main.width && main.height ? `${main.width} / ${main.height}` : undefined }}
-              onClick={() => onMediaClick(main, media)}
-              mediaType={main.mediaType || 'IMAGE'}
-              isMainMedia={true}
-              videoUrl={mainVideoUrl}
-              showVideoControls={isMainVideo}
-              showPlayButton={isMainVideo}
-            />
-          </div>
-          
-          {/* Thumbnails - horizontal row at 17.5% of post width */}
-          <div className="flex gap-2 overflow-x-auto">
-            {thumbs.map((img: any, idx: number) => {
-              const isVideo = img.mediaType === 'VIDEO';
-              const mediaUrl = getSmartMediaUrl(img, 'small');
-              const videoUrl = getCachedVideoUrl(img);
-              
-              return (
-                <div
-                  key={img.id}
-                  className="flex-shrink-0"
-                  style={{ width: '17.5%' }}
-                >
-                  <LazyMedia
-                    src={mediaUrl}
-                    alt={img.altText || img.caption || `Thumbnail ${idx + 2}`}
-                    className="w-full rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
-                    style={{
-                      aspectRatio: '1 / 1'
-                    }}
-                    onClick={() => onMediaClick(img, media)}
-                    mediaType={img.mediaType || 'IMAGE'}
-                    videoUrl={videoUrl}
-                    showPlayButton={isVideo}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -748,6 +520,9 @@ export default function UserProfile() {
                             <PostMediaDisplay 
                               media={post.media} 
                               onMediaClick={handleMediaClick}
+                              isOwner={false}
+                              showReorderControls={false}
+                              isPublicView={true}
                             />
                           )}
                         </div>

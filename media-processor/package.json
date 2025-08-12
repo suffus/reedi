@@ -12,7 +12,11 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "cli": "ts-node src/cli.ts",
     "standalone-cli": "ts-node src/standaloneCli.ts",
-    "test-rabbitmq": "node test-integration.js"
+    "test-rabbitmq": "node test-integration.js",
+    "cleanup": "node cleanup-temp-files.js",
+    "cleanup:dry-run": "node cleanup-temp-files.js --dry-run",
+    "cleanup:force": "node cleanup-temp-files.js --force",
+    "cleanup:all": "node cleanup-temp-files.js --force --max-age=0"
   },
   "keywords": [
     "media",
