@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus, MessageCircle } from 'lucide-react'
+import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus, MessageCircle, Building2 } from 'lucide-react'
 import { PersonalFeed } from './personal-feed'
 import { UserGallery } from './user-gallery'
 import { ProfileEditor } from './profile-editor'
 import { MediaUploader } from './media-uploader'
 import FriendRequests from './friend-requests'
 import FriendsList from './friends-list'
+import { Groups } from './groups'
 import { useAuth } from '../../lib/api-hooks'
 import { useMessaging } from '../../lib/messaging-context'
 import { useQueryClient } from '@tanstack/react-query'
@@ -30,7 +31,7 @@ interface UserData {
 
 export function DashboardWrapper() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'feed' | 'gallery' | 'profile' | 'friends' | 'requests'>('feed')
+  const [activeTab, setActiveTab] = useState<'feed' | 'gallery' | 'profile' | 'friends' | 'groups' | 'requests'>('feed')
   const [showMediaUploader, setShowMediaUploader] = useState(false)
   const [isClient, setIsClient] = useState(false)
 
@@ -255,6 +256,17 @@ export function DashboardWrapper() {
               <span>Friends</span>
             </button>
             <button
+              onClick={() => setActiveTab('groups')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
+                activeTab === 'groups'
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              <span>Groups</span>
+            </button>
+            <button
               onClick={() => setActiveTab('requests')}
               className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors duration-200 whitespace-nowrap ${
                 activeTab === 'requests'
@@ -314,6 +326,18 @@ export function DashboardWrapper() {
               transition={{ duration: 0.2 }}
             >
               <FriendsList />
+            </motion.div>
+          )}
+
+          {activeTab === 'groups' && (
+            <motion.div
+              key="groups"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Groups />
             </motion.div>
           )}
 

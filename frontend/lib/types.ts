@@ -1,125 +1,411 @@
+export interface User {
+  id: string
+  name: string
+  email: string
+  username?: string
+  avatar?: string
+  bio?: string
+  location?: string
+  website?: string
+  isPrivate: boolean
+  isVerified: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Group {
+  id: string
+  name: string
+  username: string
+  description?: string
+  rules?: string
+  coverPhoto?: string
+  avatar?: string
+  visibility: 'PUBLIC' | 'PRIVATE_VISIBLE' | 'PRIVATE_HIDDEN'
+  type: 'GENERAL' | 'SOCIAL_LEARNING' | 'GAMING' | 'JOBS' | 'BUY_SELL' | 'PARENTING' | 'WORK'
+  moderationPolicy: 'NO_MODERATION' | 'ADMIN_APPROVAL_REQUIRED' | 'AI_FILTER' | 'SELECTIVE_MODERATION'
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  members?: GroupMember[]
+  _count?: {
+    members: number
+    posts: number
+  }
+}
+
+export interface GroupMember {
+  id: string
+  groupId: string
+  userId: string
+  role: 'OWNER' | 'ADMIN' | 'MODERATOR' | 'MEMBER'
+  status: 'ACTIVE' | 'SUSPENDED' | 'BANNED' | 'PENDING_APPROVAL'
+  joinedAt: string
+  leftAt?: string
+  suspendedAt?: string
+  bannedAt?: string
+  user: User
+}
+
+export interface GroupPost {
+  id: string
+  groupId: string
+  postId: string
+  status: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'DELETED'
+  isPriority: boolean
+  approvedAt?: string
+  approvedBy?: string
+  rejectedAt?: string
+  rejectedBy?: string
+  rejectionReason?: string
+  createdAt: string
+  updatedAt: string
+  post: Post
+}
+
+export interface GroupInvitation {
+  id: string
+  groupId: string
+  inviterId: string
+  inviteeEmail?: string
+  inviteeUserId?: string
+  inviteCode: string
+  expiresAt: string
+  acceptedAt?: string
+  createdAt: string
+  group?: Group
+  inviter?: User
+  invitee?: User
+}
+
+export interface GroupApplication {
+  id: string
+  groupId: string
+  applicantId: string
+  message?: string
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED'
+  reviewedAt?: string
+  reviewedBy?: string
+  createdAt: string
+  updatedAt: string
+  group?: Group
+  applicant?: User
+  reviewer?: User
+}
+
+export interface GroupAction {
+  id: string
+  groupId: string
+  userId: string
+  actionType: string
+  description: string
+  metadata?: any
+  createdAt: string
+  group?: Group
+  user?: User
+}
+
+export interface Post {
+  id: string
+  title?: string
+  content: string
+  publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
+  visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
+  authorId: string
+  createdAt: string
+  updatedAt: string
+  isLocked: boolean
+  unlockPrice?: number
+  author: User
+  media?: PostMedia[]
+  comments?: Comment[]
+  reactions?: Reaction[]
+  _count?: {
+    comments: number
+    reactions: number
+  }
+}
+
+export interface PostMedia {
+  id: string
+  postId: string
+  mediaId: string
+  order: number
+  isLocked: boolean
+  media: Media
+}
+
 export interface Media {
   id: string
   url: string
-  thumbnail: string | null
+  thumbnail?: string
   s3Key?: string
   thumbnailS3Key?: string
   originalFilename?: string
-  altText: string | null
-  caption: string | null
-  width: number | null
-  height: number | null
-  size: number | null
-  mimeType: string | null
+  altText?: string
+  caption?: string
+  width?: number
+  height?: number
+  size?: number
+  mimeType?: string
   tags: string[]
   visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
+  postId?: string
+  authorId: string
+  galleryId?: string
+  order: number
   mediaType: 'IMAGE' | 'VIDEO'
   processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-  duration?: number | null
-  codec?: number | null
-  bitrate?: number | null
-  framerate?: number | null
-  videoUrl?: string | null
-  videoS3Key?: string | null
-  // Video processing fields
-  videoProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-  videoThumbnails?: any[] | null
-  videoVersions?: any[] | null
-  videoMetadata?: any | null
+  duration?: number
+  codec?: string
+  bitrate?: number
+  framerate?: number
+  videoUrl?: string
+  videoS3Key?: string
   createdAt: string
   updatedAt: string
-  authorId: string
-  isLocked?: boolean
-}
-
-export interface GalleryMedia extends Media {
-  title: string | null
-  description: string | null
-  metadata: {
-    width: number
-    height: number
-    size: number
-    format: string
-  }
+  videoMetadata?: any
+  videoProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+  videoThumbnails?: any
+  videoVersions?: any
+  imageMetadata?: any
+  imageProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+  imageVersions?: any
+  author: User
 }
 
 export interface Comment {
   id: string
   content: string
+  postId?: string
+  authorId: string
+  parentId?: string
+  createdAt: string
+  updatedAt: string
+  mediaId?: string
+  post?: Post
+  media?: Media
+  author: User
+  parent?: Comment
+  replies?: Comment[]
+  reactions?: Reaction[]
+}
+
+export interface Reaction {
+  id: string
+  type: 'LIKE' | 'LOVE' | 'HAHA' | 'WOW' | 'SAD' | 'ANGRY'
+  postId?: string
+  commentId?: string
   authorId: string
   createdAt: string
-  author: {
-    id: string
-    name: string
-    username: string | null
-    avatar: string | null
-  }
-} 
+  post?: Post
+  comment?: Comment
+  author: User
+}
 
-export interface Post {
+export interface Gallery {
   id: string
-  content: string
-  publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
+  name: string
+  description?: string
   visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
   authorId: string
-  isLocked?: boolean
-  unlockPrice?: number
-  unlockedBy?: {
-    id: string
-    unlockedAt: string
-    paidAmount: number
-  }[]
-  media: {
-    id: string
-    s3Key?: string
-    thumbnailS3Key?: string | null
-    originalFilename?: string | null
-    altText?: string | null
-    caption?: string | null
-    tags?: string[]
-    visibility?: string
-    createdAt?: string
-    updatedAt?: string
-    width?: number | null
-    height?: number | null
-    size?: number | null
-    mimeType?: string | null
-    authorId?: string
-    mediaType: 'IMAGE' | 'VIDEO'
-    processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-    duration?: number | null
-    codec?: string | null
-    bitrate?: number | null
-    framerate?: number | null
-    videoUrl?: string | null
-    videoS3Key?: string | null
-    isLocked?: boolean
-  }[]
   createdAt: string
-  author: {
-    id: string
-    name: string
-    username: string | null
-    avatar: string | null
-  }
-  reactions: {
-    id: string
-    type: string
-    authorId: string
-  }[]
-  comments: {
-    id: string
-    content: string
-    createdAt: string
-    author: {
-      id: string
-      name: string
-      username: string | null
-      avatar: string | null
-    }
-  }[]
-  _count: {
-    reactions: number
-    comments: number
-  }
+  updatedAt: string
+  coverMediaId?: string
+  author: User
+  media: Media[]
+  coverMedia?: Media
+}
+
+export interface FriendRequest {
+  id: string
+  senderId: string
+  receiverId: string
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED'
+  createdAt: string
+  updatedAt: string
+  sender: User
+  receiver: User
+}
+
+export interface Notification {
+  id: string
+  type: 'LIKE' | 'COMMENT' | 'FOLLOW' | 'MENTION' | 'FRIEND_REQUEST' | 'FRIEND_REQUEST_ACCEPTED'
+  title: string
+  message: string
+  isRead: boolean
+  userId: string
+  postId?: string
+  commentId?: string
+  createdAt: string
+  user: User
+  post?: Post
+  comment?: Comment
+}
+
+export interface Conversation {
+  id: string
+  type: 'DIRECT' | 'GROUP'
+  name?: string
+  avatarUrl?: string
+  createdById: string
+  createdAt: string
+  updatedAt: string
+  lastMessageAt?: string
+  isActive: boolean
+  createdBy: User
+  participants: ConversationParticipant[]
+  messages: Message[]
+}
+
+export interface ConversationParticipant {
+  id: string
+  conversationId: string
+  userId: string
+  role: 'ADMIN' | 'MEMBER'
+  joinedAt: string
+  leftAt?: string
+  isActive: boolean
+  conversation: Conversation
+  user: User
+}
+
+export interface Message {
+  id: string
+  conversationId: string
+  senderId: string
+  content?: string
+  messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'SYSTEM' | 'POST'
+  mediaId?: string
+  replyToId?: string
+  encryptedContent?: string
+  encryptionVersion: number
+  createdAt: string
+  updatedAt: string
+  isDeleted: boolean
+  isLocked: boolean
+  unlockPrice?: number
+  conversation: Conversation
+  sender: User
+  media?: Media
+  mediaItems: MessageMedia[]
+  deliveryStatus: MessageDeliveryStatus[]
+  reactions: MessageReaction[]
+}
+
+export interface MessageMedia {
+  id: string
+  messageId: string
+  mediaId: string
+  order: number
+  isLocked: boolean
+  message: Message
+  media: Media
+}
+
+export interface MessageDeliveryStatus {
+  id: string
+  messageId: string
+  userId: string
+  status: 'SENT' | 'DELIVERED' | 'READ'
+  deliveredAt?: string
+  readAt?: string
+  message: Message
+  user: User
+}
+
+export interface MessageReaction {
+  id: string
+  messageId: string
+  userId: string
+  reaction: string
+  createdAt: string
+  message: Message
+  user: User
+}
+
+export interface UnlockedPost {
+  id: string
+  userId: string
+  postId: string
+  paidAmount: number
+  unlockedAt: string
+  user: User
+  post: Post
+}
+
+export interface UnlockedMessage {
+  id: string
+  userId: string
+  messageId: string
+  paidAmount: number
+  unlockedAt: string
+  user: User
+  message: Message
+}
+
+export interface UserSession {
+  id: string
+  userId: string
+  sessionId: string
+  deviceInfo?: any
+  lastSeen: string
+  isActive: boolean
+  createdAt: string
+  user: User
+}
+
+export interface SearchHistory {
+  id: string
+  query: string
+  userId: string
+  createdAt: string
+  user: User
+}
+
+export interface Mention {
+  id: string
+  postId: string
+  userId: string
+  createdAt: string
+  post: Post
+  user: User
+}
+
+export interface Hashtag {
+  id: string
+  name: string
+  createdAt: string
+  posts: Post[]
+}
+
+export interface MediaProcessingJob {
+  id: string
+  mediaId: string
+  userId: string
+  mediaType: 'IMAGE' | 'VIDEO'
+  s3Key: string
+  originalFilename: string
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
+  progress: number
+  currentStep?: string
+  errorMessage?: string
+  thumbnails?: any
+  videoVersions?: any
+  imageVersions?: any
+  metadata?: any
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+  media: Media
+  user: User
+}
+
+export interface Follows {
+  id: string
+  followerId: string
+  followingId: string
+  createdAt: string
+  follower: User
+  following: User
 }

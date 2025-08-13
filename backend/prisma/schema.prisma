@@ -45,6 +45,16 @@ model User {
   unlockedPosts            UnlockedPost[]            @relation("UnlockedPosts")
   unlockedMessages         UnlockedMessage[]         @relation("UnlockedMessages")
 
+  // New group-related relations
+  groupMemberships         GroupMember[]
+  groupInvitationsSent     GroupInvitation[]          @relation("GroupInvitationsSent")
+  groupInvitationsReceived GroupInvitation[]          @relation("GroupInvitationsReceived")
+  groupApplications        GroupApplication[]          @relation("GroupApplications")
+  groupApplicationReviews  GroupApplication[]          @relation("GroupApplicationReviews")
+  groupPostApprovals       GroupPost[]                @relation("GroupPostApprovals")
+  groupPostRejections      GroupPost[]                @relation("GroupPostRejections")
+  groupActions             GroupAction[]              @relation("GroupActions")
+
   @@map("users")
 }
 
@@ -67,6 +77,7 @@ model Post {
   mentions          Mention[]
   notifications     Notification[]
   unlockedBy        UnlockedPost[]    @relation("UnlockedPosts")
+  groupPosts        GroupPost[]       // New relation for group posts
 
   @@map("posts")
 }
@@ -147,6 +158,8 @@ model Media {
   author                User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
   gallery               Gallery?             @relation(fields: [galleryId], references: [id], onDelete: SetNull)
   coverForGallery       Gallery?             @relation("GalleryCover")
+  groupAvatar           Group?               @relation("GroupAvatar")
+  groupCoverPhoto       Group?               @relation("GroupCoverPhoto")
   comments              Comment[]
   mediaProcessingJobs   MediaProcessingJob[]
   messages              Message[]            @relation("MessageMedia")
@@ -419,6 +432,132 @@ model UserSession {
   @@map("user_sessions")
 }
 
+// Group Models
+model Group {
+  id                String              @id @default(cuid())
+  name              String
+  username          String              @unique
+  description       String?
+  rules             String?
+  coverPhotoId      String?    @unique
+  avatarId          String?    @unique
+  visibility        GroupVisibility     @default(PRIVATE_VISIBLE)
+  type              GroupType           @default(GENERAL)
+  moderationPolicy  GroupModerationPolicy @default(NO_MODERATION)
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  // Relations
+  members           GroupMember[]
+  posts             GroupPost[]
+  invitations       GroupInvitation[]
+  applications      GroupApplication[]
+  actions           GroupAction[]
+  avatarMedia       Media?               @relation("GroupAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  coverPhotoMedia   Media?               @relation("GroupCoverPhoto", fields: [coverPhotoId], references: [id], onDelete: SetNull)
+  
+  @@map("groups")
+}
+
+model GroupMember {
+  id        String            @id @default(cuid())
+  groupId   String
+  userId    String
+  role      GroupMemberRole   @default(MEMBER)
+  status    GroupMemberStatus @default(ACTIVE)
+  joinedAt  DateTime          @default(now())
+  leftAt    DateTime?
+  suspendedAt DateTime?
+  bannedAt  DateTime?
+  
+  // Relations
+  group     Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+model GroupPost {
+  id            String          @id @default(cuid())
+  groupId       String
+  postId        String
+  status        GroupPostStatus @default(PENDING_APPROVAL)
+  isPriority    Boolean         @default(false)
+  approvedAt    DateTime?
+  approvedBy    String?
+  rejectedAt    DateTime?
+  rejectedBy    String?
+  rejectionReason String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  // Relations
+  group         Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  post          Post            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  approvedByUser User?          @relation("GroupPostApprovals", fields: [approvedBy], references: [id])
+  rejectedByUser User?          @relation("GroupPostRejections", fields: [rejectedBy], references: [id])
+  
+  @@unique([groupId, postId])
+  @@map("group_posts")
+}
+
+model GroupInvitation {
+  id          String    @id @default(cuid())
+  groupId     String
+  inviterId   String
+  inviteeEmail String?
+  inviteeUserId String?
+  inviteCode  String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  group       Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviter     User      @relation("GroupInvitationsSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee     User?     @relation("GroupInvitationsReceived", fields: [inviteeUserId], references: [id])
+  
+  @@map("group_invitations")
+}
+
+model GroupApplication {
+  id          String    @id @default(cuid())
+  groupId     String
+  applicantId String
+  message     String?
+  status      FriendRequestStatus @default(PENDING)
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  group       Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  applicant   User      @relation("GroupApplications", fields: [applicantId], references: [id], onDelete: Cascade)
+  reviewer    User?     @relation("GroupApplicationReviews", fields: [reviewedBy], references: [id])
+  
+  @@unique([groupId, applicantId])
+  @@map("group_applications")
+}
+
+model GroupAction {
+  id          String        @id @default(cuid())
+  groupId     String
+  userId      String
+  actionType  GroupActionType
+  description String
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  
+  // Relations
+  group       Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user        User          @relation("GroupActions", fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("group_actions")
+}
+
 model HashtagToPost {
   A String
   B String
@@ -503,4 +642,68 @@ enum DeliveryStatus {
   SENT
   DELIVERED
   READ
+}
+
+// Group-related enums
+enum GroupVisibility {
+  PUBLIC
+  PRIVATE_VISIBLE
+  PRIVATE_HIDDEN
+}
+
+enum GroupType {
+  GENERAL
+  SOCIAL_LEARNING
+  GAMING
+  JOBS
+  BUY_SELL
+  PARENTING
+  WORK
+}
+
+enum GroupMemberRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum GroupMemberStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  PENDING_APPROVAL
+}
+
+enum GroupPostStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  DELETED
+}
+
+enum GroupModerationPolicy {
+  NO_MODERATION
+  ADMIN_APPROVAL_REQUIRED
+  AI_FILTER
+  SELECTIVE_MODERATION
+}
+
+enum GroupActionType {
+  GROUP_CREATED
+  GROUP_UPDATED
+  MEMBER_JOINED
+  MEMBER_LEFT
+  MEMBER_PROMOTED
+  MEMBER_DEMOTED
+  MEMBER_SUSPENDED
+  MEMBER_BANNED
+  POST_APPROVED
+  POST_REJECTED
+  POST_DELETED
+  COMMENT_APPROVED
+  COMMENT_REJECTED
+  COMMENT_DELETED
+  RULES_UPDATED
+  SETTINGS_CHANGED
 }

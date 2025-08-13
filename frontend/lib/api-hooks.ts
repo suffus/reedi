@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { useState, useEffect, useCallback } from 'react'
 import { API_BASE_URL, getAuthHeaders, getImageUrl, API_ENDPOINTS } from './api'
-import { GalleryMedia, Comment } from './types'
+import { Comment } from './types'
 
 // Helper functions to safely access localStorage
 const getToken = () => {
