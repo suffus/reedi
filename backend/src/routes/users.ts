@@ -138,37 +138,59 @@ router.post('/avatar', authMiddleware, upload.single('avatar'), asyncHandler(asy
     return
   }
 
-  // For now, we'll store the file data as a base64 string
-  // In production, you'd want to upload to a cloud storage service
-  const base64Data = req.file.buffer.toString('base64')
-  const dataUrl = `data:${req.file.mimetype};base64,${base64Data}`
+  try {
+    // Import sharp for image processing
+    const sharp = require('sharp')
+    
+    // Process the image to 180x180 with proper scaling
+    const processedBuffer = await sharp(req.file.buffer)
+      .resize(180, 180, {
+        fit: 'cover', // Crop to cover the 180x180 area
+        position: 'center' // Center the crop
+      })
+      .jpeg({ 
+        quality: 85,
+        progressive: true
+      })
+      .toBuffer()
 
-  const updatedUser = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      avatar: dataUrl
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      username: true,
-      avatar: true,
-      bio: true,
-      location: true,
-      website: true,
-      isPrivate: true,
-      isVerified: true,
-      createdAt: true,
-      updatedAt: true
-    }
-  })
+    // Convert processed image to base64
+    const base64Data = processedBuffer.toString('base64')
+    const dataUrl = `data:image/jpeg;base64,${base64Data}`
 
-  res.json({
-    success: true,
-    data: { user: updatedUser },
-    message: 'Avatar uploaded successfully'
-  })
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatar: dataUrl
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+        avatar: true,
+        bio: true,
+        location: true,
+        website: true,
+        isPrivate: true,
+        isVerified: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    })
+
+    res.json({
+      success: true,
+      data: { user: updatedUser },
+      message: 'Avatar uploaded successfully'
+    })
+  } catch (error) {
+    console.error('Error processing avatar:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process avatar image'
+    })
+  }
 }))
 
 // Get user profile by ID or username

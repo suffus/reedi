@@ -69,7 +69,7 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
       
       for (const mediaItem of media) {
         // Skip locked media without IDs
-        if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id] && !mediaItem.isLocked) {
+        if (mediaItem.mediaType === 'VIDEO' && mediaItem.id && !videoUrls[mediaItem.id] && !(mediaItem as any).isLocked) {
           try {
             const qualityUrl = await getVideoUrlWithQuality(mediaItem.id, '540p')
             newVideoUrls[mediaItem.id] = qualityUrl

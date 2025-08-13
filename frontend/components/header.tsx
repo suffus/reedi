@@ -28,6 +28,12 @@ export function Header() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-12">
             <Link 
+              href="/groups" 
+              className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
+            >
+              Groups
+            </Link>
+            <Link 
               href="/about" 
               className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
             >
@@ -71,6 +77,13 @@ export function Header() {
             className="md:hidden py-6 border-t border-primary-100"
           >
             <nav className="flex flex-col space-y-6">
+              <Link 
+                href="/groups" 
+                className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Groups
+              </Link>
               <Link 
                 href="/about" 
                 className="text-primary-600 hover:text-primary-900 transition-colors duration-300 font-medium"

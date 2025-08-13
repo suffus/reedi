@@ -129,7 +129,7 @@ export function PersonalFeed() {
 
   const hasUserLiked = (post: Post) => {
     // This would need to be implemented based on the current user's reactions
-    return post.reactions.some(reaction => reaction.type === 'LIKE')
+    return post.reactions?.some(reaction => reaction.type === 'LIKE') || false
   }
 
   const formatDate = (dateString: string) => {
@@ -142,7 +142,7 @@ export function PersonalFeed() {
     })
   }
 
-  const handleAuthorClick = (authorId: string, authorUsername: string | null) => {
+  const handleAuthorClick = (authorId: string, authorUsername: string | null | undefined) => {
     // Don't navigate if it's the current user's own post
     if (authorId === user?.id) return
     
@@ -315,8 +315,8 @@ export function PersonalFeed() {
     unlockPrice?: number,
     onUnlock: (postId: string) => void
   }) {
-    const lockedMedia = media.filter(m => m.isLocked);
-    const unlockedMedia = media.filter(m => !m.isLocked);
+    const lockedMedia = (media || []).filter(m => m.isLocked);
+    const unlockedMedia = (media || []).filter(m => !m.isLocked);
 
     return (
       <div className="space-y-4">
@@ -436,7 +436,7 @@ export function PersonalFeed() {
                     className={`font-medium text-gray-900 ${
                       post.author.id !== user?.id ? 'cursor-pointer hover:text-primary-600 hover:underline' : ''
                     }`}
-                    onClick={() => handleAuthorClick(post.author.id, post.author.username)}
+                    onClick={() => handleAuthorClick(post.author.id, post.author.username || null)}
                   >
                     {post.author.name}
                   </h3>
@@ -481,7 +481,7 @@ export function PersonalFeed() {
                   media={post.media} 
                   postId={post.id}
                   isOwner={post.author.id === user?.id}
-                  isUnlocked={!!(post.unlockedBy && post.unlockedBy.length > 0)}
+                  isUnlocked={!!(post.isLocked)}
                   unlockPrice={post.unlockPrice}
                   onUnlock={handleUnlockPost}
                 />
@@ -508,7 +508,7 @@ export function PersonalFeed() {
                   }`}
                 >
                   <Heart className={`h-5 w-5 ${hasUserLiked(post) ? 'fill-current' : ''}`} />
-                  <span>{post._count.reactions}</span>
+                  <span>{post._count?.reactions || 0}</span>
                 </button>
                 
                 <button
@@ -516,7 +516,7 @@ export function PersonalFeed() {
                   className="flex items-center space-x-2 text-gray-500 hover:text-blue-500 transition-colors duration-200"
                 >
                   <MessageCircle className="h-5 w-5" />
-                  <span>{post._count.comments}</span>
+                  <span>{post._count?.comments}</span>
                 </button>
                 
                 <button className="flex items-center space-x-2 text-gray-500 hover:text-green-500 transition-colors duration-200">
@@ -531,7 +531,7 @@ export function PersonalFeed() {
           {showComments[post.id] && (
             <div className="border-t border-gray-100 p-4 bg-gray-50">
               <div className="space-y-3">
-                {post.comments?.map((comment) => (
+                {post.comments?.map((comment : Comment) => (
                   <div key={comment.id} className="flex space-x-3">
                     <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-accent-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
                       {comment.author.avatar ? (
