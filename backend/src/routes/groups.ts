@@ -48,6 +48,11 @@ const applicationSchema = z.object({
   message: z.string().max(500, 'Message too long').optional()
 })
 
+const applicationReviewSchema = z.object({
+  action: z.enum(['approve', 'reject']),
+  message: z.string().max(500, 'Message too long').optional()
+})
+
 const postToGroupSchema = z.object({
   postId: z.string().min(1, 'Post ID is required'),
   isPriority: z.boolean().default(false)
@@ -351,9 +356,9 @@ router.get('/user/:userId', authMiddleware, asyncHandler(async (req: Authenticat
 }))
 
 // Get group by username or ID
-router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:identifier', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { identifier } = req.params
-  const userId = (req as any).user?.id
+  const userId = req.user?.id
 
   // Try to find by username first, then by ID
   const group = await prisma.group.findFirst({
@@ -413,6 +418,8 @@ router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
                   group.visibility === 'PRIVATE_VISIBLE' || 
                   (group.visibility === 'PRIVATE_HIDDEN' && isMember)
 
+
+
   if (!canView) {
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
@@ -455,24 +462,38 @@ router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
 }))
 
 // Update group (owner/admin only)
-router.put('/:groupId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:groupIdentifier', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { groupId } = req.params
+  const { groupIdentifier } = req.params
   
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
   }
 
+  // Find the group by identifier
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
   // Check permissions
-  if (!(await hasGroupPermission(userId, groupId, 'ADMIN'))) {
+  if (!(await hasGroupPermission(userId, group.id, 'ADMIN'))) {
     return res.status(403).json({ success: false, error: 'Insufficient permissions' })
   }
 
   const validatedData = updateGroupSchema.parse(req.body)
   
-  const group = await prisma.$transaction(async (tx) => {
-    const updatedGroup = await tx.group.update({
-      where: { id: groupId },
+  const updatedGroup = await prisma.$transaction(async (tx) => {
+    const result = await tx.group.update({
+      where: { id: group.id },
       data: validatedData,
       include: {
         members: {
@@ -493,7 +514,7 @@ router.put('/:groupId', authMiddleware, asyncHandler(async (req: AuthenticatedRe
     // Log the action
     await tx.groupAction.create({
       data: {
-        groupId,
+        groupId: group.id,
         userId,
         actionType: 'GROUP_UPDATED',
         description: 'Group settings updated',
@@ -501,7 +522,7 @@ router.put('/:groupId', authMiddleware, asyncHandler(async (req: AuthenticatedRe
       }
     })
 
-    return updatedGroup
+    return result
   })
 
   res.json({
@@ -512,16 +533,21 @@ router.put('/:groupId', authMiddleware, asyncHandler(async (req: AuthenticatedRe
 }))
 
 // Get group feed (posts)
-router.get('/:groupId/feed', asyncHandler(async (req: Request, res: Response) => {
-  const { groupId } = req.params
+router.get('/:groupIdentifier/feed', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { groupIdentifier } = req.params
   const { page = 1, limit = 20 } = req.query
-  const userId = (req as any).user?.id
+  const userId = req.user?.id
   
   const offset = (Number(page) - 1) * Number(limit)
 
   // Check if group exists and user can access it
-  const group = await prisma.group.findUnique({
-    where: { id: groupId }
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
   })
 
   if (!group) {
@@ -529,7 +555,7 @@ router.get('/:groupId/feed', asyncHandler(async (req: Request, res: Response) =>
   }
 
   const isMember = userId ? await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId, userId } }
+    where: { groupId_userId: { groupId: group.id, userId } }
   }) : null
 
   const canView = group.visibility === 'PUBLIC' || 
@@ -542,13 +568,146 @@ router.get('/:groupId/feed', asyncHandler(async (req: Request, res: Response) =>
 
   // Get posts based on user permissions
   const whereClause: any = {
-    groupId,
+    groupId: group.id,
     status: isMember ? { in: ['APPROVED', 'PENDING_APPROVAL'] } : 'APPROVED'
   }
 
   const [posts, total] = await Promise.all([
     prisma.groupPost.findMany({
       where: whereClause,
+      include: {
+        post: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true
+              }
+            },
+            media: {
+              include: {
+                media: true
+              },
+              orderBy: { order: 'asc' }
+            },
+            _count: {
+              select: {
+                comments: true,
+                reactions: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { isPriority: 'desc' },
+        { post: { createdAt: 'desc' } }
+      ],
+      skip: offset,
+      take: Number(limit)
+    }),
+    prisma.groupPost.count({ where: whereClause })
+  ])
+
+  // Map media to array of media objects in order, maintaining the structure PostMediaDisplay expects
+  const postsWithOrderedMedia = posts.map(groupPost => ({
+    ...groupPost,
+    post: {
+      ...groupPost.post,
+      media: groupPost.post.media.map(pm => ({
+        id: pm.media.id, // Use the actual Media.id, not PostMedia.id
+        order: pm.order,
+        isLocked: pm.isLocked,
+        media: pm.media // Keep the nested media structure
+      }))
+    }
+  }))
+
+  res.json({
+    success: true,
+    data: {
+      posts: postsWithOrderedMedia,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    }
+  })
+}))
+
+// Approve or reject a group post (admin/owner only)
+router.put('/:groupIdentifier/posts/:postId/approve', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { groupIdentifier, postId } = req.params
+  const { action, reason } = req.body // action: 'approve' | 'reject'
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Find the group by identifier
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
+  // Check if user is admin or owner
+  const membership = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: group.id, userId } }
+  })
+
+  if (!membership || membership.status !== 'ACTIVE' || (membership.role !== 'ADMIN' && membership.role !== 'OWNER')) {
+    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  }
+
+  // Find the group post
+  const groupPost = await prisma.groupPost.findUnique({
+    where: { groupId_postId: { groupId: group.id, postId } }
+  })
+
+  if (!groupPost) {
+    return res.status(404).json({ success: false, error: 'Post not found in group' })
+  }
+
+  if (groupPost.status !== 'PENDING_APPROVAL') {
+    return res.status(400).json({ success: false, error: 'Post is not pending approval' })
+  }
+
+  // Update post status
+  const updateData: any = {}
+  
+  if (action === 'approve') {
+    updateData.status = 'APPROVED'
+    updateData.approvedAt = new Date()
+    updateData.approvedBy = userId
+    updateData.rejectedAt = null
+    updateData.rejectedBy = null
+    updateData.rejectionReason = null
+  } else if (action === 'reject') {
+    updateData.status = 'REJECTED'
+    updateData.rejectedAt = new Date()
+    updateData.rejectedBy = userId
+    updateData.rejectionReason = reason
+    updateData.approvedAt = null
+    updateData.approvedBy = null
+  }
+
+  const updatedGroupPost = await prisma.$transaction(async (tx) => {
+    const post = await tx.groupPost.update({
+      where: { groupId_postId: { groupId: group.id, postId } },
+      data: updateData,
       include: {
         post: {
           include: {
@@ -573,45 +732,60 @@ router.get('/:groupId/feed', asyncHandler(async (req: Request, res: Response) =>
             }
           }
         }
-      },
-      orderBy: [
-        { isPriority: 'desc' },
-        { post: { createdAt: 'desc' } }
-      ],
-      skip: offset,
-      take: Number(limit)
-    }),
-    prisma.groupPost.count({ where: whereClause })
-  ])
+      }
+    })
+
+    // Log the action
+    const actionType = action === 'approve' ? 'POST_APPROVED' : 'POST_REJECTED'
+    
+    await tx.groupAction.create({
+      data: {
+        groupId: group.id,
+        userId,
+        actionType: actionType as any,
+        description: `Post ${action}d${reason ? `: ${reason}` : ''}`,
+        metadata: { postId, action, reason }
+      }
+    })
+
+    return post
+  })
 
   res.json({
     success: true,
-    data: {
-      posts,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit))
-      }
-    }
+    data: { groupPost: updatedGroupPost },
+    message: `Post ${action}d successfully`
   })
 }))
 
 // Post to group
-router.post('/:groupId/posts', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:groupIdentifier/posts', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { groupId } = req.params
+  const { groupIdentifier } = req.params
   
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Find the group by identifier
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
   const validatedData = postToGroupSchema.parse(req.body)
 
   // Check if user is a member
   const membership = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId, userId } }
+    where: { groupId_userId: { groupId: group.id, userId } }
   })
 
   if (!membership || membership.status !== 'ACTIVE') {
@@ -632,20 +806,11 @@ router.post('/:groupId/posts', authMiddleware, asyncHandler(async (req: Authenti
 
   // Check if post is already in this group
   const existingGroupPost = await prisma.groupPost.findUnique({
-    where: { groupId_postId: { groupId, postId: validatedData.postId } }
+    where: { groupId_postId: { groupId: group.id, postId: validatedData.postId } }
   })
 
   if (existingGroupPost) {
     return res.status(409).json({ success: false, error: 'Post already exists in this group' })
-  }
-
-  // Get group moderation policy
-  const group = await prisma.group.findUnique({
-    where: { id: groupId }
-  })
-
-  if (!group) {
-    return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
   // Determine post status based on moderation policy
@@ -660,7 +825,7 @@ router.post('/:groupId/posts', authMiddleware, asyncHandler(async (req: Authenti
   // Create group post
   const groupPost = await prisma.groupPost.create({
     data: {
-      groupId,
+      groupId: group.id,
       postId: validatedData.postId,
       status: postStatus,
       isPriority: validatedData.isPriority
@@ -682,7 +847,7 @@ router.post('/:groupId/posts', authMiddleware, asyncHandler(async (req: Authenti
   })
 
   // Log the action
-  await logGroupAction(groupId, userId, 'POST_APPROVED', `Posted to group: ${post.title || 'Untitled post'}`)
+  await logGroupAction(group.id, userId, 'POST_APPROVED', `Posted to group: ${post.title || 'Untitled post'}`)
 
   res.status(201).json({
     success: true,
@@ -692,9 +857,9 @@ router.post('/:groupId/posts', authMiddleware, asyncHandler(async (req: Authenti
 }))
 
 // Apply to join group
-router.post('/:groupId/apply', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:groupIdentifier/apply', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { groupId } = req.params
+  const { groupIdentifier } = req.params
   
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
@@ -703,8 +868,13 @@ router.post('/:groupId/apply', authMiddleware, asyncHandler(async (req: Authenti
   const validatedData = applicationSchema.parse(req.body)
 
   // Check if group exists and accepts applications
-  const group = await prisma.group.findUnique({
-    where: { id: groupId }
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
   })
 
   if (!group) {
@@ -717,7 +887,7 @@ router.post('/:groupId/apply', authMiddleware, asyncHandler(async (req: Authenti
 
   // Check if user is already a member
   const existingMember = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId, userId } }
+    where: { groupId_userId: { groupId: group.id, userId } }
   })
 
   if (existingMember) {
@@ -726,7 +896,7 @@ router.post('/:groupId/apply', authMiddleware, asyncHandler(async (req: Authenti
 
   // Check if user already has a pending application
   const existingApplication = await prisma.groupApplication.findUnique({
-    where: { groupId_applicantId: { groupId, applicantId: userId } }
+    where: { groupId_applicantId: { groupId: group.id, applicantId: userId } }
   })
 
   if (existingApplication) {
@@ -736,7 +906,7 @@ router.post('/:groupId/apply', authMiddleware, asyncHandler(async (req: Authenti
   // Create application
   const application = await prisma.groupApplication.create({
     data: {
-      groupId,
+      groupId: group.id,
       applicantId: userId,
       message: validatedData.message
     },
@@ -759,17 +929,140 @@ router.post('/:groupId/apply', authMiddleware, asyncHandler(async (req: Authenti
   })
 }))
 
-// Invite member to group (admin/owner only)
-router.post('/:groupId/invite', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+// Get pending applications (admin/owner only)
+router.get('/:groupIdentifier/applications', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { groupId } = req.params
+  const { groupIdentifier } = req.params
   
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
   }
 
+  // Find group by ID or username
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
+  // Check if user is admin or owner
+  const member = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: group.id, userId } }
+  })
+
+  if (!member || (member.role !== 'ADMIN' && member.role !== 'OWNER')) {
+    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  }
+
+  // Get pending applications with applicant history
+  const applications = await Promise.all(
+    (await prisma.groupApplication.findMany({
+      where: {
+        groupId: group.id,
+        status: 'PENDING'
+      },
+      include: {
+        applicant: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'asc'
+      }
+    })).map(async (application) => {
+      // Get applicant's group history
+      const groupActions = await prisma.groupAction.findMany({
+        where: {
+          groupId: group.id,
+          userId: application.applicantId
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 10 // Get last 10 actions
+      })
+
+      // Check if user was previously a member
+      const previousMembership = await prisma.groupMember.findFirst({
+        where: {
+          groupId: group.id,
+          userId: application.applicantId
+        },
+        orderBy: {
+          joinedAt: 'desc'
+        }
+      })
+
+      // Get user's overall activity stats
+      const [totalPosts, totalComments] = await Promise.all([
+        prisma.post.count({
+          where: {
+            authorId: application.applicantId
+          }
+        }),
+        prisma.comment.count({
+          where: {
+            authorId: application.applicantId
+          }
+        })
+      ])
+
+      return {
+        ...application,
+        applicantHistory: {
+          groupActions,
+          previousMembership,
+          totalPosts,
+          totalComments
+        }
+      }
+    })
+  )
+
+  res.json({
+    success: true,
+    data: { applications }
+  })
+}))
+
+// Invite member to group (admin/owner only)
+router.post('/:groupIdentifier/invite', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { groupIdentifier } = req.params
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Find the group by identifier
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
   // Check permissions
-  if (!(await hasGroupPermission(userId, groupId, 'ADMIN'))) {
+  if (!(await hasGroupPermission(userId, group.id, 'ADMIN'))) {
     return res.status(403).json({ success: false, error: 'Insufficient permissions' })
   }
 
@@ -779,15 +1072,6 @@ router.post('/:groupId/invite', authMiddleware, asyncHandler(async (req: Authent
     return res.status(400).json({ success: false, error: 'Email or user ID required' })
   }
 
-  // Check if group exists
-  const group = await prisma.group.findUnique({
-    where: { id: groupId }
-  })
-
-  if (!group) {
-    return res.status(404).json({ success: false, error: 'Group not found' })
-  }
-
   // Generate invite code
   const inviteCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
@@ -795,7 +1079,7 @@ router.post('/:groupId/invite', authMiddleware, asyncHandler(async (req: Authent
   // Create invitation
   const invitation = await prisma.groupInvitation.create({
     data: {
-      groupId,
+      groupId: group.id,
       inviterId: userId,
       inviteeEmail: validatedData.email,
       inviteeUserId: validatedData.userId,
@@ -805,13 +1089,197 @@ router.post('/:groupId/invite', authMiddleware, asyncHandler(async (req: Authent
   })
 
   // Log the action
-  await logGroupAction(groupId, userId, 'MEMBER_JOINED', `Invited ${validatedData.email || validatedData.userId} to group`)
+  await logGroupAction(group.id, userId, 'MEMBER_JOINED', `Invited ${validatedData.email || validatedData.userId} to group`)
 
   res.status(201).json({
     success: true,
     data: { invitation },
     message: 'Invitation sent successfully'
   })
+}))
+
+// Update member role (admin/owner only)
+router.put('/:groupIdentifier/members/:memberId/role', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { groupIdentifier, memberId } = req.params
+  const { newRole } = req.body
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Find group by ID or username
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
+  // Check if user is admin or owner
+  const currentMember = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: group.id, userId } }
+  })
+
+  if (!currentMember || (currentMember.role !== 'ADMIN' && currentMember.role !== 'OWNER')) {
+    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  }
+
+  // Get the member to update
+  const targetMember = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: group.id, userId: memberId } }
+  })
+
+  if (!targetMember) {
+    return res.status(404).json({ success: false, error: 'Member not found' })
+  }
+
+  // Role hierarchy checks
+  if (currentMember.role === 'ADMIN') {
+    // Admins can only promote/demote regular members
+    if (targetMember.role !== 'MEMBER' && newRole !== 'MEMBER') {
+      return res.status(403).json({ success: false, error: 'Admins can only promote/demote regular members' })
+    }
+  } else if (currentMember.role === 'OWNER') {
+    // Owners can promote/demote anyone except themselves
+    if (userId === memberId) {
+      return res.status(400).json({ success: false, error: 'Owners cannot change their own role' })
+    }
+  }
+
+  // Update the member's role
+  const updatedMember = await prisma.groupMember.update({
+    where: { groupId_userId: { groupId: group.id, userId: memberId } },
+    data: { role: newRole },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      }
+    }
+  })
+
+  // Log the action
+  await logGroupAction(group.id, userId, 'ROLE_CHANGED', `Changed ${targetMember.userId}'s role from ${targetMember.role} to ${newRole}`)
+
+  res.json({
+    success: true,
+    data: { member: updatedMember },
+    message: 'Member role updated successfully'
+  })
+}))
+
+// Review application (admin/owner only)
+router.put('/:groupIdentifier/applications/:applicationId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { groupIdentifier, applicationId } = req.params
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Validate request body
+  console.log('Application review request body:', req.body)
+  const validatedData = applicationReviewSchema.parse(req.body)
+  const { action, message } = validatedData
+  console.log('Validated data:', { action, message })
+
+  // Find group by ID or username
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
+  // Check if user is admin or owner
+  const member = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: group.id, userId } }
+  })
+
+  if (!member || (member.role !== 'ADMIN' && member.role !== 'OWNER')) {
+    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  }
+
+  // Get the application
+  const application = await prisma.groupApplication.findUnique({
+    where: { id: applicationId }
+  })
+
+  if (!application || application.groupId !== group.id) {
+    return res.status(404).json({ success: false, error: 'Application not found' })
+  }
+
+  if (application.status !== 'PENDING') {
+    return res.status(400).json({ success: false, error: 'Application has already been processed' })
+  }
+
+  if (action === 'approve') {
+    // Add user to group
+    await prisma.$transaction(async (tx) => {
+      await tx.groupMember.create({
+        data: {
+          groupId: group.id,
+          userId: application.applicantId,
+          role: 'MEMBER',
+          status: 'ACTIVE'
+        }
+      })
+
+      await tx.groupApplication.update({
+        where: { id: applicationId },
+        data: {
+          status: 'ACCEPTED',
+          reviewedAt: new Date(),
+          reviewedBy: userId
+        }
+      })
+    })
+
+    // Log the action
+    await logGroupAction(group.id, userId, 'MEMBER_JOINED', `Approved application from ${application.applicantId}`)
+
+    res.json({
+      success: true,
+      message: 'Application approved successfully'
+    })
+  } else if (action === 'reject') {
+    // Reject the application
+    await prisma.groupApplication.update({
+      where: { id: applicationId },
+      data: {
+        status: 'REJECTED',
+        reviewedAt: new Date(),
+        reviewedBy: userId
+      }
+    })
+
+    // Log the action
+    await logGroupAction(group.id, userId, 'SETTINGS_CHANGED', `Rejected application from ${application.applicantId}`)
+
+    res.json({
+      success: true,
+      message: 'Application rejected successfully'
+    })
+  } else {
+    res.status(400).json({ success: false, error: 'Invalid action' })
+  }
 }))
 
 // Accept group invitation
@@ -884,17 +1352,22 @@ router.post('/invitations/:inviteCode/accept', authMiddleware, asyncHandler(asyn
   })
 }))
 
-// Get group members (admin/member only)
-router.get('/:groupId/members', asyncHandler(async (req: Request, res: Response) => {
-  const { groupId } = req.params
-  const { page = 1, limit = 50 } = req.query
-  const userId = (req as any).user?.id
+// Get group members with detailed stats (admin/member only)
+router.get('/:groupIdentifier/members', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { groupIdentifier } = req.params
+  const { page = 1, limit = 50, detailed = false } = req.query
+  const userId = req.user?.id
   
   const offset = (Number(page) - 1) * Number(limit)
 
   // Check if group exists
-  const group = await prisma.group.findUnique({
-    where: { id: groupId }
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
   })
 
   if (!group) {
@@ -903,19 +1376,26 @@ router.get('/:groupId/members', asyncHandler(async (req: Request, res: Response)
 
   // Check if user can view members
   const isMember = userId ? await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId, userId } }
+    where: { groupId_userId: { groupId: group.id, userId } }
   }) : null
 
-  const canView = group.visibility === 'PUBLIC' || isMember
+  // Users can view members if:
+  // 1. Group is public, OR
+  // 2. User is a member, OR  
+  // 3. User is authenticated (for private groups, show limited info)
+  const canView = group.visibility === 'PUBLIC' || isMember || userId
+
+
 
   if (!canView) {
     return res.status(403).json({ success: false, error: 'Access denied' })
   }
 
+  // Get basic member info
   const [members, total] = await Promise.all([
     prisma.groupMember.findMany({
       where: { 
-        groupId,
+        groupId: group.id,
         status: 'ACTIVE'
       },
       include: {
@@ -937,11 +1417,138 @@ router.get('/:groupId/members', asyncHandler(async (req: Request, res: Response)
     }),
     prisma.groupMember.count({
       where: { 
-        groupId,
+        groupId: group.id,
         status: 'ACTIVE'
       }
     })
   ])
+
+  // If detailed stats are requested and user is admin/owner, get additional data
+  if (detailed === 'true' && isMember && (isMember.role === 'ADMIN' || isMember.role === 'OWNER')) {
+    const membersWithStats = await Promise.all(
+      members.map(async (member) => {
+        const ninetyDaysAgo = new Date()
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+
+        // Get post counts
+        const [totalPosts, recentPosts] = await Promise.all([
+          prisma.post.count({
+            where: {
+              authorId: member.userId,
+              groupPosts: {
+                some: {
+                  groupId: group.id,
+                  status: 'APPROVED'
+                }
+              }
+            }
+          }),
+          prisma.post.count({
+            where: {
+              authorId: member.userId,
+              groupPosts: {
+                some: {
+                  groupId: group.id,
+                  status: 'APPROVED'
+                }
+              },
+              createdAt: {
+                gte: ninetyDaysAgo
+              }
+            }
+          })
+        ])
+
+        // Get comment counts
+        const [totalComments, recentComments] = await Promise.all([
+          prisma.comment.count({
+            where: {
+              authorId: member.userId,
+              post: {
+                groupPosts: {
+                  some: {
+                    groupId: group.id,
+                    status: 'APPROVED'
+                  }
+                }
+              }
+            }
+          }),
+          prisma.comment.count({
+            where: {
+              authorId: member.userId,
+              post: {
+                groupPosts: {
+                  some: {
+                    groupId: group.id,
+                    status: 'APPROVED'
+                  }
+                }
+              },
+              createdAt: {
+                gte: ninetyDaysAgo
+              }
+            }
+          })
+        ])
+
+        // Get reaction stats
+        const [reactionsGiven, reactionsReceived] = await Promise.all([
+          prisma.reaction.count({
+            where: {
+              authorId: member.userId,
+              post: {
+                groupPosts: {
+                  some: {
+                    groupId: group.id,
+                    status: 'APPROVED'
+                  }
+                }
+              }
+            }
+          }),
+          prisma.reaction.count({
+            where: {
+              post: {
+                authorId: member.userId,
+                groupPosts: {
+                  some: {
+                    groupId: group.id,
+                    status: 'APPROVED'
+                  }
+                }
+              }
+            }
+          })
+        ])
+
+        return {
+          ...member,
+          stats: {
+            totalPosts,
+            recentPosts,
+            totalComments,
+            recentComments,
+            reactionsGiven,
+            reactionsReceived
+          }
+        }
+      })
+    )
+
+    return res.json({
+      success: true,
+      data: {
+        members: membersWithStats,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit))
+        }
+      }
+    })
+  }
 
   res.json({
     success: true,
@@ -958,23 +1565,37 @@ router.get('/:groupId/members', asyncHandler(async (req: Request, res: Response)
 }))
 
 // Moderate group post (admin/moderator only)
-router.put('/:groupId/posts/:postId/moderate', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:groupIdentifier/posts/:postId/moderate', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { groupId, postId } = req.params
+  const { groupIdentifier, postId } = req.params
   const { action, reason } = req.body // action: 'approve' | 'reject' | 'delete'
   
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
   }
 
+  // Find the group by identifier
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
   // Check permissions
-  if (!(await hasGroupPermission(userId, groupId, 'MODERATOR'))) {
+  if (!(await hasGroupPermission(userId, group.id, 'MODERATOR'))) {
     return res.status(403).json({ success: false, error: 'Insufficient permissions' })
   }
 
   // Find group post
   const groupPost = await prisma.groupPost.findUnique({
-    where: { groupId_postId: { groupId, postId } }
+    where: { groupId_postId: { groupId: group.id, postId } }
   })
 
   if (!groupPost) {
@@ -1004,7 +1625,7 @@ router.put('/:groupId/posts/:postId/moderate', authMiddleware, asyncHandler(asyn
 
   const updatedGroupPost = await prisma.$transaction(async (tx) => {
     const post = await tx.groupPost.update({
-      where: { groupId_postId: { groupId, postId } },
+      where: { groupId_postId: { groupId: group.id, postId } },
       data: updateData,
       include: {
         post: {
@@ -1027,7 +1648,7 @@ router.put('/:groupId/posts/:postId/moderate', authMiddleware, asyncHandler(asyn
     
     await tx.groupAction.create({
       data: {
-        groupId,
+        groupId: group.id,
         userId,
         actionType: actionType as any,
         description: `Post ${action}d${reason ? `: ${reason}` : ''}`,
@@ -1122,7 +1743,5 @@ router.get('/search', asyncHandler(async (req: Request, res: Response) => {
     }
   })
 }))
-
-
 
 export default router 

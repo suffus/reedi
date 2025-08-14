@@ -119,21 +119,8 @@ router.use((req: Request, res: Response, next) => {
   next()
 })
 
-// Helper function to check if user can view media
-async function canViewMedia(mediaId: string, viewerId?: string): Promise<boolean> {
-  const media = await prisma.media.findUnique({
-    where: { id: mediaId },
-    select: {
-      id: true,
-      visibility: true,
-      authorId: true
-    }
-  })
-
-  if (!media) {
-    return false
-  }
-
+// Helper function to check if user can view media (with existing media data)
+async function canViewMediaWithData(media: any, viewerId?: string): Promise<boolean> {
   // Public media can be viewed by anyone
   if (media.visibility === 'PUBLIC') {
     return true
@@ -168,6 +155,53 @@ async function canViewMedia(mediaId: string, viewerId?: string): Promise<boolean
   }
 
   return false
+}
+
+// Helper function to get media and check permissions in the correct order
+async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, selectFields?: any) {
+  // First check if media exists
+  const media = await prisma.media.findUnique({
+    where: { id: mediaId },
+    select: {
+      id: true,
+      visibility: true,
+      authorId: true,
+      ...selectFields
+    }
+  })
+
+  if (!media) {
+    return { media: null, canView: false, error: 'NOT_FOUND' }
+  }
+
+
+  console.log('media', media)
+    // Now check if user can view this media
+  const canView = await canViewMediaWithData(media, viewerId)
+  if (!canView) {
+    return { media: null, canView: false, error: 'FORBIDDEN' }
+  }
+
+
+  return { media, canView: true, error: null }
+}
+
+// Helper function to check if user can view media (legacy - fetches media first)
+async function canViewMedia(mediaId: string, viewerId?: string): Promise<boolean> {
+  const media = await prisma.media.findUnique({
+    where: { id: mediaId },
+    select: {
+      id: true,
+      visibility: true,
+      authorId: true
+    }
+  })
+
+  if (!media) {
+    return false
+  }
+
+  return canViewMediaWithData(media, viewerId)
 }
 
 // Serve media directly from backend
@@ -211,30 +245,17 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  // Check if user can view this media
-  const canView = await canViewMedia(id, viewerId)
-  if (!canView) {
-    res.status(403).json({
-      success: false,
-      error: 'Access denied'
-    })
-    return
-  }
-
-  const media = await prisma.media.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      s3Key: true,
-      thumbnailS3Key: true,
-      videoS3Key: true,
-      mimeType: true,
-      mediaType: true,
-      processingStatus: true
-    }
+  // Get media and check permissions in the correct order
+  const { media, canView, error } = await getMediaAndCheckPermissions(id, viewerId, {
+    s3Key: true,
+    thumbnailS3Key: true,
+    videoS3Key: true,
+    mimeType: true,
+    mediaType: true,
+    processingStatus: true
   })
 
-  if (!media) {
+  if (error === 'NOT_FOUND') {
     res.status(404).json({
       success: false,
       error: 'Media not found'
@@ -242,21 +263,46 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
+  if (error === 'FORBIDDEN') {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
+    })
+    return
+  }
+
+  // At this point, media should not be null
+  if (!media) {
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    })
+    return
+  }
+
+
+  const mediaType = media.mediaType as unknown as string
+  const processingStatus = media.processingStatus as unknown as string
+  const mimeType = media.mimeType as unknown as string
+
+  console.log(media.mediaType)
+
   // For videos that are still processing, return a placeholder or error
-  if (media.mediaType === 'VIDEO' && media.processingStatus !== 'COMPLETED') {
+  if (mediaType === 'VIDEO' && processingStatus !== 'COMPLETED') {
     res.status(202).json({
       success: false,
       error: 'Video is still processing',
-      processingStatus: media.processingStatus
+      processingStatus:
+       media.processingStatus
     })
     return
   }
 
   try {
     // Determine which S3 key to serve
-    let s3Key = media.s3Key
-    if (media.mediaType === 'VIDEO' && media.videoS3Key) {
-      s3Key = media.videoS3Key // Use processed video if available
+    let s3Key = media.s3Key as unknown as string
+    if (mediaType === 'VIDEO' && media.videoS3Key) {
+      s3Key = media.videoS3Key as unknown as string // Use processed video if available
     }
 
     if (!s3Key) {
@@ -268,14 +314,14 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     }
 
     // For videos, use streaming approach
-    if (media.mediaType === 'VIDEO') {
-      await streamVideoFromS3(s3Key, media.mimeType, req, res)
+    if (mediaType === 'VIDEO') {
+      await streamVideoFromS3(s3Key, mimeType, req, res)
     } else {
       // For images, use the existing approach
       const mediaBuffer = await getImageFromS3(s3Key)
       
       // Set appropriate headers
-      res.setHeader('Content-Type', media.mimeType || 'application/octet-stream')
+      res.setHeader('Content-Type', mimeType || 'application/octet-stream')
       res.setHeader('Content-Length', mediaBuffer.length)
       res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
       
@@ -936,16 +982,7 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
     return
   }
 
-  // Check if user can view this media
-  const canView = await canViewMedia(id, viewerId)
-  if (!canView) {
-    res.status(403).json({
-      success: false,
-      error: 'Access denied'
-    })
-    return
-  }
-
+  // First check if media exists
   const media = await prisma.media.findUnique({
     where: { id },
     select: {
@@ -955,7 +992,9 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
       imageProcessingStatus: true,
       imageVersions: true,
       s3Key: true, // Fallback to original
-      mimeType: true
+      mimeType: true,
+      visibility: true,
+      authorId: true
     }
   })
 
@@ -963,6 +1002,16 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
     res.status(404).json({
       success: false,
       error: 'Media not found'
+    })
+    return
+  }
+
+  // Now check if user can view this media
+  const canView = await canViewMediaWithData(media, viewerId)
+  if (!canView) {
+    res.status(403).json({
+      success: false,
+      error: 'Access denied'
     })
     return
   }

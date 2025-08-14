@@ -19,6 +19,7 @@ interface PostComposerProps {
   maxMedia?: number
   initialContent?: string
   initialMediaIds?: string[]
+  allowLockedPosts?: boolean
 }
 
 interface ComposerMedia {
@@ -40,9 +41,10 @@ export function PostComposer({
   title = mode === 'post' ? 'Create Post' : 'Send Message',
   placeholder = mode === 'post' ? 'What\'s on your mind?' : 'Type a message...',
   maxLength = 1000,
-  maxMedia = 10,
+  maxMedia = 8,
   initialContent = '',
-  initialMediaIds = []
+  initialMediaIds = [],
+  allowLockedPosts = true
 }: PostComposerProps) {
   const { data: authData } = useAuth()
   const [content, setContent] = useState(initialContent)
@@ -190,7 +192,7 @@ export function PostComposer({
                       {selectedMedia.length}/{maxMedia} media
                     </span>
                   )}
-                  {mode === 'post' && selectedMedia.length > 0 && (
+                  {mode === 'post' && allowLockedPosts && selectedMedia.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setIsLocked(!isLocked)}
@@ -385,7 +387,7 @@ export function PostComposer({
             )}
 
             {/* Locked Post Controls */}
-            {isLocked && mode === 'post' && (
+            {isLocked && mode === 'post' && allowLockedPosts && (
               <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-semibold text-blue-900">

@@ -8,6 +8,18 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        olive: {
+          50: '#f7f8f5',
+          100: '#eef1ea',
+          200: '#dde3d5',
+          300: '#c4cdb8',
+          400: '#a3b194',
+          500: '#8a9a7a',
+          600: '#6f7d5f',
+          700: '#5a644c',
+          800: '#4a523f',
+          900: '#3f4535',
+        },
         primary: {
           50: '#f7f8f5',
           100: '#eef1ea',
