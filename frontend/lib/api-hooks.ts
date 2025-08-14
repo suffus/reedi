@@ -327,7 +327,16 @@ export const useCreatePost = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (postData: { title?: string; content: string; visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; hashtags?: string[]; mediaIds?: string[]; isLocked?: boolean; unlockPrice?: number; lockedMediaIds?: string[] }) => {
+    mutationFn: async (postData: { 
+      title?: string; 
+      content: string; 
+      visibility?: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'; 
+      hashtags?: string[]; 
+      mediaIds?: string[]; 
+      isLocked?: boolean; 
+      unlockPrice?: number; 
+      lockedMediaIds?: string[];
+    }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
