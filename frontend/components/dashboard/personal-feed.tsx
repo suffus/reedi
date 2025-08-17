@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send, Lock, Unlock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { usePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostMedia } from '../../lib/api-hooks'
+import { useInfinitePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostMedia } from '../../lib/api-hooks'
 import { MediaDetailModal } from './media-detail-modal'
 import { PostMenu } from './post-menu'
 import { PostMediaDisplay } from '@/components/common/post-media-display'
@@ -15,6 +15,7 @@ import { PostAuthorForm } from './post-author-form'
 import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality } from '../../lib/api'
 import { getBestThumbnailUrl, getSmartMediaUrl } from '../../lib/media-utils'
 import { LazyMedia } from '../lazy-media'
+import { InfiniteScrollContainer } from '../infinite-scroll-container'
 
 
 // Separate component for comment input to prevent post re-renders
@@ -94,12 +95,20 @@ export function PersonalFeed() {
   const userId = authData?.data?.user?.id
   const user = authData?.data?.user
 
-  const { data: postsData, isLoading, refetch: refetchPosts } = usePostsFeed()
+  const { 
+    data: infinitePostsData, 
+    isLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage,
+    refetch: refetchPosts
+  } = useInfinitePostsFeed()
   const postReactionMutation = usePostReaction()
   const createCommentMutation = useCreateComment()
   const reorderMediaMutation = useReorderPostMedia()
 
-  const posts = postsData?.data?.posts || []
+  // Flatten the pages of posts into a single array
+  const posts = infinitePostsData?.pages.flatMap(page => page.data.posts) || []
 
   const handleReaction = async (postId: string, type: string) => {
     try {
@@ -406,20 +415,32 @@ export function PersonalFeed() {
           // The posts feed will automatically refetch due to React Query invalidation
           // in the useCreatePost hook's onSuccess callback
         }}
+        defaultFeedTarget={{
+          id: userId || 'personal',
+          name: 'Personal Feed',
+          type: 'PERSONAL',
+          isDefault: true
+        }}
       />
 
-      {/* Posts Feed */}
-      {posts.map((post: Post) => (
-        <motion.div
-          key={post.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`rounded-lg shadow-sm border overflow-hidden relative ${
-            post.publicationStatus === 'PAUSED' 
-              ? 'bg-gray-50 border-gray-300' 
-              : 'bg-white border-gray-200'
-          }`}
-        >
+      {/* Posts Feed with Infinite Scroll */}
+      <InfiniteScrollContainer
+        hasMore={!!hasNextPage}
+        isLoading={isFetchingNextPage}
+        onLoadMore={fetchNextPage}
+        className="space-y-6"
+      >
+        {posts.map((post: Post) => (
+          <motion.div
+            key={post.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`rounded-lg shadow-sm border overflow-hidden relative ${
+              post.publicationStatus === 'PAUSED' 
+                ? 'bg-gray-50 border-gray-300' 
+                : 'bg-white border-gray-200'
+            }`}
+          >
           {/* Post Header */}
           <div className="p-4 border-b border-gray-100">
             <div className="flex items-center justify-between">
@@ -587,6 +608,7 @@ export function PersonalFeed() {
           <p className="text-gray-600">Be the first to share something with your family and friends!</p>
         </div>
       )}
+      </InfiniteScrollContainer>
 
       {/* Media Detail Modal */}
       {selectedMediaForDetail && (

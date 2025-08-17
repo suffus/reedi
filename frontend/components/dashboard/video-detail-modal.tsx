@@ -356,6 +356,42 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }, [showQualityMenu])
 
+  // State for seek indicator
+  const [showSeekIndicator, setShowSeekIndicator] = useState(false)
+  const [seekDirection, setSeekDirection] = useState<'forward' | 'backward'>('forward')
+  const [seekAmount, setSeekAmount] = useState(0)
+  const seekIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Function to seek video forward or backward
+  const seekVideo = (seconds: number) => {
+    if (videoRef.current) {
+      const newTime = Math.min(
+        Math.max(0, videoRef.current.currentTime + seconds),
+        videoRef.current.duration || 0
+      )
+      videoRef.current.currentTime = newTime
+      setCurrentTime(newTime)
+      
+      // Show seek indicator
+      setSeekDirection(seconds > 0 ? 'forward' : 'backward')
+      setSeekAmount(Math.abs(seconds))
+      setShowSeekIndicator(true)
+      
+      // Hide seek indicator after 1 second
+      if (seekIndicatorTimeoutRef.current) {
+        clearTimeout(seekIndicatorTimeoutRef.current)
+      }
+      seekIndicatorTimeoutRef.current = setTimeout(() => {
+        setShowSeekIndicator(false)
+      }, 1000)
+    }
+  }
+
+
+  // Check if video is still processing
+  const isProcessing = media.processingStatus !== 'COMPLETED'
+  const processingStatus = media.processingStatus || 'PENDING'
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -371,10 +407,26 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       
       if (e.key === 'Escape') {
         handleClose()
-      } else if (e.key === 'ArrowRight' && slideshow.hasNext) {
-        slideshow.handleNext()
-      } else if (e.key === 'ArrowLeft' && slideshow.hasPrev) {
-        slideshow.handlePrev()
+      } else if (e.key === 'ArrowRight') {
+        // When video is loaded, seek forward 8 seconds
+        if (videoRef.current && !isProcessing && duration > 0) {
+          e.preventDefault()
+          seekVideo(8)
+        } 
+        // Only navigate to next media if video is not loaded
+        else if (slideshow.hasNext) {
+          slideshow.handleNext()
+        }
+      } else if (e.key === 'ArrowLeft') {
+        // When video is loaded, seek backward 8 seconds
+        if (videoRef.current && !isProcessing && duration > 0) {
+          e.preventDefault()
+          seekVideo(-8)
+        }
+        // Only navigate to previous media if video is not loaded
+        else if (slideshow.hasPrev) {
+          slideshow.handlePrev()
+        }
       } else if (e.key === ' ') {
         e.preventDefault()
         handleTogglePlay()
@@ -390,7 +442,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, slideshow.hasNext, slideshow.hasPrev, slideshow.handleNext, slideshow.handlePrev, slideshow.toggleSlideshow, handleTogglePlay, handleFullscreen, handleToggleMute])
+  }, [onClose, slideshow.hasNext, slideshow.hasPrev, slideshow.handleNext, slideshow.handlePrev, slideshow.toggleSlideshow, handleTogglePlay, handleFullscreen, handleToggleMute, isProcessing])
 
   // Auto-hide controls
   useEffect(() => {
@@ -526,10 +578,6 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   }
 
   const mappedMedia = mapMediaData(media)
-
-  // Check if video is still processing
-  const isProcessing = media.processingStatus !== 'COMPLETED'
-  const processingStatus = media.processingStatus || 'PENDING'
 
   // Auto-play video when navigating to it (if slideshow is active)
   useEffect(() => {
@@ -741,7 +789,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               </div>
             ) : (
               // Video player with improved sizing for portrait videos
-              <div className="w-full h-full flex items-center justify-center p-4">
+              <div className="w-full h-full flex items-center justify-center p-4 relative">
                 <video
                   ref={videoRef}
                   className={`${
@@ -771,6 +819,20 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 >
                   Your browser does not support the video tag.
                 </video>
+                
+                {/* Seek Indicator */}
+                {showSeekIndicator && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="bg-black bg-opacity-70 text-white px-6 py-4 rounded-lg flex items-center space-x-3 transform scale-110 animate-pulse">
+                      {seekDirection === 'forward' ? (
+                        <ChevronRight className="h-8 w-8" />
+                      ) : (
+                        <ChevronLeft className="h-8 w-8" />
+                      )}
+                      <span className="text-2xl font-bold">{seekAmount} sec</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
