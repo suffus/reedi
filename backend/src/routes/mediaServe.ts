@@ -158,7 +158,7 @@ async function canViewMediaWithData(media: any, viewerId?: string): Promise<bool
 }
 
 // Helper function to get media and check permissions in the correct order
-async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, selectFields?: any) {
+async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, selectFields?: any)  {
   // First check if media exists
   const media = await prisma.media.findUnique({
     where: { id: mediaId },
@@ -171,15 +171,13 @@ async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, s
   })
 
   if (!media) {
-    return { media: null, canView: false, error: 'NOT_FOUND' }
+    return { media: null, canView: false, error: 'NOT_FOUND' as const }
   }
 
-
-  console.log('media', media)
-    // Now check if user can view this media
+  // Now check if user can view this media
   const canView = await canViewMediaWithData(media, viewerId)
   if (!canView) {
-    return { media: null, canView: false, error: 'FORBIDDEN' }
+    return { media: null, canView: false, error: 'FORBIDDEN' as const }
   }
 
 
@@ -281,28 +279,27 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
   }
 
 
-  const mediaType = media.mediaType as unknown as string
-  const processingStatus = media.processingStatus as unknown as string
-  const mimeType = media.mimeType as unknown as string
+  const mediaType = media.mediaType
+  const processingStatus = media.processingStatus
+  const mimeType = media.mimeType
 
-  console.log(media.mediaType)
+
 
   // For videos that are still processing, return a placeholder or error
   if (mediaType === 'VIDEO' && processingStatus !== 'COMPLETED') {
     res.status(202).json({
       success: false,
       error: 'Video is still processing',
-      processingStatus:
-       media.processingStatus
+      processingStatus: media.processingStatus
     })
     return
   }
 
   try {
     // Determine which S3 key to serve
-    let s3Key = media.s3Key as unknown as string
+    let s3Key = media.s3Key
     if (mediaType === 'VIDEO' && media.videoS3Key) {
-      s3Key = media.videoS3Key as unknown as string // Use processed video if available
+      s3Key = media.videoS3Key // Use processed video if available
     }
 
     if (!s3Key) {

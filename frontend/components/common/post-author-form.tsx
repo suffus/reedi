@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Image as ImageIcon, Video, Tag, Users, Lock, Unlock, Globe, UserCheck, Shield, X } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Image as ImageIcon, Video, Tag, Users, Lock, Unlock, Globe, UserCheck, Shield, X, GripVertical } from 'lucide-react'
 import { useCreatePost } from '../../lib/api-hooks'
 import { MediaPicker } from './media-picker'
 import { useAuth } from '../../lib/api-hooks'
@@ -57,13 +57,112 @@ export function PostAuthorForm({
 
   // Handle media selection
   const handleMediaSelect = (media: any[]) => {
-    setSelectedMedia(media)
+    console.log("Selected media:", media)
+    // Ensure all media items have valid IDs
+    const validatedMedia = media.map(item => {
+      if (!item.id) {
+        console.warn("Media item missing ID:", item)
+        // Generate a fallback ID if needed
+        return { ...item, id: `fallback-${Math.random().toString(36).substr(2, 9)}` }
+      }
+      return item
+    })
+    setSelectedMedia(validatedMedia)
     setShowMediaPicker(false)
   }
 
   // Remove media item
   const removeMedia = (index: number) => {
     setSelectedMedia(prev => prev.filter((_, i) => i !== index))
+  }
+  
+  // Drag state for HTML5 drag-and-drop
+  const [draggedItem, setDraggedItem] = useState<any | null>(null)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
+  
+  // Handle drag start
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItem(selectedMedia[index])
+    setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+    // Set a transparent drag image
+    const dragImage = document.createElement('div')
+    dragImage.style.width = '1px'
+    dragImage.style.height = '1px'
+    document.body.appendChild(dragImage)
+    e.dataTransfer.setDragImage(dragImage, 0, 0)
+    setTimeout(() => {
+      document.body.removeChild(dragImage)
+    }, 0)
+    
+    // Add some data to the drag event
+    e.dataTransfer.setData('text/plain', index.toString())
+    
+    console.log('Drag started with item at index:', index)
+  }
+  
+  // Handle drag enter
+  const handleDragEnter = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    if (draggedIndex !== index) {
+      setDropTargetIndex(index)
+    }
+  }
+  
+  // Handle drag over
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggedIndex !== index) {
+      setDropTargetIndex(index)
+    }
+    return false
+  }
+  
+  // Handle drag leave
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear drop target if we're leaving the grid
+    if (e.currentTarget.contains(e.relatedTarget as Node)) {
+      return
+    }
+    setDropTargetIndex(null)
+  }
+  
+  // Handle drop
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault()
+    
+    if (draggedIndex === null || draggedItem === null) {
+      console.log('No dragged item to drop')
+      return
+    }
+    
+    console.log(`Moving item from index ${draggedIndex} to index ${dropIndex}`)
+    
+    // Create a new array without mutating the original
+    const newMediaOrder = [...selectedMedia]
+    
+    // Remove the dragged item
+    newMediaOrder.splice(draggedIndex, 1)
+    
+    // Insert at the drop position
+    newMediaOrder.splice(dropIndex, 0, draggedItem)
+    
+    console.log('New media order:', newMediaOrder)
+    
+    // Update state
+    setSelectedMedia(newMediaOrder)
+    setDraggedItem(null)
+    setDraggedIndex(null)
+    setDropTargetIndex(null)
+  }
+  
+  // Handle drag end
+  const handleDragEnd = (e: React.DragEvent) => {
+    setDraggedItem(null)
+    setDraggedIndex(null)
+    setDropTargetIndex(null)
   }
 
   const handleComposerSubmit = async (
@@ -74,6 +173,29 @@ export function PostAuthorForm({
   ) => {
     const mediaIds = selectedMedia.map(media => media.id)
     try {
+      // If no feeds are selected, default to personal feed
+      if (selectedFeeds.length === 0) {
+        // Post to personal feed by default
+        await createPostMutation.mutateAsync({
+          content,
+          visibility: postVisibility,
+          mediaIds,
+          isLocked,
+          unlockPrice,
+          lockedMediaIds
+        })
+        
+        // Reset form
+        setNewPost('')
+        setSelectedMedia([])
+        setIncludePersonalFeed(false)
+        setIsLocked(false)
+        setUnlockPrice(0)
+        onPostCreated?.()
+        
+        return
+      }
+      
       // Create post in each selected feed
       const feedPromises = selectedFeeds.map(async (feed) => {
         if (feed.type === 'GROUP') {
@@ -311,7 +433,7 @@ export function PostAuthorForm({
           </div>
           <button
             type="button"
-            disabled={(!newPost.trim() && selectedMedia.length === 0) || createPostMutation.isPending || selectedFeeds.length === 0}
+            disabled={(!newPost.trim() && selectedMedia.length === 0) || createPostMutation.isPending}
             onClick={() => handleComposerSubmit(newPost, isLocked, unlockPrice, [])}
             className="px-6 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-sm font-medium tracking-wide transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -332,14 +454,44 @@ export function PostAuthorForm({
                 Clear All
               </button>
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div 
+              className="grid grid-cols-4 gap-2"
+              onDragLeave={handleDragLeave}
+            >
               {selectedMedia.map((media, index) => (
-                <div key={media.id} className="relative group">
+                <div
+                  key={`media-${index}`}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragEnter={(e) => handleDragEnter(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`relative group aspect-square border-2 ${
+                    draggedIndex === index 
+                      ? 'opacity-50 border-transparent' 
+                      : dropTargetIndex === index 
+                        ? 'border-blue-500 border-dashed' 
+                        : 'border-transparent'
+                  }`}
+                  style={{
+                    cursor: 'grab',
+                    minHeight: '80px',
+                    touchAction: 'none',
+                    transition: 'border-color 0.2s ease, opacity 0.2s ease'
+                  }}
+                >
                   <img
                     src={media.thumbnail || media.url}
                     alt={media.altText || `Media ${index + 1}`}
-                    className="w-full h-20 object-cover rounded-lg"
+                    className="w-full h-full object-cover rounded-sm pointer-events-none"
                   />
+                  <div 
+                    className="absolute top-1 left-1 bg-black bg-opacity-50 text-white rounded-sm w-6 h-6 flex items-center justify-center cursor-grab"
+                    title="Drag to reorder"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeMedia(index)}

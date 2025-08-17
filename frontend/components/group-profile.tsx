@@ -60,7 +60,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
   const [isMember, setIsMember] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('feed')
+  const [activeTab, setActiveTab] = useState<'feed' | 'about' | 'rules' | 'members' | 'management'>('feed')
   const [showApplyModal, setShowApplyModal] = useState(false)
   const [showPostModal, setShowPostModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState<{ postId: string; isOpen: boolean }>({ postId: '', isOpen: false })
@@ -618,6 +618,19 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
             
             {activeTab === 'feed' && (
               <div className="space-y-4">
+                {/* Moderation Notice */}
+                {isMember && groupData?.moderationPolicy === 'ADMIN_APPROVAL_REQUIRED' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2">
+                      <Shield className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-800">Moderation Notice</span>
+                    </div>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Posts in this group require admin approval before they appear publicly. Your posts will be visible to you and admins while pending.
+                    </p>
+                  </div>
+                )}
+                
                 {/* Post Button - Only show for members */}
                 {isMember && (
                   <div className="flex justify-center">
@@ -653,8 +666,31 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                     )}
                   </div>
                 ) : (
-                  posts.map((groupPost) => (
-                    <div key={groupPost.id} className={`bg-white p-6 rounded-lg shadow-md ${groupPost.isPriority ? 'border-2 border-yellow-400' : ''}`}>
+                  <>
+                    {/* Call-to-action for non-members when there are posts */}
+                    {!isMember && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <UserPlus className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-medium text-blue-800">Join the group to post and interact</span>
+                          </div>
+                          <button
+                            onClick={() => setShowApplyModal(true)}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-sm font-medium transition-colors duration-200"
+                          >
+                            Join Group
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {posts.map((groupPost) => (
+                    <div key={groupPost.id} className={`p-6 rounded-lg shadow-md ${
+                      groupPost.status === 'PENDING_APPROVAL' 
+                        ? 'bg-gray-100 border border-gray-300' 
+                        : 'bg-white'
+                    } ${groupPost.isPriority ? 'border-2 border-yellow-400' : ''}`}>
                       <div className="flex items-center justify-between pb-3 border-b">
                         <div className="flex items-center space-x-3">
                           <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
@@ -701,7 +737,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                         </div>
                       </div>
                       
-                      <div className="pt-4 border-t">
+                      <div className={`pt-4 border-t ${groupPost.status === 'PENDING_APPROVAL' ? 'bg-gray-50 p-4 rounded-lg' : ''}`}>
                         {groupPost.post.title && (
                           <h3 className="font-semibold text-lg mb-2">{groupPost.post.title}</h3>
                         )}
@@ -766,7 +802,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                         )}
                       </div>
                     </div>
-                  ))
+                  ))}
+                  </>
                 )}
               </div>
             )}

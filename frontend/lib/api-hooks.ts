@@ -272,6 +272,37 @@ export const usePostsFeed = (page = 1, limit = 20) => {
   })
 }
 
+// Infinite scroll version of posts feed
+export const useInfinitePostsFeed = (limit = 20) => {
+  const isClient = useIsClient()
+  
+  return useInfiniteQuery({
+    queryKey: ['infinite-posts', 'feed', limit],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }: { pageParam: number }) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/posts/feed?page=${pageParam}&limit=${limit}`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch posts')
+      
+      return data
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      // If we got fewer posts than the limit, we've reached the end
+      if (lastPage.data.posts.length < limit) {
+        return undefined
+      }
+      return allPages.length + 1
+    },
+    enabled: isClient && hasToken()
+  })
+}
+
 export const usePublicPostsFeed = (page = 1, limit = 20) => {
   return useQuery({
     queryKey: ['posts', 'public', 'feed', page, limit],
@@ -352,7 +383,9 @@ export const useCreatePost = () => {
       return data
     },
     onSuccess: () => {
+      // Invalidate both regular and infinite posts queries
       queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
     }
   })
 }
@@ -378,6 +411,7 @@ export const usePostReaction = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
     }
   })
 }
@@ -428,6 +462,7 @@ export const useCreateComment = () => {
       if (variables.postId) {
         queryClient.invalidateQueries({ queryKey: ['comments', variables.postId] })
         queryClient.invalidateQueries({ queryKey: ['posts'] })
+        queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
       }
       if (variables.mediaId) {
         queryClient.invalidateQueries({ queryKey: ['comments', 'media', variables.mediaId] })
@@ -977,6 +1012,7 @@ export const useReorderPostMedia = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
     }
   })
 }
@@ -1002,6 +1038,7 @@ export const useUpdatePostStatus = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
     }
   })
 }
@@ -1030,6 +1067,7 @@ export const useUpdatePostVisibility = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
       queryClient.invalidateQueries({ queryKey: ['userPosts'] })
     }
   })

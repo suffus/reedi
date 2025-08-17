@@ -31,6 +31,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const router = useRouter()
   const [commentText, setCommentText] = useState('')
   const [zoom, setZoom] = useState(1)
+  const [initialZoom, setInitialZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [hasDragged, setHasDragged] = useState(false)
@@ -71,10 +72,15 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setShowUnsavedChangesDialog(false)
     setPendingNavigation(null)
     // Reset view state when navigating to a new media
-    setZoom(1)
+    // We'll set zoom to 1 initially, then adjust it in handleImageLoad
+    console.log('setting zoom to 1')
+    setZoom(initialZoom)
     setPan({ x: 0, y: 0 })
     setCropArea({ x: 0, y: 0, width: 0, height: 0 })
     setActiveCrop(null)
+    
+    // We'll defer optimal scaling to handleImageLoad
+    // This ensures we have the actual image dimensions
   }, [media?.id, media?.altText, media?.caption, media?.tags])
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -150,11 +156,41 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[allMedia.length - 1]))
   }, [canNavigate, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
 
-  // Handle image load for slideshow
-  const handleImageLoad = useCallback(() => {
-    console.log('Slideshow: Image loaded')
+  // Handle image load for slideshow and initial scaling
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    console.log('Image loaded')
     slideshow.handleMediaLoad()
-  }, [slideshow])
+    
+    // Calculate initial scale to fit viewport
+    const img = e.currentTarget
+    const imgWidth = img.naturalWidth
+    const imgHeight = img.naturalHeight
+    
+    const containerRect = containerRef.current?.getBoundingClientRect()
+    if (containerRect) {
+      const containerWidth = isPanelMinimized ? containerRect.width : containerRect.width - 32 // Account for padding
+      const containerHeight = containerRect.height - 32
+      
+      // Only scale up if image is smaller than viewport
+      if (imgWidth < containerWidth && imgHeight < containerHeight) {
+        console.log('Image is smaller than viewport, scaling up')
+        
+        // Calculate scale factors for width and height
+        const scaleX = containerWidth / imgWidth
+        const scaleY = containerHeight / imgHeight
+        
+        // Use the smaller scale factor to ensure the entire image fits
+        const scale = Math.min(scaleX, scaleY, 2.0) // Cap at 1.0 to avoid excessive scaling
+        
+        // Only scale up if the image is significantly smaller than the viewport
+        if (scale > 1.1) { // Add a threshold to avoid minimal scaling
+          console.log('Setting initial scale to', scale)
+          setInitialZoom(scale)
+          setZoom(scale)
+        }
+      }
+    }
+  }, [slideshow, isPanelMinimized])
 
   // Slideshow speed control functions
   const formatSlideshowSpeed = (speed: number) => {
@@ -222,7 +258,34 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   }
 
   const resetView = () => {
-    setZoom(1)
+    // Calculate optimal zoom based on image and container size
+    const img = document.querySelector('.image-detail-modal-img') as HTMLImageElement
+    if (img && img.naturalWidth && img.naturalHeight) {
+      const containerRect = containerRef.current?.getBoundingClientRect()
+      if (containerRect) {
+        const containerWidth = isPanelMinimized ? containerRect.width : containerRect.width - 32
+        const containerHeight = containerRect.height - 32
+        
+        // Calculate scale factors
+        const scaleX = containerWidth / img.naturalWidth
+        const scaleY = containerHeight / img.naturalHeight
+        
+        // Use the smaller scale factor to ensure the entire image fits
+        const optimalScale = Math.min(scaleX, scaleY)
+        
+        // Only use the calculated scale if the image is smaller than the viewport
+        if (img.naturalWidth < containerWidth && img.naturalHeight < containerHeight && optimalScale > 1.1) {
+          setZoom(optimalScale)
+        } else {
+          setZoom(1)
+        }
+      } else {
+        setZoom(1)
+      }
+    } else {
+      setZoom(1)
+    }
+    
     setPan({ x: 0, y: 0 })
     setCropArea({ x: 0, y: 0, width: 0, height: 0 })
     setActiveCrop(null)
@@ -748,16 +811,17 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             <img
               src={getSmartMediaUrl(media, 'detail')}
               alt={mappedMedia.altText || 'Gallery image'}
-              className={dragStart.x === 0 ? "transition-transform duration-200 ease-out" : ""}
+              className={`image-detail-modal-img ${dragStart.x === 0 ? "transition-transform duration-200 ease-out" : ""}`}
               style={{
                 maxWidth: isPanelMinimized ? '100vw' : 'calc(100vw - 450px)', // Account for comments sidebar
                 maxHeight: '100vh', // Full viewport height since no header
                 width: 'auto',
                 height: 'auto',
+                objectFit: 'contain', // Ensure the image maintains aspect ratio
                 transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                 cursor: slideshow.isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'))
               }}
-              onLoad={handleImageLoad}
+              onLoad={(e) => handleImageLoad(e)}
               onClick={(e) => {
                 // Only reset view if image is zoomed, not in crop mode, not dragging, and no drag occurred
                 if (zoom > 1 && !isCropMode && !isDragging) {

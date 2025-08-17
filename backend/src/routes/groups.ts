@@ -567,9 +567,49 @@ router.get('/:groupIdentifier/feed', authMiddleware, asyncHandler(async (req: Au
   }
 
   // Get posts based on user permissions
-  const whereClause: any = {
-    groupId: group.id,
-    status: isMember ? { in: ['APPROVED', 'PENDING_APPROVAL'] } : 'APPROVED'
+  let whereClause: any = null
+
+  // Check group visibility and user membership
+  if (group.visibility === 'PRIVATE_HIDDEN' && !isMember) {
+    // Private hidden groups: no posts visible to non-members
+    whereClause = { groupId: group.id, id: 'NO_ACCESS' } // This will return no results
+    console.log(`Non-member ${userId} cannot see posts in private hidden group`)
+  } else if (group.visibility === 'PRIVATE_VISIBLE' && !isMember) {
+    // Private visible groups: no posts visible to non-members
+    whereClause = { groupId: group.id, id: 'NO_ACCESS' } // This will return no results
+    console.log(`Non-member ${userId} cannot see posts in private visible group`)
+  } else if (isMember && (isMember.role === 'ADMIN' || isMember.role === 'OWNER')) {
+    // Admins/Owners can see all posts (approved + pending)
+    whereClause = {
+      groupId: group.id,
+      OR: [
+        { status: 'APPROVED' },
+        { status: 'PENDING_APPROVAL' }
+      ]
+    }
+    console.log(`Admin/Owner ${userId} can see all posts including pending`)
+  } else if (isMember) {
+    // Regular members can see approved posts plus their own pending posts
+    whereClause = {
+      groupId: group.id,
+      OR: [
+        { status: 'APPROVED' },
+        {
+          AND: [
+            { status: 'PENDING_APPROVAL' },
+            { post: { authorId: userId } }
+          ]
+        }
+      ]
+    }
+    console.log(`Regular member ${userId} can see approved posts plus their own pending`)
+  } else {
+    // Public groups: non-members can see approved posts only
+    whereClause = {
+      groupId: group.id,
+      status: 'APPROVED'
+    }
+    console.log(`Non-member ${userId} can see approved posts in public group`)
   }
 
   const [posts, total] = await Promise.all([
