@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus } from 'lucide-react'
+import { X, Plus, RefreshCw } from 'lucide-react'
 import { useCreateGallery, useAddMediaToGallery, useUserMedia } from '../../lib/api-hooks'
 import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
@@ -135,11 +135,22 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
           >
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Create New Gallery</h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  Select media from your collection to create a new gallery
-                </p>
+              <div className="flex items-center space-x-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Create New Gallery</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Select media from your collection to create a new gallery
+                  </p>
+                </div>
+                {/* Refresh Button */}
+                <button
+                  onClick={() => reset()}
+                  disabled={galleryLoading}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Refresh media"
+                >
+                  <RefreshCw className={`h-4 w-4 ${galleryLoading ? 'animate-spin' : ''}`} />
+                </button>
               </div>
               <button
                 onClick={onClose}

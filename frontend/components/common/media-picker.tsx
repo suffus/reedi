@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Upload, Image as ImageIcon, Video, Globe } from 'lucide-react'
+import { X, Upload, Image as ImageIcon, Video, Globe, RefreshCw } from 'lucide-react'
 import { MediaUploader } from '../dashboard/media-uploader'
 import { useInfiniteFilteredUserMedia, useSearchMediaByTags, useMyGalleries } from '../../lib/api-hooks'
 import { MediaGrid } from '../media-grid'
@@ -71,7 +71,8 @@ export function MediaPicker({
     error: galleryError,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage
+    isFetchingNextPage,
+    refetch: refetchGallery
   } = useInfiniteFilteredUserMedia(userId, mediaFilters)
   
 
@@ -203,7 +204,25 @@ export function MediaPicker({
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">{modalTitle}</h2>
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">{modalTitle}</h2>
+              {/* Refresh Button */}
+              <button
+                onClick={() => {
+                  if (activeTab === 'gallery') {
+                    refetchGallery()
+                  } else if (activeTab === 'upload') {
+                    // For upload tab, refresh gallery media
+                    refetchGallery()
+                  }
+                }}
+                disabled={galleryLoading || searchLoading}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh media"
+              >
+                <RefreshCw className={`h-4 w-4 ${(galleryLoading || searchLoading) ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
             <button
               onClick={onClose}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"

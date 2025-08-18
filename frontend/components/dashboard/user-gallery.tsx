@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter, CheckSquare, Square, Edit3, MoreHorizontal } from 'lucide-react'
+import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter, CheckSquare, Square, Edit3, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { useUserMedia, useDeleteMedia, useInfiniteMyGalleries, useGallery, useInfiniteFilteredUserMedia } from '../../lib/api-hooks'
 import { MediaDetailModal } from './media-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
@@ -59,22 +59,24 @@ export function UserGallery({ userId }: UserGalleryProps) {
     error, 
     fetchNextPage, 
     hasNextPage, 
-    isFetchingNextPage
+    isFetchingNextPage,
+    refetch
   } = useInfiniteFilteredUserMedia(userId, filters)
 
   // Custom update function for infinite query
   const updateMedia = useCallback((mediaId: string, updates: Partial<any>) => {
-    // This would need to be implemented with proper cache updates
-    // For now, we'll just refetch the data
+    // For now, we'll refetch the data to ensure we have the latest state
+    // In the future, this could be optimized with proper cache updates
     console.log('Media update requested:', mediaId, updates)
-  }, [])
+    refetch()
+  }, [refetch])
 
-  // Custom reset function for infinite query
+  // Custom reset function for infinite query - will be defined after showToast is available
   const reset = useCallback(() => {
-    // This would need to be implemented with proper cache invalidation
-    // For now, we'll just refetch the data
-    console.log('Reset requested')
-  }, [])
+    // Refetch the data to get fresh results from the server
+    console.log('Reset requested - refetching user media')
+    refetch()
+  }, [refetch])
 
   const { 
     data: galleriesData, 
@@ -95,11 +97,18 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const deleteMediaMutation = useDeleteMedia()
   const { showToast } = useToast()
 
+  // Enhanced reset function
+  const enhancedReset = useCallback(() => {
+    // Refetch the data to get fresh results from the server
+    console.log('Enhanced reset requested - refetching user media')
+    refetch()
+  }, [refetch])
+
   // Listen for gallery refresh events from upload dialog
   useEffect(() => {
     const handleGalleryRefresh = () => {
       console.log('Gallery refresh event received - resetting user media')
-      reset()
+      enhancedReset()
     }
 
     window.addEventListener('gallery-refresh-required', handleGalleryRefresh)
@@ -107,12 +116,12 @@ export function UserGallery({ userId }: UserGalleryProps) {
     return () => {
       window.removeEventListener('gallery-refresh-required', handleGalleryRefresh)
     }
-  }, [reset])
+  }, [enhancedReset])
 
   // Reset data when filters change
   useEffect(() => {
-    reset()
-  }, [filters, reset])
+    enhancedReset()
+  }, [filters, enhancedReset])
 
   const handleGalleryClick = (gallery: any) => {
     setSelectedGallery(gallery)
@@ -264,34 +273,54 @@ export function UserGallery({ userId }: UserGalleryProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-serif font-bold text-gray-900">Your Gallery</h2>
-          <p className="text-gray-600 mt-1">
-            {activeView === 'images' ? (
-              <>
-                {filteredTotalMedia} {(filteredTotalMedia === 1 ? 'media' : 'media')} in your collection
-                {(filterTags.length > 0 || mediaTypeFilter !== 'ALL') && (
-                  <span className="text-gray-500">
-                    {' '}(filtered from {totalMedia} total)
-                  </span>
-                )}
-                {filterTags.length === 0 && mediaTypeFilter === 'ALL' && media.length > 0 && media.length < totalMedia && (
-                  <span className="text-gray-500">
-                    {' '}(showing {media.length} of {totalMedia})
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                {totalGalleries} {(totalGalleries === 1 ? 'gallery' : 'galleries')} created
-                {galleries.length > 0 && galleries.length < totalGalleries && (
-                  <span className="text-gray-500">
-                    {' '}(showing {galleries.length} of {totalGalleries})
-                  </span>
-                )}
-              </>
-            )}
-          </p>
+        <div className="flex items-center space-x-4">
+          <div>
+            <h2 className="text-2xl font-serif font-bold text-gray-900">Your Gallery</h2>
+            <p className="text-gray-600 mt-1">
+              {activeView === 'images' ? (
+                <>
+                  {filteredTotalMedia} {(filteredTotalMedia === 1 ? 'media' : 'media')} in your collection
+                  {(filterTags.length > 0 || mediaTypeFilter !== 'ALL') && (
+                    <span className="text-gray-500">
+                      {' '}(filtered from {totalMedia} total)
+                    </span>
+                  )}
+                  {filterTags.length === 0 && mediaTypeFilter === 'ALL' && media.length > 0 && media.length < totalMedia && (
+                    <span className="text-gray-500">
+                      {' '}(showing {media.length} of {totalMedia})
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  {totalGalleries} {(totalGalleries === 1 ? 'gallery' : 'galleries')} created
+                  {galleries.length > 0 && galleries.length < totalGalleries && (
+                    <span className="text-gray-500">
+                      {' '}(showing {galleries.length} of {totalGalleries})
+                    </span>
+                  )}
+                </>
+              )}
+            </p>
+          </div>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={() => {
+              if (activeView === 'images') {
+                console.log('Resetting media')
+                enhancedReset()
+              } else {
+                console.log('Refreshing galleries')
+                refreshGalleries()
+              }
+            }}
+            disabled={isLoading || isFetching || galleriesLoading}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={`Refresh ${activeView === 'images' ? 'media' : 'galleries'}`}
+          >
+            <RefreshCw className={`h-5 w-5 ${(isLoading || isFetching || galleriesLoading) ? 'animate-spin' : ''}`} />
+          </button>
         </div>
         
         <div className="flex items-center space-x-2">
@@ -767,7 +796,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
           
           // Reset the media data to force a fresh fetch
           // This will ensure the media detail modal shows updated data
-          reset()
+          enhancedReset()
         }}
       />
     </div>
