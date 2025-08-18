@@ -8,10 +8,11 @@ import { API_BASE_URL, getAuthHeaders, getMediaUrlFromMedia } from '@/lib/api'
 import { usePublicUserPosts, usePublicUserMedia, useAuth } from '@/lib/api-hooks'
 import { LazyMedia } from './lazy-media'
 import { MediaGrid } from './media-grid'
-import { MediaDetailModal } from './dashboard/media-detail-modal'
 import { PostMediaDisplay } from '@/components/common/post-media-display'
+import { useMediaDetail } from '@/components/common/media-detail-context'
 import { mapMediaData, getBestThumbnailUrl, getSmartMediaUrl } from '@/lib/media-utils'
 import { getVideoUrlWithQuality } from '@/lib/api'
+
 
 interface User {
   id: string
@@ -43,15 +44,14 @@ export default function UserProfile() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'posts' | 'media'>('posts')
-  const [selectedMediaForDetail, setSelectedMediaForDetail] = useState<any>(null)
-  const [isMediaDetailModalOpen, setIsMediaDetailModalOpen] = useState(false)
-  const [currentPostMedia, setCurrentPostMedia] = useState<any[]>([])
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({})
 
   const identifier = params?.identifier as string
 
   // Get current user info
   const { data: authData } = useAuth()
+  const { openMediaDetail } = useMediaDetail()
+
   const currentUserId = authData?.data?.user?.id
 
   // Use the new visibility-aware hooks
@@ -325,19 +325,18 @@ export default function UserProfile() {
   }
 
   const handleMediaClick = (mediaItem: any, postMedia?: any[]) => {
-    // Map the media data to the format expected by MediaDetailModal
+    // Map the media data to the format expected by the unified media viewer
     const mappedMedia = mapMediaData(mediaItem)
     
     // Map all post media for navigation
     if (postMedia && postMedia.length > 0) {
       const mappedPostMedia = postMedia.map(media => mapMediaData(media))
-      setCurrentPostMedia(mappedPostMedia)
+      // Open the unified media viewer with all post media
+      openMediaDetail(mappedMedia, mappedPostMedia)
     } else {
-      setCurrentPostMedia([])
+      // Open the unified media viewer with just the single media
+      openMediaDetail(mappedMedia)
     }
-    
-    setSelectedMediaForDetail(mappedMedia)
-    setIsMediaDetailModalOpen(true)
   }
 
 
@@ -582,25 +581,7 @@ export default function UserProfile() {
         </div>
       </div>
 
-      {/* Media Detail Modal */}
-      {selectedMediaForDetail && (
-        <MediaDetailModal
-          media={selectedMediaForDetail}
-          onClose={() => {
-            setIsMediaDetailModalOpen(false)
-            setSelectedMediaForDetail(null)
-            setCurrentPostMedia([])
-          }}
-          onMediaUpdate={() => {
-            // No updates needed for public profile viewing
-          }}
-          updateMedia={() => {
-            // No updates needed for public profile viewing
-          }}
-          allMedia={currentPostMedia}
-          onNavigate={(media: any) => setSelectedMediaForDetail(media)}
-        />
-      )}
+
     </div>
   )
 } 

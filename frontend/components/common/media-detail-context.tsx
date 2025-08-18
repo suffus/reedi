@@ -21,6 +21,11 @@ interface FlexibleMedia {
   updatedAt?: string
   videoUrl?: string
   isLocked?: boolean
+  s3Key?: string
+  thumbnailS3Key?: string
+  processingStatus?: string
+  size?: number
+  visibility?: string
 }
 
 interface MediaDetailContextType {

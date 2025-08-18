@@ -103,7 +103,14 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
       onMediaClick(mediaItem, media)
     } else {
       // Default behavior: open in shared media detail modal
-      openMediaDetail(mediaItem, media)
+      
+      // Ensure media has the right structure for the modal
+      const mediaForModal = {
+        ...mediaItem,
+        mediaType: mediaItem.mediaType || (mediaItem.mimeType?.startsWith('video/') ? 'VIDEO' : 'IMAGE')
+      }
+      
+      openMediaDetail(mediaForModal, media)
     }
   }
 

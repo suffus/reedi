@@ -27,6 +27,8 @@ import { formatDistanceToNow } from 'date-fns'
 import { useToast } from '@/components/common/toast'
 import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { GroupPostForm } from '@/components/common/group-post-form'
+import { useMediaDetail } from '@/components/common/media-detail-context'
+
 
 interface GroupProfileProps {
   group?: Group
@@ -36,6 +38,8 @@ interface GroupProfileProps {
 const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
   const params = useParams()
   const { showToast } = useToast()
+  const { openMediaDetail } = useMediaDetail()
+
   
   // Helper function to get group image URL
   const getGroupImageUrl = (mediaId: string | undefined): string => {
@@ -350,10 +354,47 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
     }
 
   const handleMediaClick = (media: any, allMedia?: any[]) => {
-    // Handle media click - could open a media detail modal
-    console.log('Media clicked:', media)
-    // TODO: Implement media detail modal
+    // Handle nested PostMedia structure - extract the actual Media object
+    const extractMediaData = (mediaItem: any) => {
+      if (typeof mediaItem === 'string') {
+        // If mediaItem is just an ID string, create a basic media object
+        return {
+          id: mediaItem,
+          url: `${API_BASE_URL}/media/serve/${mediaItem}`,
+          thumbnail: `${API_BASE_URL}/media/serve/${mediaItem}`,
+          mediaType: 'IMAGE' as const
+        }
+      }
+      
+      // If mediaItem has a nested 'media' property (PostMedia structure), use that
+      if (mediaItem.media && typeof mediaItem.media === 'object') {
+        return {
+          ...mediaItem.media,
+          id: mediaItem.media.id || mediaItem.id // Use media.id if available, fallback to mediaItem.id
+        }
+      }
+      
+      // Otherwise, use the mediaItem directly
+      return mediaItem
+    }
+    
+    // Open the unified media detail modal
+    if (allMedia && allMedia.length > 0) {
+      // Map the media to ensure proper structure for the modal
+      const mappedMedia = allMedia.map(extractMediaData)
+      
+      // Extract the current media data
+      const currentMedia = extractMediaData(media)
+      
+      openMediaDetail(currentMedia, mappedMedia)
+    } else {
+      // Fallback to just the single media item
+      const currentMedia = extractMediaData(media)
+      openMediaDetail(currentMedia)
+    }
   }
+
+
 
   // Handle post approval/rejection
   const handlePostApproval = async (postId: string, action: 'approve' | 'reject', reason?: string) => {

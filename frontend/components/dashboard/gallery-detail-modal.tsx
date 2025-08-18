@@ -18,8 +18,8 @@ import {
   useAuth,
   useBulkUpdateMedia
 } from '../../lib/api-hooks'
-import { MediaDetailModal } from './media-detail-modal'
 import { MediaSelectorModal } from './media-selector-modal'
+import { useMediaDetail } from '../common/media-detail-context'
 import { getMediaUrlFromMedia, API_BASE_URL, getAuthHeaders } from '../../lib/api'
 import { LazyMedia } from '../lazy-media'
 import { FullScreenWrapper } from '../full-screen-wrapper'
@@ -38,7 +38,6 @@ interface GalleryDetailModalProps {
 }
 
 export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDeleted }: GalleryDetailModalProps) {
-  const [selectedMediaForDetail, setSelectedMediaForDetail] = useState<any>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', description: '', visibility: 'PUBLIC' as const })
@@ -65,6 +64,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   const { data: galleryData, isLoading, error, refetch: refetchGallery } = useGallery(galleryId)
   const { data: userMediaData } = useUserMedia('me')
   const { data: authData } = useAuth()
+  const { openMediaDetail } = useMediaDetail()
   const removeMediaMutation = useRemoveMediaFromGallery()
   const deleteGalleryMutation = useDeleteGallery()
   const updateGalleryMutation = useUpdateGallery()
@@ -868,7 +868,10 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 if (bulkEditMode) {
                                   toggleMedia(media, e, index)
                                 } else {
-                                  setSelectedMediaForDetail(media)
+                                  // Open the unified media viewer
+                                  const mappedMedia = mapMediaData(media)
+                                  const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
+                                  openMediaDetail(mappedMedia, mappedAllMedia)
                                 }
                               }}
                               mediaType={media.mediaType || 'IMAGE'}
@@ -907,7 +910,12 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
                                 <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                   <button
-                                    onClick={() => setSelectedMediaForDetail(media)}
+                                    onClick={() => {
+                                      // Open the unified media viewer
+                                      const mappedMedia = mapMediaData(media)
+                                      const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
+                                      openMediaDetail(mappedMedia, mappedAllMedia)
+                                    }}
                                     className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
                                   >
                                     <Eye className="h-4 w-4 text-gray-700" />
@@ -1058,7 +1066,10 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                     if (bulkEditMode) {
                                       toggleMedia(media, e, index)
                                     } else {
-                                      setSelectedMediaForDetail(media)
+                                      // Open the unified media viewer
+                                      const mappedMedia = mapMediaData(media)
+                                      const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
+                                      openMediaDetail(mappedMedia, mappedAllMedia)
                                     }
                                   }}
                                 />
@@ -1091,8 +1102,13 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                                 {!bulkEditMode && (
                                   <>
                                     <button
-                                      onClick={() => setSelectedMediaForDetail(media)}
-                                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                                      onClick={() => {
+                                        // Open the unified media viewer
+                                        const mappedMedia = mapMediaData(media)
+                                        const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
+                                        openMediaDetail(mappedMedia, mappedAllMedia)
+                                      }}
+                                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
                                     >
                                       <Eye className="h-4 w-4" />
                                     </button>
@@ -1163,31 +1179,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
         </div>
       </div>
 
-      {/* Image Detail Modal */}
-      { selectedMediaForDetail && (
-        <FullScreenWrapper>
-      <MediaDetailModal
-        media={selectedMediaForDetail ? mapMediaData(selectedMediaForDetail) : null}
-        onClose={() => setSelectedMediaForDetail(null)}
-        onMediaUpdate={() => {
-          // The optimistic update will handle this automatically
-        }}
-        updateMedia={() => {
-          // This would need to be implemented if we want to update media items from the gallery view
-        }}
-        allMedia={orderedMedia.map(media => mapMediaData(media))}         
-        onNavigate={(image: any) => {
-          // Debug: Log the raw image data
-          console.log('Raw gallery image data:', image)
-          
-          // Map the backend image data to the format expected by ImageDetailModal
-          const mappedMedia = mapMediaData(image)
-          console.log('Mapped image:', mappedMedia)
-          setSelectedMediaForDetail(mappedMedia)
-        }}
-      />
-      </FullScreenWrapper>
-      )}
+
 
       {/* Image Selector Modal */}
 
