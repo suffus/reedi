@@ -306,13 +306,11 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                     onMediaSelect={(media, event) => {
                       // Check if shift key is pressed and we have a last selected item
                       if (event?.shiftKey && lastSelectedMediaId && lastSelectedMediaId !== media.id) {
-                        console.log('shift key pressed')
                         // Find the indices of the last selected item and current item
                         const lastIndex = filteredMedia.findIndex(m => m.id === lastSelectedMediaId)
                         const currentIndex = filteredMedia.findIndex(m => m.id === media.id)
                         
                         if (lastIndex !== -1 && currentIndex !== -1) {
-                          console.log('lastIndex', lastIndex, 'currentIndex', currentIndex)
                           // Determine the range (start and end indices)
                           const startIndex = Math.min(lastIndex, currentIndex)
                           const endIndex = Math.max(lastIndex, currentIndex)

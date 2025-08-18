@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, Download, Trash2, Eye, Calendar, X, Loader2, Plus, FolderOpen, Filter, CheckSquare, Square, Edit3, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { useUserMedia, useDeleteMedia, useInfiniteMyGalleries, useGallery, useInfiniteFilteredUserMedia } from '../../lib/api-hooks'
-import { MediaDetailModal } from './media-detail-modal'
 import { NewGalleryModal } from './new-gallery-modal'
 import { FullScreenWrapper } from '../full-screen-wrapper'
+import { useMediaDetail } from '../common/media-detail-context'
 import { GalleryDetailModal } from './gallery-detail-modal'
 import { BulkEditModal } from './bulk-edit-modal'
 import { getMediaUrl, getMediaUrlFromMedia } from '@/lib/api'
@@ -25,7 +25,6 @@ interface UserGalleryProps {
 }
 
 export function UserGallery({ userId }: UserGalleryProps) {
-  const [selectedMedia, setSelectedMedia] = useState<Media | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isNewGalleryModalOpen, setIsNewGalleryModalOpen] = useState(false)
   const [activeView, setActiveView] = useState<'images' | 'galleries'>('images')
@@ -97,6 +96,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
 
   const deleteMediaMutation = useDeleteMedia()
   const { showToast } = useToast()
+  const { openMediaDetail } = useMediaDetail()
 
   // Enhanced reset function
   const enhancedReset = useCallback(() => {
@@ -607,11 +607,17 @@ export function UserGallery({ userId }: UserGalleryProps) {
               media={filteredMedia}
               viewMode={viewMode}
               selectedMedia={selectedMediaItems}
-              onMediaClick={(media) => setSelectedMedia(media)}
+              onMediaClick={(media) => {
+                // Open the unified media viewer
+                openMediaDetail(media, filteredMedia)
+              }}
               onMediaSelect={handleMediaSelect}
               isSelectable={isBulkSelectMode}
               showActions={!isBulkSelectMode}
-              onViewDetails={(media) => setSelectedMedia(media)}
+              onViewDetails={(media) => {
+                // Open the unified media viewer
+                openMediaDetail(media, filteredMedia)
+              }}
               onDownload={async (media) => {
                 try {
                   const mediaUrl = getMediaUrlFromMedia(media, false)
@@ -774,29 +780,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
         </>
       )}
 
-      {/* Media Detail Modal */}
-      { selectedMedia && (
-        <FullScreenWrapper>
-      <MediaDetailModal
-        media={selectedMedia}
-        onClose={() => setSelectedMedia(null)}
-        onMediaUpdate={() => {
-          // The updateMedia function from useUserMedia will handle optimistic updates
-        }}
-        updateMedia={(mediaId: string, updates: Partial<any>) => {
-          // Use the updateMedia function from the hook to update the media in the cache
-          updateMedia(mediaId, updates)
-          
-          // Also update the selected media if it's the same one
-          if (selectedMedia && selectedMedia.id === mediaId) {
-            setSelectedMedia({ ...selectedMedia, ...updates })
-          }
-        }}
-        allMedia={media}
-        onNavigate={(media: any) => setSelectedMedia(media)}
-      />
-      </FullScreenWrapper>
-      )}
+
       {/* New Gallery Modal */}
       <NewGalleryModal
         isOpen={isNewGalleryModalOpen}

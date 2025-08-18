@@ -82,7 +82,7 @@ export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
               <video
                 src={message.media?.url}
                 controls
-                className="w-auto h-auto max-w-full h-auto rounded-lg object-contain"
+                className="w-auto h-auto max-w-full h-auto rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
                 style={{
                   // Ensure video maintains aspect ratio and fits within container
                   maxWidth: '100%',
@@ -90,6 +90,12 @@ export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
                   width: 'auto'
                 }}
                 poster={message.media?.thumbnail}
+                onClick={() => {
+                  if (message.media) {
+                    // Open in shared media detail modal
+                    openMediaDetail(message.media);
+                  }
+                }}
               />
             </div>
             {message.content && (

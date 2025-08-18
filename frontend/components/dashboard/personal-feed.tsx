@@ -5,17 +5,17 @@ import { motion } from 'framer-motion'
 import { Heart, MessageCircle, Share, MoreHorizontal, User, Clock, Send, Lock, Unlock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useInfinitePostsFeed, usePostReaction, useComments, useCreateComment, useAuth, useReorderPostMedia } from '../../lib/api-hooks'
-import { MediaDetailModal } from './media-detail-modal'
 import { PostMenu } from './post-menu'
+import { useMediaDetail } from '../common/media-detail-context'
 import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { Post, Comment } from '@/lib/types'
 
-import { FullScreenWrapper } from '../full-screen-wrapper'
 import { PostAuthorForm } from './post-author-form'
 import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality } from '../../lib/api'
 import { getBestThumbnailUrl, getSmartMediaUrl } from '../../lib/media-utils'
 import { LazyMedia } from '../lazy-media'
 import { InfiniteScrollContainer } from '../infinite-scroll-container'
+
 
 
 // Separate component for comment input to prevent post re-renders
@@ -86,12 +86,10 @@ function CommentInput({
 export function PersonalFeed() {
   const router = useRouter()
   const [showComments, setShowComments] = useState<{ [postId: string]: boolean }>({})
-  const [selectedMediaForDetail, setSelectedMediaForDetail] = useState<any>(null)
-  const [isMediaDetailModalOpen, setIsMediaDetailModalOpen] = useState(false)
-  const [currentPostMedia, setCurrentPostMedia] = useState<any[]>([])
-  const [currentPostId, setCurrentPostId] = useState<string | null>(null)
 
   const { data: authData, isLoading: authLoading } = useAuth()
+  const { openMediaDetail } = useMediaDetail()
+
   const userId = authData?.data?.user?.id
   const user = authData?.data?.user
 
@@ -222,13 +220,14 @@ export function PersonalFeed() {
           updatedAt: data.data.media.updatedAt
         }
         
-        // Set post context for navigation
+
+        
+
+        
+        // Open the unified media viewer with all post media
         if (postId && postMedia) {
-          setCurrentPostId(postId)
-          setCurrentPostMedia(postMedia.map(mediaItem => ({
+          const mappedPostMedia = postMedia.map(mediaItem => ({
             id: mediaItem.id,
-            s3Key: mediaItem.s3Key || mediaItem.url,
-            thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
             url: mediaItem.s3Key || mediaItem.url,
             thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
             altText: mediaItem.altText,
@@ -244,11 +243,12 @@ export function PersonalFeed() {
             mimeType: mediaItem.mimeType || null,
             visibility: mediaItem.visibility || 'PUBLIC',
             updatedAt: mediaItem.updatedAt
-          })))
+          }))
+          
+          openMediaDetail(mappedMedia, mappedPostMedia)
+        } else {
+          openMediaDetail(mappedMedia)
         }
-        
-        setSelectedMediaForDetail(mappedMedia)
-        setIsMediaDetailModalOpen(true)
       }
     } catch (error) {
       console.error('Failed to fetch media details:', error)
@@ -275,13 +275,14 @@ export function PersonalFeed() {
         updatedAt: media.updatedAt
       }
       
-      // Set post context for navigation
+
+      
+
+      
+      // Open the unified media viewer with all post media
       if (postId && postMedia) {
-        setCurrentPostId(postId)
-        setCurrentPostMedia(postMedia.map(mediaItem => ({
+        const mappedPostMedia = postMedia.map(mediaItem => ({
           id: mediaItem.id,
-          s3Key: mediaItem.s3Key || mediaItem.url,
-          thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
           url: mediaItem.s3Key || mediaItem.url,
           thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
           altText: mediaItem.altText,
@@ -297,11 +298,12 @@ export function PersonalFeed() {
           mimeType: mediaItem.mimeType || null,
           visibility: mediaItem.visibility || 'PUBLIC',
           updatedAt: mediaItem.updatedAt
-        })))
+        }))
+        
+        openMediaDetail(fallbackMedia, mappedPostMedia)
+      } else {
+        openMediaDetail(fallbackMedia)
       }
-      
-      setSelectedMediaForDetail(fallbackMedia)
-      setIsMediaDetailModalOpen(true)
     }
   }
 
@@ -610,42 +612,7 @@ export function PersonalFeed() {
       )}
       </InfiniteScrollContainer>
 
-      {/* Media Detail Modal */}
-      {selectedMediaForDetail && (
-        <FullScreenWrapper>
-        <MediaDetailModal
-          media={selectedMediaForDetail}
-          onClose={() => {
-            setIsMediaDetailModalOpen(false)
-            setSelectedMediaForDetail(null)
-            setCurrentPostId(null)
-            setCurrentPostMedia([])
-          }}
-          onMediaUpdate={() => {
-            // Refresh posts data when media is updated
-            refetchPosts()
-          }}
-          updateMedia={(mediaId: string, updates: Partial<any>) => {
-            // Update the media in the current post media array
-            if (currentPostMedia && currentPostMedia.length > 0) {
-              const updatedMedia = currentPostMedia.map(media => 
-                media.id === mediaId 
-                  ? { ...media, ...updates }
-                  : media
-              )
-              setCurrentPostMedia(updatedMedia)
-              
-              // Also update the selected media if it's the same one
-              if (selectedMediaForDetail && selectedMediaForDetail.id === mediaId) {
-                setSelectedMediaForDetail({ ...selectedMediaForDetail, ...updates })
-              }
-            }
-          }}
-          allMedia={currentPostMedia}
-          onNavigate={(media: any) => setSelectedMediaForDetail(media)}
-        />
-        </FullScreenWrapper>
-      )}
+
     </div>
   )
 } 
