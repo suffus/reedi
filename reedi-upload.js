@@ -12,7 +12,7 @@ const cliProgress = require('cli-progress');
 
 // Configuration
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
-const MAX_CONCURRENT_CHUNKS = 3;
+const MAX_CONCURRENT_CHUNKS = 5;
 const MAX_RETRIES = 3;
 
 class ReediUploader {
@@ -141,6 +141,7 @@ class ReediUploader {
       // Upload chunks with concurrency control
       for (let i = 0; i < chunks.length; i += MAX_CONCURRENT_CHUNKS) {
         const batch = chunks.slice(i, i + MAX_CONCURRENT_CHUNKS);
+        spinner.info(`Uploading chunks ${i + 1} - ${i + MAX_CONCURRENT_CHUNKS} of ${totalChunks}`);
         const promises = batch.map(chunk => this.uploadChunk(filePath, key, uploadId, chunk, progressBar));
         
         const batchResults = await Promise.allSettled(promises);
@@ -150,7 +151,7 @@ class ReediUploader {
           if (result.status === 'fulfilled') {
             parts.push(result.value);
           } else {
-            throw new Error(`Chunk ${batch[j].partNumber} failed: ${result.reason.message}`);
+            throw new Error(`Chunk ${batch[j].partNumber} failed X: ${result.reason.message}`);
           }
         }
       }
@@ -217,6 +218,8 @@ class ReediUploader {
       partNumber++;
     }
 
+    console.log(chunks);
+
     return chunks;
   }
 
@@ -225,8 +228,11 @@ class ReediUploader {
     
     while (retries < MAX_RETRIES) {
       try {
-        const chunkBuffer = fs.readFileSync(filePath, { start: chunk.start, end: chunk.end - 1 });
-        
+        // Read the specific chunk using fs.readSync with file descriptor
+        const fd = fs.openSync(filePath, 'r');
+        const chunkBuffer = Buffer.alloc(chunk.end - chunk.start);
+        fs.readSync(fd, chunkBuffer, 0, chunk.end - chunk.start, chunk.start);
+        fs.closeSync(fd);
         const formData = new FormData();
         formData.append('chunk', chunkBuffer, {
           filename: `chunk_${chunk.partNumber}`,
@@ -240,8 +246,9 @@ class ReediUploader {
           headers: {
             ...formData.getHeaders(),
           },
-          timeout: 60000, // 1 minute per chunk
+          timeout: 120000, // 2 minutes per chunk
         });
+
 
         if (response.data.success) {
           progressBar.increment();

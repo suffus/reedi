@@ -9,6 +9,18 @@ import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
 
+/**
+ * VideoDetailModal Component
+ * 
+ * Features:
+ * - Optimal video scaling: Videos smaller than viewport are scaled up to fit as large as possible
+ * - Responsive design: Automatically adjusts to viewport changes
+ * - Fullscreen support with proper aspect ratio handling
+ * - Video quality selection
+ * - Slideshow functionality
+ * - Comments and metadata editing
+ */
+
 interface VideoDetailModalProps {
   media: Media | null
   onClose: () => void
@@ -78,6 +90,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [videoQuality, setVideoQuality] = useState('auto')
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 })
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 })
+  const [viewportChangeKey, setViewportChangeKey] = useState(0)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -247,6 +260,58 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }
 
+  // Calculate optimal video scaling to fit viewport while maximizing size
+  const getOptimalVideoStyle = (): React.CSSProperties => {
+    if (videoDimensions.width === 0 || videoDimensions.height === 0) {
+      return {}
+    }
+
+    // Get viewport dimensions (accounting for padding and controls)
+    const viewportWidth = window.innerWidth // 16px padding on each side
+    const viewportHeight = window.innerHeight // Account for controls and padding
+
+    const videoAspectRatio = videoDimensions.width / videoDimensions.height
+    const viewportAspectRatio = viewportWidth / viewportHeight
+
+    let scale: number
+    let width: number
+    let height: number
+
+    if (videoAspectRatio > viewportAspectRatio) {
+      // Video is wider than viewport - scale to fit width (width will touch viewport boundary)
+      scale = viewportWidth / videoDimensions.width
+      width = viewportWidth
+      height = videoDimensions.height * scale
+      
+      // If height exceeds viewport, scale down proportionally
+      if (height > viewportHeight) {
+        const heightScale = viewportHeight / height
+        width = width * heightScale
+        height = viewportHeight
+      }
+    } else {
+      // Video is taller than viewport - scale to fit height (height will touch viewport boundary)
+      scale = viewportHeight / videoDimensions.height
+      width = videoDimensions.width * scale
+      height = viewportHeight
+      
+      // If width exceeds viewport, scale down proportionally
+      if (width > viewportWidth) {
+        const widthScale = viewportWidth / width
+        width = viewportWidth
+        height = height * widthScale
+      }
+    }
+
+    return {
+      width: `${width}px`,
+      height: `${height}px`,
+      maxWidth: '100%',
+      maxHeight: '100%',
+      objectFit: 'contain' as const
+    }
+  }
+
   // Calculate proper fullscreen scaling based on aspect ratios
   const getFullscreenStyle = (): React.CSSProperties => {
     if (!isFullscreen || videoDimensions.width === 0 || videoDimensions.height === 0) {
@@ -280,6 +345,10 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         width: window.innerWidth,
         height: window.innerHeight
       })
+      // Force re-render to recalculate optimal video scaling
+      if (videoRef.current && videoDimensions.width > 0) {
+        setViewportChangeKey(prev => prev + 1)
+      }
     }
 
     const handleFullscreenChange = () => {
@@ -299,7 +368,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       window.removeEventListener('resize', updateScreenDimensions)
       document.removeEventListener('fullscreenchange', handleFullscreenChange)
     }
-  }, [])
+  }, [videoDimensions.width])
 
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60)
@@ -788,9 +857,10 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 )}
               </div>
             ) : (
-              // Video player with improved sizing for portrait videos
+              // Video player with optimal scaling to fit viewport while maximizing size
               <div className="w-full h-full flex items-center justify-center p-4 relative">
                 <video
+                  key={`${media.id}-${viewportChangeKey}`}
                   ref={videoRef}
                   className={`${
                     isFullscreen 
@@ -798,12 +868,10 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                       : 'w-auto h-auto max-w-full max-h-full object-contain'
                   }`}
                   style={{
-                    ...(isFullscreen && getFullscreenStyle()),
+                    ...(isFullscreen ? getFullscreenStyle() : getOptimalVideoStyle()),
                     // Ensure video maintains aspect ratio and fits within viewport
                     maxWidth: '100%',
-                    maxHeight: '100%',
-                    width: 'auto',
-                    height: 'auto'
+                    maxHeight: '100%'
                   }}
                   src={getCurrentVideoSource()}
                   onTimeUpdate={handleTimeUpdate}
@@ -831,6 +899,17 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                       )}
                       <span className="text-2xl font-bold">{seekAmount} sec</span>
                     </div>
+                  </div>
+                )}
+
+                {/* Debug Info - Remove in production */}
+                {process.env.NODE_ENV === 'development' && (
+                  <div className="absolute top-20 left-4 bg-black bg-opacity-70 text-white text-xs p-2 rounded pointer-events-none">
+                    <div>Video: {videoDimensions.width}x{videoDimensions.height}</div>
+                    <div>Viewport: {screenDimensions.width}x{screenDimensions.height}</div>
+                    <div>Scale: {getOptimalVideoStyle().width} x {getOptimalVideoStyle().height}</div>
+                    <div>Video AR: {(videoDimensions.width / videoDimensions.height).toFixed(3)}</div>
+                    <div>Viewport AR: {(screenDimensions.width / screenDimensions.height).toFixed(3)}</div>
                   </div>
                 )}
               </div>

@@ -56,7 +56,7 @@ const upload = multer({
 const chunkUpload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit for chunks (should be enough for 5MB chunks)
+    fileSize: 200 * 1024 * 1024, // 200MB limit for chunks (should be enough for 5MB chunks)
   }
   // No fileFilter - chunks are just binary data
 })
@@ -477,14 +477,15 @@ router.post('/upload/initiate', authMiddleware, asyncHandler(async (req: Authent
 
   try {
     const uploadId = await multipartUploadService.initiateMultipartUpload(key, contentType, metadata)
-    
-    res.json({
+    const result = {
       success: true,
       uploadId,
       key,
-      chunkSize: multipartUploadService.getConfig().chunkSize,
-      maxConcurrentChunks: multipartUploadService.getConfig().maxConcurrentChunks
-    })
+      chunkSize: multipartUploadService.getConfig().chunkSize || 5 * 1024 * 1024,
+      maxConcurrentChunks: multipartUploadService.getConfig().maxConcurrentChunks || 5
+    }
+    res.json(result)
+    console.log('initiateMultipartUpload response=', result)
   } catch (error) {
     console.error('Failed to initiate multipart upload:', error)
     res.status(500).json({ success: false, error: 'Failed to initiate upload' })

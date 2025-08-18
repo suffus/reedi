@@ -119,6 +119,7 @@ export class MultipartUploadService {
     })
 
     const response = await s3Client.send(command)
+    console.log('initiateMultipartUpload response', response)
     return response.UploadId!
   }
 
