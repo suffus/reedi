@@ -88,6 +88,24 @@ export function Groups() {
     // For group images, use the public media serving endpoint (no auth required)
     return `${API_BASE_URL}/media/serve/${mediaId}`
   }
+
+  // Helper function to get group cover photo URL
+  const getGroupCoverUrl = (coverPhoto: string | undefined): string => {
+    if (!coverPhoto) return ''
+    
+    // If it's already a full URL, return as is
+    if (coverPhoto.startsWith('http://') || coverPhoto.startsWith('https://')) {
+      return coverPhoto
+    }
+    
+    // If it's a data URL, return as is
+    if (coverPhoto.startsWith('data:')) {
+      return coverPhoto
+    }
+    
+    // For group cover photos, use the public media serving endpoint (no auth required)
+    return `${API_BASE_URL}/media/serve/${coverPhoto}`
+  }
   
   console.log('Groups state:', groups)
   console.log('Filtered groups:', filteredGroups)
@@ -201,12 +219,37 @@ export function Groups() {
             >
               {viewMode === 'grid' ? (
                 <>
-                  <div className="aspect-video bg-gradient-to-br from-primary-100 to-accent-100 flex items-center justify-center">
-                    {group.avatar ? (
-                      <img src={getGroupImageUrl(group.avatar)} alt={group.name} className="w-16 h-16 rounded-full object-cover" />
-                    ) : (
-                      <Users className="h-16 w-16 text-primary-400" />
+                  <div 
+                    className="aspect-video relative flex items-center justify-center overflow-hidden"
+                    style={{
+                      backgroundImage: group.coverPhoto ? `url(${getGroupCoverUrl(group.coverPhoto)})` : 'none',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat'
+                    }}
+                  >
+                    {/* Fallback gradient background if no cover photo */}
+                    {!group.coverPhoto && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-primary-100 to-accent-100" />
                     )}
+                    
+                    {/* Subtle overlay for better avatar visibility */}
+                    {group.coverPhoto && (
+                      <div className="absolute inset-0 bg-black bg-opacity-20" />
+                    )}
+                    
+                    {/* White circle background for avatar */}
+                    <div className="relative z-10 w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg">
+                      {group.avatar ? (
+                        <img 
+                          src={getGroupImageUrl(group.avatar)} 
+                          alt={group.name} 
+                          className="w-16 h-16 rounded-full object-cover" 
+                        />
+                      ) : (
+                        <Users className="h-16 w-16 text-primary-400" />
+                      )}
+                    </div>
                   </div>
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 mb-2">{group.name}</h3>
@@ -225,11 +268,18 @@ export function Groups() {
               ) : (
                 <>
                   <div className="w-20 h-20 bg-gradient-to-br from-primary-100 to-accent-100 flex items-center justify-center flex-shrink-0">
-                    {group.avatar ? (
-                      <img src={getGroupImageUrl(group.avatar)} alt={group.name} className="w-12 h-12 rounded-full object-cover" />
-                    ) : (
-                      <Users className="h-12 w-12 text-primary-400" />
-                    )}
+                    {/* White circle background for avatar */}
+                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg">
+                      {group.avatar ? (
+                        <img 
+                          src={getGroupImageUrl(group.avatar)} 
+                          alt={group.name} 
+                          className="w-12 h-12 rounded-full object-cover" 
+                        />
+                      ) : (
+                        <Users className="h-12 w-12 text-primary-400" />
+                      )}
+                    </div>
                   </div>
                   <div className="flex-1 p-4">
                     <h3 className="font-semibold text-gray-900 mb-1">{group.name}</h3>
