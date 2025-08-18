@@ -903,7 +903,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 )}
 
                 {/* Debug Info - Remove in production */}
-                {process.env.NODE_ENV === 'development' && (
+                {process.env.NODE_ENV === 'development' && 0 && (
                   <div className="absolute top-20 left-4 bg-black bg-opacity-70 text-white text-xs p-2 rounded pointer-events-none">
                     <div>Video: {videoDimensions.width}x{videoDimensions.height}</div>
                     <div>Viewport: {screenDimensions.width}x{screenDimensions.height}</div>
