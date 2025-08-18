@@ -39,6 +39,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const [isBulkSelectMode, setIsBulkSelectMode] = useState(false)
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set())
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false)
+  const [lastSelectedMediaId, setLastSelectedMediaId] = useState<string | null>(null)
 
   // Build filters object
   const filters = useMemo(() => {
@@ -181,25 +182,56 @@ export function UserGallery({ userId }: UserGalleryProps) {
     setIsBulkSelectMode(!isBulkSelectMode)
     if (isBulkSelectMode) {
       setSelectedMediaIds(new Set())
+      setLastSelectedMediaId(null)
     }
   }
 
   const handleSelectAll = () => {
     if (selectedMediaIds.size === filteredMedia.length) {
       setSelectedMediaIds(new Set())
+      setLastSelectedMediaId(null)
     } else {
       setSelectedMediaIds(new Set(filteredMedia.map(m => m.id).filter((id): id is string => id !== undefined)))
+      // Set the last selected to the first item when selecting all
+      if (filteredMedia.length > 0 && filteredMedia[0].id) {
+        setLastSelectedMediaId(filteredMedia[0].id)
+      }
     }
   }
 
-  const handleMediaSelect = (media: Media) => {
+  const handleMediaSelect = (media: Media, event?: React.MouseEvent) => {
     const newSelectedIds = new Set(selectedMediaIds)
-    if (newSelectedIds.has(media.id)) {
-      newSelectedIds.delete(media.id)
+    
+    // Check if shift key is pressed and we have a last selected item
+    if (event?.shiftKey && lastSelectedMediaId && lastSelectedMediaId !== media.id) {
+      // Find the indices of the last selected item and current item
+      const lastIndex = filteredMedia.findIndex(m => m.id === lastSelectedMediaId)
+      const currentIndex = filteredMedia.findIndex(m => m.id === media.id)
+      
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        // Determine the range (start and end indices)
+        const startIndex = Math.min(lastIndex, currentIndex)
+        const endIndex = Math.max(lastIndex, currentIndex)
+        
+        // Select all items in the range
+        for (let i = startIndex; i <= endIndex; i++) {
+          const mediaItem = filteredMedia[i]
+          if (mediaItem && mediaItem.id) {
+            newSelectedIds.add(mediaItem.id)
+          }
+        }
+      }
     } else {
-      newSelectedIds.add(media.id)
+      // Normal selection/deselection
+      if (newSelectedIds.has(media.id)) {
+        newSelectedIds.delete(media.id)
+      } else {
+        newSelectedIds.add(media.id)
+      }
     }
+    
     setSelectedMediaIds(newSelectedIds)
+    setLastSelectedMediaId(media.id)
   }
 
   const handleBulkDelete = async () => {
@@ -217,6 +249,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
       
       // Clear selection
       setSelectedMediaIds(new Set())
+      setLastSelectedMediaId(null)
       setIsBulkSelectMode(false)
     } catch (error) {
       console.error('Failed to delete media:', error)
@@ -359,6 +392,10 @@ export function UserGallery({ userId }: UserGalleryProps) {
               >
                 Cancel
               </button>
+              <div className="h-4 w-px bg-blue-300"></div>
+              <span className="text-xs text-blue-600">
+                💡 Shift+click to select range
+              </span>
             </div>
           )}
 
@@ -459,7 +496,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
                     ? 'bg-blue-100 text-blue-700'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
-                title="Bulk select"
+                title="Bulk select (Shift+click to select range)"
               >
                 {isBulkSelectMode ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
               </button>
@@ -792,6 +829,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
         onSuccess={() => {
           // Clear selection after successful update
           setSelectedMediaIds(new Set())
+          setLastSelectedMediaId(null)
           setIsBulkSelectMode(false)
           
           // Reset the media data to force a fresh fetch

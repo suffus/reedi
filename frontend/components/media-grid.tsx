@@ -11,7 +11,7 @@ interface MediaGridProps {
   viewMode: 'grid' | 'list'
   selectedMedia: Media[]
   onMediaClick?: (media: Media) => void
-  onMediaSelect?: (media: Media) => void
+  onMediaSelect?: (media: Media, event?: React.MouseEvent) => void
   isSelectable?: boolean
   showAuthor?: boolean
   showTags?: boolean
@@ -63,8 +63,6 @@ export function MediaGrid({
   formatFileSize,
   formatDate
 }: MediaGridProps) {
-  // State for shift-click range selection
-  const [lastClickedIndex, setLastClickedIndex] = React.useState<number | null>(null)
   const isMediaSelected = (mediaId: string) => {
     return selectedMedia.some(m => m.id === mediaId)
   }
@@ -75,25 +73,8 @@ export function MediaGrid({
 
   const handleMediaClick = (mediaItem: Media, event: React.MouseEvent, index: number) => {
     if (isSelectable && onMediaSelect) {
-      if (event.shiftKey && lastClickedIndex !== null) {
-        // Shift-click: select range from last clicked to current
-        const startIndex = Math.min(lastClickedIndex, index)
-        const endIndex = Math.max(lastClickedIndex, index)
-        const rangeMedia = media.slice(startIndex, endIndex + 1)
-        
-        // Add all items in the range to selection
-        rangeMedia.forEach((item: Media) => {
-          if (!isMediaSelected(item.id)) {
-            onMediaSelect(item)
-          }
-        })
-      } else {
-        // Normal click: toggle selection of current item
-        onMediaSelect(mediaItem)
-      }
-      
-      // Update last clicked index
-      setLastClickedIndex(index)
+      // Pass the event to the parent component for shift-click handling
+      onMediaSelect(mediaItem, event)
     } else if (onMediaClick) {
       onMediaClick(mediaItem)
     }
