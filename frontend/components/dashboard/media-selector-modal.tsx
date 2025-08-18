@@ -34,6 +34,7 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [selectedGalleryId, setSelectedGalleryId] = useState<string>('')
   const [showFilters, setShowFilters] = useState(false)
+  const [lastSelectedMediaId, setLastSelectedMediaId] = useState<string | null>(null)
 
   console.log("userId", userId)
 
@@ -100,6 +101,18 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
   const defaultTab: TabType = galleryMedia.length > 0 ? 'gallery' : 'upload'
   const [activeTab, setActiveTab] = useState<TabType>(defaultTab)
 
+  // Reset selection state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedMedia([])
+      setLastSelectedMediaId(null)
+      setSearchQuery('')
+      setTagQuery('')
+      setFilterTags([])
+      setSelectedGalleryId('')
+    }
+  }, [isOpen])
+
   // Check if we should show global search when tag query changes
   useEffect(() => {
     if (tagArray.length > 0) {
@@ -123,21 +136,52 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
     setActiveTab('gallery')
   }
 
-  const handleMediaSelect = (media: Media) => {
-    setSelectedMedia(prev => {
-      const isSelected = prev.some(m => m.id === media.id)
-      if (isSelected) {
-        return prev.filter(m => m.id !== media.id)
-      } else {
-        return [...prev, media]
+  const handleMediaSelect = (media: Media, event?: React.MouseEvent) => {
+    // Check if shift key is pressed and we have a last selected item
+    if (event?.shiftKey && lastSelectedMediaId && lastSelectedMediaId !== media.id) {
+      // Find the indices of the last selected item and current item
+      const lastIndex = filteredGalleryMedia.findIndex(m => m.id === lastSelectedMediaId)
+      const currentIndex = filteredGalleryMedia.findIndex(m => m.id === media.id)
+      
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        // Determine the range (start and end indices)
+        const startIndex = Math.min(lastIndex, currentIndex)
+        const endIndex = Math.max(lastIndex, currentIndex)
+        
+        // Get all items in the range
+        const rangeMedia = filteredGalleryMedia.slice(startIndex, endIndex + 1)
+        
+        // Add all items in the range to selection
+        setSelectedMedia(prev => {
+          const newSelection = [...prev]
+          rangeMedia.forEach(mediaItem => {
+            if (!newSelection.some(m => m.id === mediaItem.id)) {
+              newSelection.push(mediaItem)
+            }
+          })
+          return newSelection
+        })
       }
-    })
+    } else {
+      // Normal selection/deselection
+      setSelectedMedia(prev => {
+        const isSelected = prev.some(m => m.id === media.id)
+        if (isSelected) {
+          return prev.filter(m => m.id !== media.id)
+        } else {
+          return [...prev, media]
+        }
+      })
+    }
+    
+    setLastSelectedMediaId(media.id)
   }
 
   const handleConfirmSelection = () => {
     onMediaSelected(selectedMedia)
     onClose()
     setSelectedMedia([])
+    setLastSelectedMediaId(null)
     setSearchQuery('')
     setTagQuery('')
   }
@@ -160,7 +204,12 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <div className="flex items-center space-x-3">
-              <h2 className="text-xl font-semibold text-gray-900">Add Media to Gallery</h2>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Add Media to Gallery</h2>
+                <span className="block text-xs text-blue-600 mt-1">
+                  💡 Tip: Shift+click to select ranges of media
+                </span>
+              </div>
               {/* Refresh Button */}
               <button
                 onClick={() => {

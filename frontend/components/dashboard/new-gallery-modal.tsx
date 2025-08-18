@@ -30,6 +30,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
 
   // Media selection state
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
+  const [lastSelectedMediaId, setLastSelectedMediaId] = useState<string | null>(null)
 
   const createGalleryMutation = useCreateGallery()
   const addMediaToGalleryMutation = useAddMediaToGallery()
@@ -43,6 +44,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
         setGalleryDescription('')
         setGalleryVisibility('PUBLIC')
         setSelectedMedia([])
+        setLastSelectedMediaId(null)
         setSearchQuery('')
         setFilterTags([])
         setShowFilters(false)
@@ -140,6 +142,9 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                   <h2 className="text-xl font-semibold text-gray-900">Create New Gallery</h2>
                   <p className="text-sm text-gray-600 mt-1">
                     Select media from your collection to create a new gallery
+                    <span className="block text-xs text-blue-600 mt-1">
+                      💡 Tip: Shift+click to select ranges of media
+                    </span>
                   </p>
                 </div>
                 {/* Refresh Button */}
@@ -298,15 +303,47 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                     media={filteredMedia}
                     viewMode={viewMode}
                     selectedMedia={selectedMedia}
-                    onMediaSelect={(media) => {
-                      setSelectedMedia(prev => {
-                        const isSelected = prev.some(m => m.id === media.id)
-                        if (isSelected) {
-                          return prev.filter(m => m.id !== media.id)
-                        } else {
-                          return [...prev, media]
+                    onMediaSelect={(media, event) => {
+                      // Check if shift key is pressed and we have a last selected item
+                      if (event?.shiftKey && lastSelectedMediaId && lastSelectedMediaId !== media.id) {
+                        console.log('shift key pressed')
+                        // Find the indices of the last selected item and current item
+                        const lastIndex = filteredMedia.findIndex(m => m.id === lastSelectedMediaId)
+                        const currentIndex = filteredMedia.findIndex(m => m.id === media.id)
+                        
+                        if (lastIndex !== -1 && currentIndex !== -1) {
+                          console.log('lastIndex', lastIndex, 'currentIndex', currentIndex)
+                          // Determine the range (start and end indices)
+                          const startIndex = Math.min(lastIndex, currentIndex)
+                          const endIndex = Math.max(lastIndex, currentIndex)
+                          
+                          // Get all items in the range
+                          const rangeMedia = filteredMedia.slice(startIndex, endIndex + 1)
+                          
+                          // Add all items in the range to selection
+                          setSelectedMedia(prev => {
+                            const newSelection = [...prev]
+                            rangeMedia.forEach(mediaItem => {
+                              if (!newSelection.some(m => m.id === mediaItem.id)) {
+                                newSelection.push(mediaItem)
+                              }
+                            })
+                            return newSelection
+                          })
                         }
-                      })
+                      } else {
+                        // Normal selection/deselection
+                        setSelectedMedia(prev => {
+                          const isSelected = prev.some(m => m.id === media.id)
+                          if (isSelected) {
+                            return prev.filter(m => m.id !== media.id)
+                          } else {
+                            return [...prev, media]
+                          }
+                        })
+                      }
+                      
+                      setLastSelectedMediaId(media.id)
                     }}
                     isSelectable={true}
                     showActions={false}
