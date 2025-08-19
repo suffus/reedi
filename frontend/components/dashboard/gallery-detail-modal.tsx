@@ -55,6 +55,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     description: '',
     tags: [] as string[]
   })
+  const [bulkEditTagMode, setBulkEditTagMode] = useState<'merge' | 'replace'>('merge')
   const [showBulkEditForm, setShowBulkEditForm] = useState(false)
 
   // Media selection state for bulk editing
@@ -271,12 +272,14 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
     if (bulkEditMode) {
       clearSelection()
       setShowBulkEditForm(false)
+      setBulkEditTagMode('merge') // Reset tag mode when exiting bulk edit
     }
   }
 
   const clearSelection = () => {
     setSelectedMediaItems([])
     setLastClickedMediaIndex(null)
+    setBulkEditTagMode('merge')
   }
 
   const selectMedia = (mediaItems: any[]) => {
@@ -349,10 +352,10 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
       hasUpdates = true
     }
 
-    // Handle tags - merge with existing tags
+    // Handle tags - use selected mode (merge or replace)
     if (bulkEditForm.tags.length > 0) {
       updates.tags = bulkEditForm.tags
-      updates.mergeTags = true // Flag to indicate we want to merge tags
+      updates.mergeTags = bulkEditTagMode === 'merge' // Use selected tag mode
       hasUpdates = true
     }
 
@@ -717,7 +720,14 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                         </div>
                         <div className="flex items-center space-x-2">
                           <button
-                            onClick={() => setShowBulkEditForm(!showBulkEditForm)}
+                            onClick={() => {
+                              const newShowForm = !showBulkEditForm
+                              setShowBulkEditForm(newShowForm)
+                              // Initialize tag mode when showing the form
+                              if (newShowForm) {
+                                setBulkEditTagMode('merge')
+                              }
+                            }}
                             className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors duration-200"
                           >
                             {showBulkEditForm ? 'Hide Form' : 'Edit Selected'}
@@ -767,12 +777,41 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                         <div>
                           <label className="block text-sm font-medium text-green-800 mb-1">
                             <Tag className="h-4 w-4 inline mr-1" />
-                            Add Tags (will be merged with existing tags)
+                            Tags
                           </label>
+                          
+                          {/* Tag Mode Radio Buttons */}
+                          <div className="mb-3">
+                            <div className="flex items-center space-x-4">
+                              <label className="flex items-center space-x-2 text-sm text-green-700">
+                                <input
+                                  type="radio"
+                                  name="bulkEditTagMode"
+                                  value="merge"
+                                  checked={bulkEditTagMode === 'merge'}
+                                  onChange={(e) => setBulkEditTagMode(e.target.value as 'merge' | 'replace')}
+                                  className="text-green-600 focus:ring-green-500"
+                                />
+                                <span>Merge with existing tags</span>
+                              </label>
+                              <label className="flex items-center space-x-2 text-sm text-green-700">
+                                <input
+                                  type="radio"
+                                  name="bulkEditTagMode"
+                                  value="replace"
+                                  checked={bulkEditTagMode === 'replace'}
+                                  onChange={(e) => setBulkEditTagMode(e.target.value as 'merge' | 'replace')}
+                                  className="text-green-600 focus:ring-green-500"
+                                />
+                                <span>Replace existing tags</span>
+                              </label>
+                            </div>
+                          </div>
+                          
                           <TagInput
                             tags={bulkEditForm.tags}
                             onTagsChange={(tags) => setBulkEditForm(prev => ({ ...prev, tags }))}
-                            placeholder="Enter tags to add..."
+                            placeholder="Enter tags..."
                             className="w-full"
                           />
                         </div>
