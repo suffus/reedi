@@ -694,14 +694,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-sm">Processing status: {processingStatus}</span>
                 </div>
-                {processingStatus === 'FAILED' && (
-                  <button
-                    onClick={() => window.location.reload()}
-                    className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 text-sm"
-                  >
-                    Refresh to Check Status
-                  </button>
-                )}
+
               </div>
             ) : (
               // Video player with optimal scaling to fit viewport while maximizing size

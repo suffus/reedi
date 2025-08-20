@@ -1010,4 +1010,152 @@ router.get('/search/tags', asyncHandler(async (req: Request, res: Response) => {
   })
 }))
 
+// Reprocess failed media
+router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { mediaId } = req.params
+  const userId = req.user?.id
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: 'Authentication required'
+    })
+    return
+  }
+
+  // Get the media and verify ownership
+  const media = await prisma.media.findUnique({
+    where: { id: mediaId },
+    select: {
+      id: true,
+      authorId: true,
+      mediaType: true,
+      processingStatus: true,
+      videoProcessingStatus: true,
+      imageProcessingStatus: true,
+      s3Key: true,
+      originalFilename: true,
+      mimeType: true,
+      size: true
+    }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  if (media.authorId !== userId) {
+    res.status(403).json({
+      success: false,
+      error: 'Not authorized to reprocess this media'
+    })
+    return
+  }
+
+  // Check if media is in a failed state
+  const isFailed = 
+    media.processingStatus === 'FAILED' ||
+    (media.mediaType === 'VIDEO' && media.videoProcessingStatus === 'FAILED') ||
+    (media.mediaType === 'IMAGE' && media.imageProcessingStatus === 'FAILED')
+
+  if (!isFailed) {
+    res.status(400).json({
+      success: false,
+      error: 'Media is not in a failed state and cannot be reprocessed'
+    })
+    return
+  }
+
+  try {
+    // Reset processing status and related fields
+    const updateData: any = {
+      processingStatus: 'PENDING'
+    }
+
+    if (media.mediaType === 'VIDEO') {
+      updateData.videoProcessingStatus = 'PENDING'
+      updateData.duration = null
+      updateData.width = null
+      updateData.height = null
+      updateData.codec = null
+      updateData.bitrate = null
+      updateData.framerate = null
+      updateData.videoUrl = null
+      updateData.videoThumbnails = null
+      updateData.videoVersions = null
+    } else if (media.mediaType === 'IMAGE') {
+      updateData.imageProcessingStatus = 'PENDING'
+      updateData.width = null
+      updateData.height = null
+      updateData.thumbnailS3Key = null
+      updateData.imageVersions = null
+    }
+
+    // Update the media record
+    await prisma.media.update({
+      where: { id: mediaId },
+      data: updateData
+    })
+
+    // Re-queue for processing
+    if (media.mediaType === 'VIDEO') {
+      const videoProcessingService = req.app.locals.videoProcessingService
+      if (videoProcessingService) {
+        await videoProcessingService.createProcessingJob(
+          media.id,
+          userId,
+          media.s3Key,
+          media.originalFilename,
+          media.mimeType,
+          media.size,
+          true, // request progress updates
+          5 // progress interval
+        )
+        console.log(`Video reprocessing job queued for media ${media.id}`)
+      } else {
+        console.warn('Video processing service not available, cannot reprocess video')
+        res.status(503).json({
+          success: false,
+          error: 'Video processing service not available'
+        })
+        return
+      }
+    } else if (media.mediaType === 'IMAGE') {
+      const imageProcessingService = req.app.locals.imageProcessingService
+      if (imageProcessingService) {
+        await imageProcessingService.requestImageProcessing(
+          media.id,
+          userId,
+          media.s3Key,
+          media.originalFilename
+        )
+        console.log(`Image reprocessing job queued for media ${media.id}`)
+      } else {
+        console.warn('Image processing service not available, cannot reprocess image')
+        res.status(503).json({
+          success: false,
+          error: 'Image processing service not available'
+        })
+        return
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${media.mediaType === 'VIDEO' ? 'Video' : 'Image'} reprocessing started successfully`
+    })
+
+  } catch (error) {
+    console.error(`Failed to reprocess media ${mediaId}:`, error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start reprocessing'
+    })
+  }
+}))
+
 export default router 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Clock } from 'lucide-react'
+import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Clock, RefreshCw } from 'lucide-react'
 import { TagInput } from '../tag-input'
 import { Media } from '@/lib/types'
-import { useUpdateMedia } from '@/lib/api-hooks'
+import { useUpdateMedia, useReprocessMedia } from '@/lib/api-hooks'
 
 interface MediaMetadataPanelProps {
   media: Media
@@ -44,6 +44,7 @@ export function MediaMetadataPanel({
   const [localTags, setLocalTags] = useState<string[]>(media?.tags || [])
   
   const updateMediaMutation = useUpdateMedia()
+  const reprocessMediaMutation = useReprocessMedia()
 
   // Update local state when media prop changes
   useEffect(() => {
@@ -211,6 +212,15 @@ export function MediaMetadataPanel({
     }
   }
 
+  const handleReprocess = async () => {
+    try {
+      await reprocessMediaMutation.mutateAsync(media.id)
+      // The query invalidation in the hook will automatically refresh the UI
+    } catch (error) {
+      console.error('Failed to reprocess media:', error)
+    }
+  }
+
   return (
     <div className="p-4 border-b border-gray-200">
       <div className="flex items-start justify-between mb-2">
@@ -289,7 +299,7 @@ export function MediaMetadataPanel({
               {media.originalFilename && (
                 <span className="flex items-center">
                   <FileText className="h-3 w-3 mr-1" />
-                  {media.originalFilename}
+                  {media.originalFilename.slice(0, 10)}
                 </span>
               )}
               {mediaType === 'VIDEO' && duration && (
@@ -307,16 +317,35 @@ export function MediaMetadataPanel({
             </div>
           </div>
         )}
-        
-        {!isEditing && isOwner && (
-          <button
-            onClick={handleStartEdit}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-            title={`Edit ${mediaType === 'IMAGE' ? 'Image' : 'Video'}`}
-          >
-            <Edit2 className="h-4 w-4" />
-          </button>
-        )}
+
+        <div className="flex items-center space-x-2">
+          {!isEditing && isOwner && (
+            <button
+              onClick={handleStartEdit}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+              title={`Edit ${mediaType === 'IMAGE' ? 'Image' : 'Video'}`}
+            >
+              <Edit2 className="h-4 w-4" />
+            </button>
+          )}
+          
+          {/* Reprocess button - only show for failed media owned by the user */}
+          {!isEditing && isOwner && (
+            (processingStatus === 'FAILED') && (
+            <button
+              onClick={handleReprocess}
+              disabled={reprocessMediaMutation.isPending}
+              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors duration-200"
+              title="Reprocess Media"
+            >
+              {reprocessMediaMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Slideshow Speed Control */}

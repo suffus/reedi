@@ -1469,6 +1469,34 @@ export const useReorderGalleryMedia = () => {
   })
 }
 
+// Reprocess media hook
+export const useReprocessMedia = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (mediaId: string) => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/media/${mediaId}/reprocess`, {
+        method: 'POST',
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to reprocess media')
+      
+      return data
+    },
+    onSuccess: (_, mediaId) => {
+      // Invalidate media queries to refresh the processing status
+      queryClient.invalidateQueries({ queryKey: ['media', mediaId] })
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+    }
+  })
+}
+
 // Video quality hooks
 export interface VideoQuality {
   quality: string
