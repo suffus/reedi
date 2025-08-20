@@ -1,13 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Calendar, User, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Edit2, Save, X as XIcon, ChevronLeft, ChevronRight, FileText, Video, HardDrive, PanelLeftClose, PanelLeftOpen, Loader2, Clock } from 'lucide-react'
+import { X, MessageCircle, Send, Play, Pause, Volume2, VolumeX, Maximize, Minimize, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMediaComments, useCreateComment, useAuth, useUpdateMedia, useVideoQualities, VideoQuality } from '@/lib/api-hooks'
+import { useMediaComments, useCreateComment, useAuth, useVideoQualities, VideoQuality } from '@/lib/api-hooks'
 import { getMediaUrlFromMedia } from '@/lib/api'
-import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
+import { MediaMetadataPanel } from '@/components/common/media-metadata-panel'
 
 /**
  * VideoDetailModal Component
@@ -39,33 +39,10 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
   const router = useRouter()
   const [commentText, setCommentText] = useState('')
-  const [isEditing, setIsEditing] = useState(false)
-  const [editTitle, setEditTitle] = useState('')
-  const [editDescription, setEditDescription] = useState('')
-  const [editTags, setEditTags] = useState<string[]>([])
-  const [localTitle, setLocalTitle] = useState(media?.altText || '')
-  const [localDescription, setLocalDescription] = useState(media?.caption || '')
-  const [localTags, setLocalTags] = useState<string[]>(media?.tags || [])
+
   
-  // Unsaved changes tracking
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] = useState(false)
-  const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null)
-  
-  // Update local state when media prop changes (for navigation)
+  // Update video player state when media prop changes (for navigation)
   useEffect(() => {
-    setLocalTitle(media?.altText || '')
-    setLocalDescription(media?.caption || '')
-    setLocalTags(media?.tags || [])
-    // Reset edit state when navigating to a new media
-    setIsEditing(false)
-    setEditTitle('')
-    setEditDescription('')
-    setEditTags([])
-    // Reset unsaved changes tracking
-    setHasUnsavedChanges(false)
-    setShowUnsavedChangesDialog(false)
-    setPendingNavigation(null)
     // Reset video player state when navigating to a new video
     setIsPlaying(false)
     setCurrentTime(0)
@@ -74,7 +51,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setIsMuted(false)
     setIsFullscreen(false)
     setShowControls(true)
-  }, [media?.id, media?.altText, media?.caption, media?.tags])
+  }, [media?.id])
   const [isPanelMinimized, setIsPanelMinimized] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -97,7 +74,6 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   
   const { data: commentsData, isLoading: commentsLoading } = useMediaComments(media.id)
   const createCommentMutation = useCreateComment()
-  const updateMediaMutation = useUpdateMedia()
   const { data: authData } = useAuth()
   
   // Video quality functionality
@@ -124,49 +100,21 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
 
 
-  // Navigation with unsaved changes handling
-  const handleNavigationWithUnsavedChanges = useCallback((navigationFunction: () => void) => {
-    if (hasUnsavedChanges) {
-      setShowUnsavedChangesDialog(true)
-      setPendingNavigation(() => navigationFunction)
-    } else {
-      navigationFunction()
-    }
-  }, [hasUnsavedChanges])
-
-  const handleConfirmNavigation = useCallback(() => {
-    setShowUnsavedChangesDialog(false)
-    if (pendingNavigation) {
-      pendingNavigation()
-      setPendingNavigation(null)
-    }
-  }, [pendingNavigation])
-
-  const handleCancelNavigation = useCallback(() => {
-    setShowUnsavedChangesDialog(false)
-    setPendingNavigation(null)
-  }, [])
-
   const handleClose = useCallback(() => {
-    if (hasUnsavedChanges) {
-      setShowUnsavedChangesDialog(true)
-      setPendingNavigation(() => onClose)
-    } else {
-      onClose()
-    }
-  }, [hasUnsavedChanges, onClose])
+    onClose()
+  }, [onClose])
 
   const handleNext = useCallback(() => {
     if (!canNavigate || !hasNext) return
     const nextIndex = currentIndex + 1
-    handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[nextIndex]))
-  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
+    onNavigate(allMedia[nextIndex])
+  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia])
 
   const handlePrev = useCallback(() => {
     if (!canNavigate || !hasPrev) return
     const prevIndex = currentIndex - 1
-    handleNavigationWithUnsavedChanges(() => onNavigate(allMedia[prevIndex]))
-  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia, handleNavigationWithUnsavedChanges])
+    onNavigate(allMedia[prevIndex])
+  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia])
 
   // Video event handlers
   const handlePlay = () => {
@@ -553,78 +501,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }
 
-  // Track changes in edit fields
-  const handleEditTitleChange = (value: string) => {
-    setEditTitle(value)
-    // Only check for changes if we're in editing mode
-    if (isEditing) {
-      setHasUnsavedChanges(value !== localTitle || editDescription !== localDescription || JSON.stringify(editTags) !== JSON.stringify(localTags))
-    }
-  }
 
-  const handleEditDescriptionChange = (value: string) => {
-    setEditDescription(value)
-    // Only check for changes if we're in editing mode
-    if (isEditing) {
-      setHasUnsavedChanges(editTitle !== localTitle || value !== localDescription || JSON.stringify(editTags) !== JSON.stringify(localTags))
-    }
-  }
-
-  const handleEditTagsChange = (tags: string[]) => {
-    setEditTags(tags)
-    // Only check for changes if we're in editing mode
-    if (isEditing) {
-      setHasUnsavedChanges(editTitle !== localTitle || editDescription !== localDescription || JSON.stringify(tags) !== JSON.stringify(localTags))
-    }
-  }
-
-  const handleStartEdit = () => {
-    setEditTitle(localTitle)
-    setEditDescription(localDescription)
-    setEditTags([...localTags])
-    setIsEditing(true)
-    setHasUnsavedChanges(false)
-  }
-
-  const handleCancelEdit = () => {
-    setIsEditing(false)
-    setEditTitle('')
-    setEditDescription('')
-    setEditTags([])
-    setHasUnsavedChanges(false)
-  }
-
-  const handleSaveEdit = async () => {
-    try {
-      await updateMediaMutation.mutateAsync({
-        mediaId: media.id,
-        title: editTitle,
-        description: editDescription,
-        tags: editTags
-      })
-      
-      setLocalTitle(editTitle)
-      setLocalDescription(editDescription)
-      setLocalTags([...editTags])
-      setIsEditing(false)
-      setHasUnsavedChanges(false)
-      
-      // Update the media prop if updateMedia function is provided
-      if (updateMedia) {
-        updateMedia(media.id, {
-          altText: editTitle,
-          caption: editDescription,
-          tags: editTags
-        })
-      }
-      
-      if (onMediaUpdate) {
-        onMediaUpdate()
-      }
-    } catch (error) {
-      console.error('Failed to update media:', error)
-    }
-  }
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -665,37 +542,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }, [media?.id, slideshow.isSlideshowActive, isProcessing])
 
-  // Get status message and icon
-  const getProcessingInfo = () => {
-    switch (processingStatus) {
-      case 'PENDING':
-        return {
-          message: 'Video is queued for processing...',
-          icon: <Clock className="h-8 w-8 text-blue-500" />,
-          color: 'text-blue-600'
-        }
-      case 'PROCESSING':
-        return {
-          message: 'Video is being processed...',
-          icon: <Loader2 className="h-8 w-8 text-yellow-500 animate-spin" />,
-          color: 'text-yellow-600'
-        }
-      case 'FAILED':
-        return {
-          message: 'Video processing failed. Please try uploading again.',
-          icon: <X className="h-8 w-8 text-red-500" />,
-          color: 'text-red-600'
-        }
-      default:
-        return {
-          message: 'Video is being prepared...',
-          icon: <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />,
-          color: 'text-blue-600'
-        }
-    }
-  }
 
-  const processingInfo = getProcessingInfo()
 
   return (
     <AnimatePresence>
@@ -836,9 +683,9 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             {isProcessing ? (
               // Processing overlay
               <div className="flex flex-col items-center justify-center text-center p-8 bg-black bg-opacity-75 rounded-lg">
-                {processingInfo.icon}
-                <h3 className={`text-xl font-semibold mt-4 ${processingInfo.color}`}>
-                  {processingInfo.message}
+                <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+                <h3 className="text-xl font-semibold mt-4 text-blue-600">
+                  Video is being processed...
                 </h3>
                 <p className="text-gray-300 mt-2 text-sm">
                   This may take a few minutes depending on the video size.
@@ -1042,113 +889,22 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               <MessageCircle className="h-4 w-4 text-gray-400" />
             </div>
           ) : (
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-start justify-between mb-2">
-                {isEditing ? (
-                  <div className="flex-1 space-y-3">
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => handleEditTitleChange(e.target.value)}
-                      placeholder="Video title..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
-                    />
-                    <textarea
-                      value={editDescription}
-                      onChange={(e) => handleEditDescriptionChange(e.target.value)}
-                      placeholder="Video description..."
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
-                    />
-                    <TagInput
-                      tags={editTags}
-                      onTagsChange={handleEditTagsChange}
-                      placeholder="Add tags..."
-                      className="w-full"
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={handleSaveEdit}
-                        disabled={updateMediaMutation.isPending}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
-                      >
-                        {updateMediaMutation.isPending ? 'Saving...' : 'Save'}
-                      </button>
-                      <button
-                        onClick={handleCancelEdit}
-                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors duration-200 text-sm"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                      {localTitle || 'Untitled Video'}
-                    </h3>
-                    {localDescription && (
-                      <p className="text-gray-600 text-sm mb-2">{localDescription}</p>
-                    )}
-                    {localTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {localTags.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center space-x-4 text-xs text-gray-500">
-                      <span className="flex items-center">
-                        <Calendar className="h-3 w-3 mr-1" />
-                        {formatDate(media.createdAt)}
-                      </span>
-                      <span className="flex items-center">
-                        <User className="h-3 w-3 mr-1" />
-                        <button
-                          onClick={() => handleAuthorClick(media.authorId, null)}
-                          className="hover:text-blue-600 transition-colors duration-200"
-                        >
-                          Unknown User
-                        </button>
-                      </span>
-                      {media.originalFilename && (
-                        <span className="flex items-center">
-                          <FileText className="h-3 w-3 mr-1" />
-                          {media.originalFilename}
-                        </span>
-                      )}
-                      {media.duration && (
-                        <span className="flex items-center">
-                          <Video className="h-3 w-3 mr-1" />
-                          {formatTime(media.duration)}
-                        </span>
-                      )}
-                      {isProcessing && (
-                        <span className={`flex items-center ${processingInfo.color}`}>
-                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          {processingStatus}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {!isEditing && isOwner && (
-                  <button
-                    onClick={handleStartEdit}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                    title="Edit Video"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </div>
+            <MediaMetadataPanel
+              media={media}
+              isOwner={isOwner}
+              onMediaUpdate={onMediaUpdate}
+              updateMedia={updateMedia}
+              slideshow={{
+                isSlideshowActive: slideshow.isSlideshowActive,
+                currentSlideshowSpeed: slideshow.currentSlideshowSpeed,
+                updateSlideshowSpeed: slideshow.updateSlideshowSpeed
+              }}
+              canNavigate={!!canNavigate}
+              allMedia={allMedia}
+              mediaType="VIDEO"
+              processingStatus={processingStatus}
+              duration={media.duration}
+            />
           )}
 
           {/* Comments */}
@@ -1227,48 +983,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         </motion.div>
       </motion.div>
 
-      {/* Unsaved Changes Dialog */}
-      <AnimatePresence>
-        {showUnsavedChangesDialog && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Unsaved Changes
-              </h3>
-              <p className="text-gray-600 mb-6">
-                You have unsaved changes to this media. Do you want to save them before continuing?
-              </p>
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleCancelNavigation}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmNavigation}
-                  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200"
-                >
-                  Discard Changes
-                </button>
-                <button
-                  onClick={async () => {
-                    await handleSaveEdit()
-                    if (pendingNavigation) {
-                      pendingNavigation()
-                      setPendingNavigation(null)
-                    }
-                    setShowUnsavedChangesDialog(false)
-                  }}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                >
-                  Save & Continue
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+
     </AnimatePresence>
   )
 } 
