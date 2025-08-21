@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Clock, RefreshCw } from 'lucide-react'
 import { TagInput } from '../tag-input'
 import { Media } from '@/lib/types'
@@ -21,9 +21,17 @@ interface MediaMetadataPanelProps {
   mediaType: 'IMAGE' | 'VIDEO'
   processingStatus?: string
   duration?: number
+  // Unsaved changes callback
+  onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
 
-export function MediaMetadataPanel({ 
+export interface MediaMetadataPanelRef {
+  discardUnsavedChanges: () => void
+  saveChanges: () => Promise<void>
+  hasUnsavedChanges: boolean
+}
+
+export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadataPanelProps>(({ 
   media, 
   isOwner, 
   onMediaUpdate, 
@@ -33,8 +41,9 @@ export function MediaMetadataPanel({
   allMedia,
   mediaType,
   processingStatus,
-  duration
-}: MediaMetadataPanelProps) {
+  duration,
+  onUnsavedChangesChange
+}, ref) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
@@ -45,6 +54,20 @@ export function MediaMetadataPanel({
   
   const updateMediaMutation = useUpdateMedia()
   const reprocessMediaMutation = useReprocessMedia()
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = isEditing && (
+    editTitle !== localTitle ||
+    editDescription !== localDescription ||
+    JSON.stringify(editTags) !== JSON.stringify(localTags)
+  )
+
+  // Notify parent component of unsaved changes state
+  useEffect(() => {
+    if (onUnsavedChangesChange) {
+      onUnsavedChangesChange(hasUnsavedChanges)
+    }
+  }, [hasUnsavedChanges, onUnsavedChangesChange])
 
   // Update local state when media prop changes
   useEffect(() => {
@@ -83,6 +106,20 @@ export function MediaMetadataPanel({
     setEditDescription('')
     setEditTags([])
   }
+
+  // Function to discard unsaved changes (can be called by parent component)
+  const discardUnsavedChanges = () => {
+    if (hasUnsavedChanges) {
+      handleCancelEdit()
+    }
+  }
+
+  // Expose discard function to parent component
+  useImperativeHandle(ref, () => ({
+    discardUnsavedChanges,
+    saveChanges: handleSaveEdit,
+    hasUnsavedChanges
+  }), [hasUnsavedChanges])
 
   const handleSaveEdit = async () => {
     try {
@@ -381,4 +418,4 @@ export function MediaMetadataPanel({
       )}
     </div>
   )
-}
+})

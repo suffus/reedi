@@ -1,39 +1,63 @@
 /**
- * Downloads a file in the background without replacing the interface
- * @param url - The URL of the file to download
+ * Utility functions for downloading media files
+ */
+
+/**
+ * Download a file from a URL with a custom filename
+ * @param url - The URL to download from
  * @param filename - The filename to save as
- * @returns Promise that resolves when download starts
  */
 export async function downloadFile(url: string, filename: string): Promise<void> {
   try {
-    // Fetch the file
+    // Fetch the file as a blob to ensure proper download
     const response = await fetch(url)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     
-    // Get the blob
     const blob = await response.blob()
     
-    // Create a blob URL
-    const blobUrl = window.URL.createObjectURL(blob)
-    
-    // Create a temporary link element
+    // Create a temporary anchor element
     const link = document.createElement('a')
-    link.href = blobUrl
+    link.href = URL.createObjectURL(blob)
     link.download = filename
     
-    // Append to body, click, and remove
+    // Append to DOM, click, and remove
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     
-    // Clean up the blob URL
-    window.URL.revokeObjectURL(blobUrl)
+    // Clean up the object URL
+    URL.revokeObjectURL(link.href)
   } catch (error) {
-    console.error('Download failed:', error)
-    throw error
+    console.error('Failed to download file:', error)
+    throw new Error('Download failed')
+  }
+}
+
+/**
+ * Download a file from a blob with a custom filename
+ * @param blob - The blob to download
+ * @param filename - The filename to save as
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  try {
+    // Create a temporary anchor element
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = filename
+    
+    // Append to DOM, click, and remove
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    // Clean up the object URL
+    URL.revokeObjectURL(link.href)
+  } catch (error) {
+    console.error('Failed to download blob:', error)
+    throw new Error('Download failed')
   }
 }
 
@@ -61,5 +85,78 @@ export async function downloadMedia(
   
   const filename = `${safeName}.${extension}`
   
-  return downloadFile(mediaUrl, filename)
+  // Use the blob-based download approach for consistency
+  try {
+    const response = await fetch(mediaUrl)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const blob = await response.blob()
+    
+    // Create a temporary anchor element
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = filename
+    
+    // Append to DOM, click, and remove
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    // Clean up the object URL
+    URL.revokeObjectURL(link.href)
+  } catch (error) {
+    console.error('Failed to download media:', error)
+    throw new Error('Download failed')
+  }
+}
+
+/**
+ * Generate a filename for media download
+ * @param originalName - The original filename
+ * @param mediaType - The type of media (IMAGE or VIDEO)
+ * @param extension - The file extension (e.g., '.jpg', '.mp4')
+ */
+export function generateDownloadFilename(
+  originalName: string | null, 
+  mediaType: 'IMAGE' | 'VIDEO', 
+  extension: string
+): string {
+  if (originalName) {
+    // If original name exists, use it but ensure it has the right extension
+    const nameWithoutExt = originalName.replace(/\.[^/.]+$/, '')
+    return `${nameWithoutExt}${extension}`
+  }
+  
+  // Generate a timestamp-based filename
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+  const type = mediaType.toLowerCase()
+  return `${type}-${timestamp}${extension}`
+}
+
+/**
+ * Get the appropriate file extension for a media type and MIME type
+ * @param mediaType - The type of media (IMAGE or VIDEO)
+ * @param mimeType - The MIME type of the media
+ */
+export function getFileExtension(mediaType: 'IMAGE' | 'VIDEO', mimeType: string | null): string {
+  if (mimeType) {
+    // Try to extract extension from MIME type
+    const extension = mimeType.split('/')[1]
+    if (extension) {
+      return `.${extension}`
+    }
+  }
+  
+  // Fallback to common extensions
+  switch (mediaType) {
+    case 'IMAGE':
+      return '.jpg'
+    case 'VIDEO':
+      return '.mp4'
+    default:
+      return '.bin'
+  }
 } 
