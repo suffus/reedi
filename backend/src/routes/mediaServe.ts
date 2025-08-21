@@ -19,8 +19,51 @@ const s3Client = new S3Client({
   forcePathStyle: true
 })
 
+// Track active connections for debugging
+let activeConnections = 0
+let totalConnections = 0
+let failedConnections = 0
+
+// Log connection stats every 30 seconds
+setInterval(() => {
+  console.log(`🔗 MediaServe Connection Stats: Active: ${activeConnections}, Total: ${totalConnections}, Failed: ${failedConnections}`)
+}, 30000)
+
 // Function to stream video from S3
 async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Request, res: Response) {
+  const connectionId = ++totalConnections
+  activeConnections++
+  
+  console.log(`🎥 [${connectionId}] Starting video stream for ${s3Key}`)
+  
+  // Track if this connection has been cleaned up
+  let connectionCleanedUp = false
+  
+  const cleanupConnection = () => {
+    if (!connectionCleanedUp) {
+      connectionCleanedUp = true
+      activeConnections--
+      console.log(`🎥 [${connectionId}] Connection cleaned up, active connections: ${activeConnections}`)
+    }
+  }
+  
+  // Set a timeout to force cleanup if connection hangs
+  const connectionTimeout = setTimeout(() => {
+    console.warn(`🎥 [${connectionId}] Connection timeout - forcing cleanup`)
+    cleanupConnection()
+    if (!res.headersSent) {
+      res.status(408).json({
+        success: false,
+        error: 'Request timeout'
+      })
+    } else {
+      res.end()
+    }
+  }, 30000) // 30 second timeout
+  
+  // Add S3 request timeout and detailed debugging
+  const s3StartTime = Date.now()
+  
   try {
     const bucket = process.env.IDRIVE_BUCKET_NAME || ''
     
@@ -34,12 +77,26 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
       ...(range && { Range: range })
     })
     
-    // Get the object from S3
-    const response = await s3Client.send(command)
+    console.log(`🎥 [${connectionId}] S3 request prepared, sending command...`)
+    
+    console.log(`🎥 [${connectionId}] S3 request start time: ${s3StartTime}`)
+    
+    // Get the object from S3 with detailed timing
+    const response = await Promise.race([
+      s3Client.send(command),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('S3 request timeout')), 25000)
+      )
+    ])
+    
+    const s3Time = Date.now() - s3StartTime
+    console.log(`🎥 [${connectionId}] S3 response received in ${s3Time}ms`)
     
     if (!response.Body) {
       throw new Error('No body in S3 response')
     }
+    
+    console.log(`🎥 [${connectionId}] S3 response received, setting up stream...`)
     
     // Set appropriate headers
     res.setHeader('Content-Type', mimeType || 'video/mp4')
@@ -57,19 +114,121 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
     
     // Stream the video data directly to the response
     const stream = response.Body as any
+    
+    // Add comprehensive error handling for the stream
+    stream.on('error', (error: any) => {
+      console.error(`🎥 [${connectionId}] Stream error:`, error)
+      failedConnections++
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+      
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Stream error occurred'
+        })
+      } else {
+        res.end()
+      }
+    })
+    
+    stream.on('end', () => {
+      console.log(`🎥 [${connectionId}] Stream ended successfully`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    stream.on('close', () => {
+      console.log(`🎥 [${connectionId}] Stream closed`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    // Handle response errors
+    res.on('error', (error: any) => {
+      console.error(`🎥 [${connectionId}] Response error:`, error)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    res.on('close', () => {
+      console.log(`🎥 [${connectionId}] Response closed`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    res.on('finish', () => {
+      console.log(`🎥 [${connectionId}] Response finished successfully`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log(`🎥 [${connectionId}] Client disconnected`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    req.on('aborted', () => {
+      console.log(`🎥 [${connectionId}] Request aborted by client`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    console.log(`🎥 [${connectionId}] Starting pipe operation...`)
     stream.pipe(res)
     
   } catch (error) {
-    console.error('Error streaming video from S3:', error)
-    res.status(500).json({
-      success: false,
-      error: 'Error streaming video'
-    })
+    const s3Time = Date.now() - s3StartTime
+    console.error(`🎥 [${connectionId}] Error streaming video from S3 after ${s3Time}ms:`, error)
+    failedConnections++
+    clearTimeout(connectionTimeout)
+    cleanupConnection()
+    
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Error streaming video'
+      })
+    } else {
+      res.end()
+    }
   }
 }
 
 // Function to stream image from S3
 async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Request, res: Response) {
+  const connectionId = ++totalConnections
+  activeConnections++
+  
+  console.log(`🖼️ [${connectionId}] Starting image stream for ${s3Key}`)
+  
+  // Track if this connection has been cleaned up
+  let connectionCleanedUp = false
+  
+  const cleanupConnection = () => {
+    if (!connectionCleanedUp) {
+      connectionCleanedUp = true
+      activeConnections--
+      console.log(`🖼️ [${connectionId}] Connection cleaned up, active connections: ${activeConnections}`)
+    }
+  }
+  
+  // Set a timeout to force cleanup if connection hangs
+  const connectionTimeout = setTimeout(() => {
+    console.warn(`🖼️ [${connectionId}] Connection timeout - forcing cleanup`)
+    cleanupConnection()
+    if (!res.headersSent) {
+      res.status(408).json({
+        success: false,
+        error: 'Request timeout'
+      })
+    } else {
+      res.end()
+    }
+  }, 15000) // 15 second timeout for images (shorter than videos)
+  
   try {
     const bucket = process.env.IDRIVE_BUCKET_NAME || ''
     
@@ -79,12 +238,16 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
       Key: s3Key
     })
     
+    console.log(`🖼️ [${connectionId}] S3 request prepared, sending command...`)
+    
     // Get the object from S3
     const response = await s3Client.send(command)
     
     if (!response.Body) {
       throw new Error('No body in S3 response')
     }
+    
+    console.log(`🖼️ [${connectionId}] S3 response received, setting up stream...`)
     
     // Set appropriate headers for images
     res.setHeader('Content-Type', mimeType || 'image/jpeg')
@@ -93,14 +256,85 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     
     // Stream the image data directly to the response
     const stream = response.Body as any
+    
+    // Add comprehensive error handling for the stream
+    stream.on('error', (error: any) => {
+      console.error(`🖼️ [${connectionId}] Stream error:`, error)
+      failedConnections++
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+      
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Stream error occurred'
+        })
+      } else {
+        res.end()
+      }
+    })
+    
+    stream.on('end', () => {
+      console.log(`🖼️ [${connectionId}] Stream ended successfully`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    stream.on('close', () => {
+      console.log(`🖼️ [${connectionId}] Stream closed`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    // Handle response errors
+    res.on('error', (error: any) => {
+      console.error(`🖼️ [${connectionId}] Response error:`, error)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    res.on('close', () => {
+      console.log(`🖼️ [${connectionId}] Response closed`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    res.on('finish', () => {
+      console.log(`🖼️ [${connectionId}] Response finished successfully`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log(`🖼️ [${connectionId}] Client disconnected`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    req.on('aborted', () => {
+      console.log(`🖼️ [${connectionId}] Request aborted by client`)
+      clearTimeout(connectionTimeout)
+      cleanupConnection()
+    })
+    
+    console.log(`🖼️ [${connectionId}] Starting pipe operation...`)
     stream.pipe(res)
     
   } catch (error) {
-    console.error('Error streaming image from S3:', error)
-    res.status(500).json({
-      success: false,
-      error: 'Error streaming image'
-    })
+    console.error(`🖼️ [${connectionId}] Error streaming image from S3:`, error)
+    failedConnections++
+    clearTimeout(connectionTimeout)
+    cleanupConnection()
+    
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Error streaming image'
+      })
+    } else {
+      res.end()
+    }
   }
 }
 
@@ -158,7 +392,18 @@ async function canViewMediaWithData(media: any, viewerId?: string): Promise<bool
 }
 
 // Helper function to get media and check permissions in the correct order
-async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, selectFields?: any)  {
+async function getMediaAndCheckPermissions(
+  mediaId: string, 
+  viewerId?: string, 
+  selectFields?: {
+    s3Key?: boolean
+    thumbnailS3Key?: boolean
+    videoS3Key?: boolean
+    mimeType?: boolean
+    mediaType?: boolean
+    processingStatus?: boolean
+  }
+) {
   // First check if media exists
   const media = await prisma.media.findUnique({
     where: { id: mediaId },
@@ -166,7 +411,7 @@ async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, s
       id: true,
       visibility: true,
       authorId: true,
-      ...selectFields
+      ...(selectFields || {})
     }
   })
 
@@ -179,7 +424,6 @@ async function getMediaAndCheckPermissions(mediaId: string, viewerId?: string, s
   if (!canView) {
     return { media: null, canView: false, error: 'FORBIDDEN' as const }
   }
-
 
   return { media, canView: true, error: null }
 }
@@ -206,6 +450,9 @@ async function canViewMedia(mediaId: string, viewerId?: string): Promise<boolean
 router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
   const viewerId = req.user?.id
+  const startTime = Date.now()
+
+  console.log(`📺 [${id}] Media serve request started for user: ${viewerId || 'anonymous'}`)
 
   // Handle locked media placeholders
   if (id === 'locked-image' || id === 'locked-video') {
@@ -240,10 +487,14 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
     
     res.end(svgBuffer)
+    console.log(`📺 [${id}] Locked media placeholder served in ${Date.now() - startTime}ms`)
     return
   }
 
   // Get media and check permissions in the correct order
+  const dbStartTime = Date.now()
+  console.log(`📺 [${id}] Starting database queries...`)
+  
   const { media, canView, error } = await getMediaAndCheckPermissions(id, viewerId, {
     s3Key: true,
     thumbnailS3Key: true,
@@ -253,7 +504,11 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     processingStatus: true
   })
 
+  const dbTime = Date.now() - dbStartTime
+  console.log(`📺 [${id}] Database queries completed in ${dbTime}ms`)
+
   if (error === 'NOT_FOUND') {
+    console.log(`📺 [${id}] Media not found`)
     res.status(404).json({
       success: false,
       error: 'Media not found'
@@ -262,6 +517,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
   }
 
   if (error === 'FORBIDDEN') {
+    console.log(`📺 [${id}] Access denied for user ${viewerId}`)
     res.status(403).json({
       success: false,
       error: 'Access denied'
@@ -271,6 +527,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 
   // At this point, media should not be null
   if (!media) {
+    console.error(`📺 [${id}] Internal server error: media is null after permission check`)
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -278,15 +535,15 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-
   const mediaType = media.mediaType
   const processingStatus = media.processingStatus
   const mimeType = media.mimeType
 
-
+  console.log(`📺 [${id}] Media type: ${mediaType}, Processing status: ${processingStatus}`)
 
   // For videos that are still processing, return a placeholder or error
   if (mediaType === 'VIDEO' && processingStatus !== 'COMPLETED') {
+    console.log(`📺 [${id}] Video still processing: ${processingStatus}`)
     res.status(202).json({
       success: false,
       error: 'Video is still processing',
@@ -303,6 +560,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     }
 
     if (!s3Key) {
+      console.error(`📺 [${id}] No S3 key found for media`)
       res.status(404).json({
         success: false,
         error: 'Media file not found'
@@ -310,12 +568,20 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
       return
     }
 
+    console.log(`📺 [${id}] Serving media with S3 key: ${s3Key}`)
+
     // For videos, use streaming approach
     if (mediaType === 'VIDEO') {
       await streamVideoFromS3(s3Key, mimeType, req, res)
     } else {
       // For images, use the existing approach
+      const s3StartTime = Date.now()
+      console.log(`📺 [${id}] Fetching image from S3...`)
+      
       const mediaBuffer = await getImageFromS3(s3Key)
+      
+      const s3Time = Date.now() - s3StartTime
+      console.log(`📺 [${id}] S3 fetch completed in ${s3Time}ms, buffer size: ${mediaBuffer.length} bytes`)
       
       // Set appropriate headers
       res.setHeader('Content-Type', mimeType || 'application/octet-stream')
@@ -323,10 +589,11 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
       res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
       
       res.end(mediaBuffer)
+      console.log(`📺 [${id}] Image served successfully in ${Date.now() - startTime}ms`)
     }
 
   } catch (error) {
-    console.error('Error serving media:', error)
+    console.error(`📺 [${id}] Error serving media:`, error)
     res.status(500).json({
       success: false,
       error: 'Error serving media'
@@ -338,6 +605,9 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
   const viewerId = req.user?.id
+  const startTime = Date.now()
+
+  console.log(`🖼️ [${id}] Thumbnail request started for user: ${viewerId || 'anonymous'}`)
 
   // Handle locked media placeholders
   if (id === 'locked-image' || id === 'locked-video') {
@@ -372,12 +642,21 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
     
     res.end(svgBuffer)
+    console.log(`🖼️ [${id}] Locked thumbnail placeholder served in ${Date.now() - startTime}ms`)
     return
   }
 
   // Check if user can view this media
+  const permissionStartTime = Date.now()
+  console.log(`🖼️ [${id}] Checking permissions...`)
+  
   const canView = await canViewMedia(id, viewerId)
+  
+  const permissionTime = Date.now() - permissionStartTime
+  console.log(`🖼️ [${id}] Permission check completed in ${permissionTime}ms, result: ${canView}`)
+  
   if (!canView) {
+    console.log(`🖼️ [${id}] Access denied for user ${viewerId}`)
     res.status(403).json({
       success: false,
       error: 'Access denied'
@@ -385,6 +664,9 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     return
   }
 
+  const dbStartTime = Date.now()
+  console.log(`🖼️ [${id}] Fetching media from database...`)
+  
   const media = await prisma.media.findUnique({
     where: { id },
     select: {
@@ -397,7 +679,11 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     }
   })
 
+  const dbTime = Date.now() - dbStartTime
+  console.log(`🖼️ [${id}] Database query completed in ${dbTime}ms`)
+
   if (!media) {
+    console.log(`🖼️ [${id}] Media not found`)
     res.status(404).json({
       success: false,
       error: 'Media not found'
@@ -407,6 +693,7 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
 
   // For videos that are still processing, return a placeholder
   if (media.mediaType === 'VIDEO' && media.processingStatus !== 'COMPLETED') {
+    console.log(`🖼️ [${id}] Video thumbnail still processing: ${media.processingStatus}`)
     res.status(202).json({
       success: false,
       error: 'Video thumbnail is still processing',
@@ -424,15 +711,18 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
       if (videoThumbnails && videoThumbnails.length > 0) {
         // Use the first thumbnail (or could implement logic to pick the best one)
         thumbnailS3Key = videoThumbnails[0].s3_key || videoThumbnails[0].s3Key
+        console.log(`🖼️ [${id}] Using processed video thumbnail: ${thumbnailS3Key}`)
       }
     }
 
     // Fall back to original thumbnailS3Key if no processed thumbnails
     if (!thumbnailS3Key) {
       thumbnailS3Key = media.thumbnailS3Key
+      console.log(`🖼️ [${id}] Using original thumbnail: ${thumbnailS3Key}`)
     }
 
     if (!thumbnailS3Key) {
+      console.error(`🖼️ [${id}] No thumbnail S3 key found`)
       res.status(404).json({
         success: false,
         error: 'Thumbnail not found'
@@ -441,7 +731,13 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     }
 
     // Get thumbnail from S3
+    const s3StartTime = Date.now()
+    console.log(`🖼️ [${id}] Fetching thumbnail from S3: ${thumbnailS3Key}`)
+    
     const thumbnailBuffer = await getImageFromS3(thumbnailS3Key)
+    
+    const s3Time = Date.now() - s3StartTime
+    console.log(`🖼️ [${id}] S3 fetch completed in ${s3Time}ms, buffer size: ${thumbnailBuffer.length} bytes`)
 
     // Set appropriate headers
     res.setHeader('Content-Type', 'image/jpeg')
@@ -449,9 +745,10 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
 
     res.end(thumbnailBuffer)
+    console.log(`🖼️ [${id}] Thumbnail served successfully in ${Date.now() - startTime}ms`)
 
   } catch (error) {
-    console.error('Error serving thumbnail:', error)
+    console.error(`🖼️ [${id}] Error serving thumbnail:`, error)
     res.status(500).json({
       success: false,
       error: 'Error serving thumbnail'

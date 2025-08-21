@@ -17,42 +17,54 @@ export class StagedImageProcessingService {
   private imageProcessor: StandaloneImageProcessor
   private queueConfig: QueueConfig
   private tempDir: string
+  
+  // Concurrency control
+  private maxConcurrentJobs: number
+  private activeJobs: Set<string> = new Set()
+  private jobCallbacks: Map<string, (message: any) => Promise<void>> = new Map()
 
   constructor(
     rabbitmqService: EnhancedRabbitMQService,
     s3Service: S3ProcessorService,
-    tempDir: string = '/tmp'
+    tempDir: string = '/tmp',
+    maxConcurrentJobs: number = 3
   ) {
     this.rabbitmqService = rabbitmqService
     this.s3Service = s3Service
     this.imageProcessor = new StandaloneImageProcessor(tempDir, tempDir)
     this.queueConfig = rabbitmqService.getQueueConfig()
     this.tempDir = tempDir
+    this.maxConcurrentJobs = maxConcurrentJobs
   }
 
   async start(): Promise<void> {
     await this.rabbitmqService.connect()
     
+    // Store callbacks for later resubscription
+    this.jobCallbacks.set(this.queueConfig.download, async (job) => {
+      await this.handleDownloadStage(job)
+    })
+    this.jobCallbacks.set(this.queueConfig.processing, async (job) => {
+      await this.handleProcessingStage(job)
+    })
+    this.jobCallbacks.set(this.queueConfig.upload, async (job) => {
+      await this.handleUploadStage(job)
+    })
+    
     // Start consumers for each stage
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.download,
-      async (job) => {
-        await this.handleDownloadStage(job)
-      }
+      this.jobCallbacks.get(this.queueConfig.download)!
     )
     
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.processing,
-      async (job) => {
-        await this.handleProcessingStage(job)
-      }
+      this.jobCallbacks.get(this.queueConfig.processing)!
     )
     
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.upload,
-      async (job) => {
-        await this.handleUploadStage(job)
-      }
+      this.jobCallbacks.get(this.queueConfig.upload)!
     )
 
     logger.info('Staged image processing service started')
@@ -61,6 +73,74 @@ export class StagedImageProcessingService {
   async stop(): Promise<void> {
     await this.rabbitmqService.close()
     logger.info('Staged image processing service stopped')
+  }
+
+  private async checkConcurrencyAndManageSubscriptions(): Promise<void> {
+    const currentActiveJobs = this.activeJobs.size
+    const isAtCapacity = currentActiveJobs >= this.maxConcurrentJobs
+    
+    logger.info(`Concurrency check: ${currentActiveJobs}/${this.maxConcurrentJobs} active jobs, at capacity: ${isAtCapacity}`)
+    
+    if (isAtCapacity) {
+      // Unsubscribe from all queues when at capacity
+      await this.unsubscribeFromAllQueues()
+    } else {
+      // Resubscribe to all queues when below capacity
+      await this.resubscribeToAllQueues()
+    }
+  }
+
+  private async unsubscribeFromAllQueues(): Promise<void> {
+    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload]
+    
+    for (const queueName of queues) {
+      if (this.rabbitmqService.isSubscribedToQueue(queueName)) {
+        try {
+          await this.rabbitmqService.unsubscribeFromQueue(queueName)
+          logger.info(`Unsubscribed from queue ${queueName} due to capacity limit`)
+        } catch (error) {
+          logger.error(`Failed to unsubscribe from queue ${queueName}:`, error)
+        }
+      }
+    }
+  }
+
+  private async resubscribeToAllQueues(): Promise<void> {
+    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload]
+    
+    for (const queueName of queues) {
+      if (!this.rabbitmqService.isSubscribedToQueue(queueName)) {
+        try {
+          const callback = this.jobCallbacks.get(queueName)
+          if (callback) {
+            await this.rabbitmqService.resubscribeToQueue(queueName, callback)
+            logger.info(`Resubscribed to queue ${queueName} - capacity available`)
+          }
+        } catch (error) {
+          logger.error(`Failed to resubscribe to queue ${queueName}:`, error)
+        }
+      }
+    }
+  }
+
+  private async startJob(jobId: string): Promise<void> {
+    this.activeJobs.add(jobId)
+    logger.info(`Started job ${jobId}, active jobs: ${this.activeJobs.size}`)
+    
+    // Check if we need to manage subscriptions
+    await this.checkConcurrencyAndManageSubscriptions()
+  }
+
+  private async finishJob(jobId: string): Promise<void> {
+    this.activeJobs.delete(jobId)
+    logger.info(`Finished job ${jobId}, active jobs: ${this.activeJobs.size}`)
+    
+    // Check if we can resubscribe to queues
+    await this.checkConcurrencyAndManageSubscriptions()
+  }
+
+  getActiveJobCount(): number {
+    return this.activeJobs.size
   }
 
   private async handleDownloadStage(job: any): Promise<void> {
@@ -76,6 +156,7 @@ export class StagedImageProcessingService {
     let localImagePath: string | undefined
     
     try {
+      await this.startJob(jobId)
       logger.info(`Starting download stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to downloading
@@ -103,12 +184,12 @@ export class StagedImageProcessingService {
       // Send to next stage (processing)
       await this.sendToNextStage(result, 'PROCESSING')
       
-      logger.info(`Download stage completed for job ${jobId} to ${localImagePath}`)
+      logger.info(`Download stage completed for job ${jobId}`)
       
     } catch (error) {
       logger.error(`Download stage failed for job ${jobId}:`, error)
       
-      // Clean up any downloaded files on failure
+      // Clean up any temp files that might have been created during download
       await this.cleanupJobTempFiles(jobId, mediaId, localImagePath)
       
       const result: StageResult = {
@@ -116,11 +197,13 @@ export class StagedImageProcessingService {
         stage: 'FAILED',
         mediaId,
         jobId,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Download failed'
       }
       
-      await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'download_failed', undefined, undefined, error instanceof Error ? error.message : 'Unknown error')
+      await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'download_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
+    } finally {
+      await this.finishJob(jobId)
     }
   }
 
@@ -132,6 +215,7 @@ export class StagedImageProcessingService {
     //const metadata = job.metadata
     
     try {
+      await this.startJob(jobId)
       logger.info(`Starting processing stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to processing
@@ -183,6 +267,8 @@ export class StagedImageProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'processing_failed', undefined, undefined, error instanceof Error ? error.message : 'Unknown error')
       await this.sendToNextStage(result, 'FAILED')
+    } finally {
+      await this.finishJob(jobId)
     }
   }
 
@@ -193,6 +279,7 @@ export class StagedImageProcessingService {
     const outputs = job.outputs
     
     try {
+      await this.startJob(jobId)
       logger.info(`Starting upload stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to uploading
@@ -228,6 +315,8 @@ export class StagedImageProcessingService {
       await this.cleanupJobTempFiles(jobId, mediaId, job.localMediaPath, outputs)
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'upload_failed', undefined, undefined, error instanceof Error ? error.message : 'Unknown error')
+    } finally {
+      await this.finishJob(jobId)
     }
   }
 
