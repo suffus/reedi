@@ -136,15 +136,27 @@ app.use('*', (req, res) => {
 let requestCount = 0
 let errorCount = 0
 
-// Monitor database health
+// Monitor database health and connection pool
 setInterval(async () => {
   try {
     // Simple health check query
     await prisma.$queryRaw`SELECT 1`
     
+    // Get connection pool info if available
+    let poolInfo = 'Unknown'
+    try {
+      // Try to get connection pool status (this might not work with all Prisma versions)
+      const result = await prisma.$queryRaw`SELECT count(*) as active_connections FROM pg_stat_activity WHERE state = 'active'`
+      if (result && Array.isArray(result) && result[0]) {
+        poolInfo = `${result[0].active_connections} active connections`
+      }
+    } catch (poolError) {
+      poolInfo = 'Pool info unavailable'
+    }
+    
     // Log health status every 5 minutes
     if (Date.now() % 300000 < 1000) { // Every 5 minutes
-      console.log(`📊 Database Health: ${requestCount} requests, ${errorCount} errors`)
+      console.log(`📊 Database Health: ${requestCount} requests, ${errorCount} errors, Pool: ${poolInfo}`)
     }
   } catch (error) {
     errorCount++

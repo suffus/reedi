@@ -30,19 +30,21 @@ async function main() {
       },
       image_queues: {
         requests: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.image.processing.requests',
-        updates: process.env['RABBITMQ_UPDATES_QUEUE'] || 'media.image.processing.updates'
+        updates: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.image.processing.updates'
       }
     },
-                s3: {
-              region: process.env['IDRIVE_REGION'] || 'us-east-1',
-              endpoint: process.env['IDRIVE_ENDPOINT'] || '',
-              accessKeyId: process.env['IDRIVE_ACCESS_KEY_ID'] || '',
-              secretAccessKey: process.env['IDRIVE_SECRET_ACCESS_KEY'] || '',
-              bucket: process.env['IDRIVE_BUCKET_NAME'] || ''
-            },
+    s3: {
+      region: process.env['IDRIVE_REGION'] || 'us-east-1',
+      endpoint: process.env['IDRIVE_ENDPOINT'] || '',
+      accessKeyId: process.env['IDRIVE_ACCESS_KEY_ID'] || '',
+      secretAccessKey: process.env['IDRIVE_SECRET_ACCESS_KEY'] || '',
+      bucket: process.env['IDRIVE_BUCKET_NAME'] || ''
+    },
     processing: {
       tempDir: process.env['TEMP_DIR'] || '/tmp',
-      progressInterval: parseInt(process.env['PROGRESS_INTERVAL'] || '5')
+      progressInterval: parseInt(process.env['PROGRESS_INTERVAL'] || '5'),
+      maxConcurrentVideoJobs: parseInt(process.env['MAX_CONCURRENT_VIDEO_JOBS'] || '3'),
+      maxConcurrentImageJobs: parseInt(process.env['MAX_CONCURRENT_IMAGE_JOBS'] || '10')
     }
   }
 
@@ -90,7 +92,8 @@ async function main() {
     videoProcessingService = new StagedVideoProcessingService(
       videoRabbitmqService,
       s3Service,
-      config.processing.tempDir
+      config.processing.tempDir,
+      config.processing.maxConcurrentVideoJobs
     )
 
     // Start the video processing service
@@ -118,7 +121,8 @@ async function main() {
     imageProcessingService = new StagedImageProcessingService(
       imageRabbitmqService,
       s3Service,
-      config.processing.tempDir
+      config.processing.tempDir,
+      config.processing.maxConcurrentImageJobs
     )
 
     // Start the image processing service
@@ -138,7 +142,17 @@ async function main() {
         service: 'video-processing',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        rabbitmq: videoRabbitmqService.isConnected() && imageRabbitmqService.isConnected()
+        rabbitmq: videoRabbitmqService.isConnected() && imageRabbitmqService.isConnected(),
+        concurrency: {
+          video: {
+            maxConcurrentJobs: config.processing.maxConcurrentVideoJobs,
+            activeJobs: videoProcessingService ? videoProcessingService.getActiveJobCount() : 0
+          },
+          image: {
+            maxConcurrentJobs: config.processing.maxConcurrentImageJobs,
+            activeJobs: imageProcessingService ? imageProcessingService.getActiveJobCount() : 0
+          }
+        }
       })
     })
 

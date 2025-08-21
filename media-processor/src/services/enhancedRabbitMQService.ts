@@ -36,7 +36,6 @@ export interface ProgressUpdate {
   }>
   image_versions?: Array<{
     quality: string
-    s3_key: string
     width: number
     height: number
     file_size: number
@@ -75,6 +74,10 @@ export class EnhancedRabbitMQService {
   }
   private readonly queues: QueueConfig
   private readonly routingKey: string
+  
+  // Track consumer tags for subscription management
+  private consumerTags: Map<string, string> = new Map()
+  private isSubscribed: Map<string, boolean> = new Map()
 
   constructor(
     url: string = 'amqp://localhost',
@@ -90,6 +93,11 @@ export class EnhancedRabbitMQService {
     this.exchanges = exchanges
     this.queues = queues
     this.routingKey = routingKey
+    
+    // Initialize subscription state
+    Object.values(queues).forEach(queueName => {
+      this.isSubscribed.set(queueName, false)
+    })
   }
 
   async connect(): Promise<void> {
@@ -136,7 +144,7 @@ export class EnhancedRabbitMQService {
 
     logger.info(`Consuming from queue ${queueName}`)
 
-    await this.channel.consume(queueName, async (msg: amqp.ConsumeMessage | null) => {
+    const consumer = await this.channel.consume(queueName, async (msg: amqp.ConsumeMessage | null) => {
       if (!msg) return
 
       try {
@@ -157,9 +165,61 @@ export class EnhancedRabbitMQService {
         // The error will be logged but the message won't be requeued
         // This is acceptable since we want to avoid timeouts for long videos
       }
+    }, {
+      // Use noAck: false to ensure we can manually acknowledge messages
+      noAck: false
     })
 
+    // Store the consumer tag for later cancellation
+    this.consumerTags.set(queueName, consumer.consumerTag)
+    this.isSubscribed.set(queueName, true)
+    
     logger.info(`Started consuming from queue: ${queueName}`)
+  }
+
+  async unsubscribeFromQueue(queueName: string): Promise<void> {
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel not initialized')
+    }
+
+    const consumerTag = this.consumerTags.get(queueName)
+    if (!consumerTag || !this.isSubscribed.get(queueName)) {
+      logger.warn(`Not subscribed to queue ${queueName}, cannot unsubscribe`)
+      return
+    }
+
+    try {
+      await this.channel.cancel(consumerTag)
+      this.consumerTags.delete(queueName)
+      this.isSubscribed.set(queueName, false)
+      logger.info(`Unsubscribed from queue: ${queueName}`)
+    } catch (error) {
+      logger.error(`Failed to unsubscribe from queue ${queueName}:`, error)
+      throw error
+    }
+  }
+
+  async resubscribeToQueue(queueName: string, callback: (message: any) => Promise<void>): Promise<void> {
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel not initialized')
+    }
+
+    if (this.isSubscribed.get(queueName)) {
+      logger.warn(`Already subscribed to queue ${queueName}, cannot resubscribe`)
+      return
+    }
+
+    try {
+      await this.consumeQueue(queueName, callback)
+      logger.info(`Resubscribed to queue: ${queueName}`)
+    } catch (error) {
+      logger.error(`Failed to resubscribe to queue ${queueName}:`, error)
+      throw error
+    }
+  }
+
+  isSubscribedToQueue(queueName: string): boolean {
+    return this.isSubscribed.get(queueName) || false
   }
 
   async sendMessage(queueName: string, message: any): Promise<void> {

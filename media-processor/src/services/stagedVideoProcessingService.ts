@@ -18,36 +18,48 @@ export class StagedVideoProcessingService {
   private videoProcessor: StandaloneVideoProcessor
   private tempDir: string
   private queueConfig: QueueConfig
+  
+  // Concurrency control
+  private maxConcurrentJobs: number
+  private activeJobs: Set<string> = new Set()
+  private jobCallbacks: Map<string, (message: any) => Promise<void>> = new Map()
 
   constructor(
     rabbitmqService: EnhancedRabbitMQService,
     s3Service: S3ProcessorService,
-    tempDir: string = '/tmp'
+    tempDir: string = '/tmp',
+    maxConcurrentJobs: number = 3
   ) {
     this.rabbitmqService = rabbitmqService
     this.s3Service = s3Service
     this.videoProcessor = new StandaloneVideoProcessor(tempDir, tempDir)
     this.tempDir = tempDir
     this.queueConfig = rabbitmqService.getQueueConfig()
+    this.maxConcurrentJobs = maxConcurrentJobs
   }
 
   async start(): Promise<void> {
     await this.rabbitmqService.connect()
     
+    // Store callbacks for later resubscription
+    this.jobCallbacks.set(this.queueConfig.download, (job) => this.handleDownloadStage(job))
+    this.jobCallbacks.set(this.queueConfig.processing, (job) => this.handleProcessingStage(job))
+    this.jobCallbacks.set(this.queueConfig.upload, (job) => this.handleUploadStage(job))
+    
     // Start consumers for each stage
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.download,
-      (job) => this.handleDownloadStage(job)
+      this.jobCallbacks.get(this.queueConfig.download)!
     )
     
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.processing,
-      (job) => this.handleProcessingStage(job)
+      this.jobCallbacks.get(this.queueConfig.processing)!
     )
     
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.upload,
-      (job) => this.handleUploadStage(job)
+      this.jobCallbacks.get(this.queueConfig.upload)!
     )
 
     logger.info('Staged video processing service started')
@@ -58,10 +70,79 @@ export class StagedVideoProcessingService {
     logger.info('Staged video processing service stopped')
   }
 
+  private async checkConcurrencyAndManageSubscriptions(): Promise<void> {
+    const currentActiveJobs = this.activeJobs.size
+    const isAtCapacity = currentActiveJobs >= this.maxConcurrentJobs
+    
+    logger.info(`Concurrency check: ${currentActiveJobs}/${this.maxConcurrentJobs} active jobs, at capacity: ${isAtCapacity}`)
+    
+    if (isAtCapacity) {
+      // Unsubscribe from all queues when at capacity
+      await this.unsubscribeFromAllQueues()
+    } else {
+      // Resubscribe to all queues when below capacity
+      await this.resubscribeToAllQueues()
+    }
+  }
+
+  private async unsubscribeFromAllQueues(): Promise<void> {
+    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload]
+    
+    for (const queueName of queues) {
+      if (this.rabbitmqService.isSubscribedToQueue(queueName)) {
+        try {
+          await this.rabbitmqService.unsubscribeFromQueue(queueName)
+          logger.info(`Unsubscribed from queue ${queueName} due to capacity limit`)
+        } catch (error) {
+          logger.error(`Failed to unsubscribe from queue ${queueName}:`, error)
+        }
+      }
+    }
+  }
+
+  private async resubscribeToAllQueues(): Promise<void> {
+    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload]
+    
+    for (const queueName of queues) {
+      if (!this.rabbitmqService.isSubscribedToQueue(queueName)) {
+        try {
+          const callback = this.jobCallbacks.get(queueName)
+          if (callback) {
+            await this.rabbitmqService.resubscribeToQueue(queueName, callback)
+            logger.info(`Resubscribed to queue ${queueName} - capacity available`)
+          }
+        } catch (error) {
+          logger.error(`Failed to resubscribe to queue ${queueName}:`, error)
+        }
+      }
+    }
+  }
+
+  private async startJob(jobId: string): Promise<void> {
+    this.activeJobs.add(jobId)
+    logger.info(`Started job ${jobId}, active jobs: ${this.activeJobs.size}`)
+    
+    // Check if we need to manage subscriptions
+    await this.checkConcurrencyAndManageSubscriptions()
+  }
+
+  private async finishJob(jobId: string): Promise<void> {
+    this.activeJobs.delete(jobId)
+    logger.info(`Finished job ${jobId}, active jobs: ${this.activeJobs.size}`)
+    
+    // Check if we can resubscribe to queues
+    await this.checkConcurrencyAndManageSubscriptions()
+  }
+
+  getActiveJobCount(): number {
+    return this.activeJobs.size
+  }
+
   private async handleDownloadStage(job: StagedProcessingJob): Promise<void> {
     const { id: jobId, mediaId, s3Key } = job
     
     try {
+      await this.startJob(jobId)
       logger.info(`Starting download stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to downloading
@@ -107,6 +188,8 @@ export class StagedVideoProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'download_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
+    } finally {
+      await this.finishJob(jobId)
     }
   }
 
@@ -116,10 +199,12 @@ export class StagedVideoProcessingService {
     
     if (!localVideoPath) {
       logger.error(`No local video path for job ${jobId}`)
+      await this.finishJob(jobId)
       return
     }
     
     try {
+      await this.startJob(jobId)
       logger.info(`Starting processing stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to processing
@@ -167,6 +252,8 @@ export class StagedVideoProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'processing_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
+    } finally {
+      await this.finishJob(jobId)
     }
   }
 
@@ -175,10 +262,12 @@ export class StagedVideoProcessingService {
     
     if (!outputs || outputs.length === 0) {
       logger.error(`No outputs for job ${jobId}`)
+      await this.finishJob(jobId)
       return
     }
     
     try {
+      await this.startJob(jobId)
       logger.info(`Starting upload stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to uploading
@@ -203,15 +292,12 @@ export class StagedVideoProcessingService {
         100,
         'upload_complete',
         thumbnails,
-        job.metadata as VideoMetadata,
-        undefined,
+        undefined, // metadata
+        undefined, // errorMessage
         videoVersions
       )
       
-      // Clean up all temp files after successful completion
-      await this.cleanupJobTempFiles(jobId, mediaId, localMediaPath as string, outputs)
-      
-      // Send to completion stage
+      // Send to next stage (completed)
       await this.sendToNextStage(result, 'COMPLETED')
       
       logger.info(`Upload stage completed for job ${jobId}`)
@@ -220,7 +306,7 @@ export class StagedVideoProcessingService {
       logger.error(`Upload stage failed for job ${jobId}:`, error)
       
       // Clean up temp files on upload failure
-      await this.cleanupJobTempFiles(jobId, mediaId, localMediaPath as string, outputs)
+      await this.cleanupJobTempFiles(jobId, mediaId, localMediaPath)
       
       const result: StageResult = {
         success: false,
@@ -232,6 +318,8 @@ export class StagedVideoProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'upload_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
+    } finally {
+      await this.finishJob(jobId)
     }
   }
 
