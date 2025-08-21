@@ -16,7 +16,9 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.IDRIVE_SECRET_ACCESS_KEY || ''
   },
   endpoint: process.env.IDRIVE_ENDPOINT,
-  forcePathStyle: true
+  forcePathStyle: true,
+  // Add timeout configurations to prevent hanging
+  maxAttempts: 3, // Retry up to 3 times
 })
 
 // Track active connections for debugging
@@ -112,87 +114,112 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
       res.setHeader('Content-Length', response.ContentLength?.toString() || '0')
     }
     
-    // Stream the video data directly to the response
+    console.log(`🎥 [${connectionId}] Starting pipe operation...`)
+    
+    // Pipe the S3 response to the HTTP response
     const stream = response.Body as any
     
-    // Add comprehensive error handling for the stream
+    // Set up error handling for the stream
     stream.on('error', (error: any) => {
-      console.error(`🎥 [${connectionId}] Stream error:`, error)
-      failedConnections++
       clearTimeout(connectionTimeout)
+      console.error(`🎥 [${connectionId}] Stream error:`, error)
       cleanupConnection()
       
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          error: 'Stream error occurred'
-        })
-      } else {
-        res.end()
-      }
+      // Fallback to buffered download if streaming fails
+      console.log(`🎥 [${connectionId}] Attempting fallback to buffered download...`)
+      fallbackToBufferedDownload(s3Key, mimeType, req, res, connectionId)
     })
     
     stream.on('end', () => {
-      console.log(`🎥 [${connectionId}] Stream ended successfully`)
       clearTimeout(connectionTimeout)
+      console.log(`🎥 [${connectionId}] Stream ended successfully`)
       cleanupConnection()
     })
     
     stream.on('close', () => {
-      console.log(`🎥 [${connectionId}] Stream closed`)
       clearTimeout(connectionTimeout)
+      console.log(`🎥 [${connectionId}] Stream closed`)
       cleanupConnection()
     })
     
-    // Handle response errors
+    // Handle response events
     res.on('error', (error: any) => {
-      console.error(`🎥 [${connectionId}] Response error:`, error)
       clearTimeout(connectionTimeout)
+      console.error(`🎥 [${connectionId}] Response error:`, error)
       cleanupConnection()
     })
     
     res.on('close', () => {
-      console.log(`🎥 [${connectionId}] Response closed`)
       clearTimeout(connectionTimeout)
+      console.log(`🎥 [${connectionId}] Response closed`)
       cleanupConnection()
     })
     
     res.on('finish', () => {
-      console.log(`🎥 [${connectionId}] Response finished successfully`)
       clearTimeout(connectionTimeout)
+      console.log(`🎥 [${connectionId}] Response finished`)
       cleanupConnection()
     })
     
-    // Handle client disconnect
+    // Handle request events
     req.on('close', () => {
-      console.log(`🎥 [${connectionId}] Client disconnected`)
       clearTimeout(connectionTimeout)
+      console.log(`🎥 [${connectionId}] Request closed by client`)
       cleanupConnection()
     })
     
     req.on('aborted', () => {
-      console.log(`🎥 [${connectionId}] Request aborted by client`)
       clearTimeout(connectionTimeout)
+      console.log(`🎥 [${connectionId}] Request aborted by client`)
       cleanupConnection()
     })
     
-    console.log(`🎥 [${connectionId}] Starting pipe operation...`)
+    // Start streaming
     stream.pipe(res)
     
   } catch (error) {
+    clearTimeout(connectionTimeout)
     const s3Time = Date.now() - s3StartTime
     console.error(`🎥 [${connectionId}] Error streaming video from S3 after ${s3Time}ms:`, error)
-    failedConnections++
-    clearTimeout(connectionTimeout)
     cleanupConnection()
+    
+    // Fallback to buffered download if S3 request fails
+    console.log(`🎥 [${connectionId}] Attempting fallback to buffered download...`)
+    fallbackToBufferedDownload(s3Key, mimeType, req, res, connectionId)
+  }
+}
+
+// Fallback function to download video as buffer when streaming fails
+async function fallbackToBufferedDownload(s3Key: string, mimeType: string | null, req: Request, res: Response, connectionId: number) {
+  try {
+    console.log(`🎥 [${connectionId}] Starting fallback buffered download for ${s3Key}`)
+    
+    // Import the working S3 service
+    const { getImageFromS3 } = await import('@/utils/s3Service')
+    
+    // Get the video as a buffer (this works reliably)
+    const videoBuffer = await getImageFromS3(s3Key)
+    
+    console.log(`🎥 [${connectionId}] Fallback download completed, buffer size: ${videoBuffer.length} bytes`)
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', mimeType || 'video/mp4')
+    res.setHeader('Content-Length', videoBuffer.length.toString())
+    res.setHeader('Cache-Control', 'public, max-age=31536000')
+    
+    // Send the buffer
+    res.end(videoBuffer)
+    
+    console.log(`🎥 [${connectionId}] Fallback download served successfully`)
+    
+  } catch (fallbackError) {
+    console.error(`🎥 [${connectionId}] Fallback download also failed:`, fallbackError)
     
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
-        error: 'Error streaming video'
+        error: 'Failed to serve video content'
       })
-    } else {
-      res.end()
     }
   }
 }
@@ -264,14 +291,9 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
       clearTimeout(connectionTimeout)
       cleanupConnection()
       
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          error: 'Stream error occurred'
-        })
-      } else {
-        res.end()
-      }
+      // Fallback to buffered download if streaming fails
+      console.log(`🖼️ [${connectionId}] Attempting fallback to buffered download...`)
+      fallbackToBufferedImageDownload(s3Key, mimeType, req, res, connectionId)
     })
     
     stream.on('end', () => {
@@ -327,13 +349,43 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     clearTimeout(connectionTimeout)
     cleanupConnection()
     
+    // Fallback to buffered download if S3 request fails
+    console.log(`🖼️ [${connectionId}] Attempting fallback to buffered download...`)
+    fallbackToBufferedImageDownload(s3Key, mimeType, req, res, connectionId)
+  }
+}
+
+// Fallback function to download image as buffer when streaming fails
+async function fallbackToBufferedImageDownload(s3Key: string, mimeType: string | null, req: Request, res: Response, connectionId: number) {
+  try {
+    console.log(`🖼️ [${connectionId}] Starting fallback buffered download for ${s3Key}`)
+    
+    // Import the working S3 service
+    const { getImageFromS3 } = await import('@/utils/s3Service')
+    
+    // Get the image as a buffer (this works reliably)
+    const imageBuffer = await getImageFromS3(s3Key)
+    
+    console.log(`🖼️ [${connectionId}] Fallback download completed, buffer size: ${imageBuffer.length} bytes`)
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', mimeType || 'image/jpeg')
+    res.setHeader('Content-Length', imageBuffer.length.toString())
+    res.setHeader('Cache-Control', 'public, max-age=31536000')
+    
+    // Send the buffer
+    res.end(imageBuffer)
+    
+    console.log(`🖼️ [${connectionId}] Fallback download served successfully`)
+    
+  } catch (fallbackError) {
+    console.error(`🖼️ [${connectionId}] Fallback download also failed:`, fallbackError)
+    
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
-        error: 'Error streaming image'
+        error: 'Failed to serve image content'
       })
-    } else {
-      res.end()
     }
   }
 }
