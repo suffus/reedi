@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, ZoomIn, ZoomOut, Crop, ChevronLeft, ChevronRight, Play, Pause, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { X, MessageCircle, Send, Crop, ChevronLeft, ChevronRight, Play, Pause, PanelLeftClose, PanelLeftOpen, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMediaComments, useCreateComment, useAuth } from '@/lib/api-hooks'
 import { getSmartMediaUrl } from '@/lib/media-utils'
@@ -8,7 +8,9 @@ import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
 import { ModalEventCatcher } from '@/components/common/modal-event-catcher'
-import { MediaMetadataPanel } from '@/components/common/media-metadata-panel'
+import { MediaMetadataPanel, MediaMetadataPanelRef } from '@/components/common/media-metadata-panel'
+import { UnsavedChangesDialog } from '@/components/common/unsaved-changes-dialog'
+import { downloadFile, generateDownloadFilename, getFileExtension } from '@/lib/download-utils'
 
 interface ImageDetailModalProps {
   media: Media | null
@@ -41,9 +43,63 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [activeCrop, setActiveCrop] = useState<{ x: number, y: number, width: number, height: number } | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
   
+  // Unsaved changes state
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  const metadataPanelRef = useRef<MediaMetadataPanelRef>(null)
 
-  
+  // Handle unsaved changes
+  const handleUnsavedChangesChange = (hasChanges: boolean) => {
+    setHasUnsavedChanges(hasChanges)
+  }
 
+  // Check for unsaved changes before performing an action
+  const checkUnsavedChanges = (action: () => void) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(() => action)
+      setShowUnsavedDialog(true)
+    } else {
+      action()
+    }
+  }
+
+  // Handle dialog actions
+  const handleSaveChanges = async () => {
+    if (metadataPanelRef.current) {
+      try {
+        await metadataPanelRef.current.saveChanges()
+        setShowUnsavedDialog(false)
+        setPendingAction(null)
+        
+        // Execute the pending action after successful save
+        if (pendingAction) {
+          pendingAction()
+        }
+      } catch (error) {
+        console.error('Failed to save changes:', error)
+        // Keep dialog open if save fails
+      }
+    }
+  }
+
+  const handleDiscardChanges = () => {
+    if (metadataPanelRef.current) {
+      metadataPanelRef.current.discardUnsavedChanges()
+    }
+    setShowUnsavedDialog(false)
+    setPendingAction(null)
+    
+    // Execute the pending action
+    if (pendingAction) {
+      pendingAction()
+    }
+  }
+
+  const handleCancelAction = () => {
+    setShowUnsavedDialog(false)
+    setPendingAction(null)
+  }
   
   // Update view state when media prop changes (for navigation)
   useEffect(() => {
@@ -86,19 +142,21 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const hasNext = canNavigate && currentIndex !== -1 && currentIndex < allMedia.length - 1
   const hasPrev = canNavigate && currentIndex !== -1 && currentIndex > 0
 
-
-
   const handleNext = useCallback(() => {
     if (!canNavigate || !hasNext) return
-    const nextIndex = currentIndex + 1
-    onNavigate(allMedia[nextIndex])
-  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia])
+    checkUnsavedChanges(() => {
+      const nextIndex = currentIndex + 1
+      onNavigate(allMedia[nextIndex])
+    })
+  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia, hasUnsavedChanges])
 
   const handlePrev = useCallback(() => {
     if (!canNavigate || !hasPrev) return
-    const prevIndex = currentIndex - 1
-    onNavigate(allMedia[prevIndex])
-  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia])
+    checkUnsavedChanges(() => {
+      const prevIndex = currentIndex - 1
+      onNavigate(allMedia[prevIndex])
+    })
+  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia, hasUnsavedChanges])
 
   const handleFirst = useCallback(() => {
     if (!canNavigate) return
@@ -169,14 +227,6 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }
 
-  const handleZoomIn = () => {
-    setZoom(prev => Math.min(prev * 1.5, 5))
-  }
-
-  const handleZoomOut = () => {
-    setZoom(prev => Math.max(prev / 1.5, 0.1))
-  }
-
   const resetView = () => {
     // Calculate optimal zoom based on image and container size
     const img = document.querySelector('.image-detail-modal-img') as HTMLImageElement
@@ -212,9 +262,11 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   }
 
   const handleClose = useCallback(() => {
-    resetView()
-    onClose()
-  }, [resetView, onClose])
+    checkUnsavedChanges(() => {
+      resetView()
+      onClose()
+    })
+  }, [resetView, onClose, hasUnsavedChanges])
 
   // Keyboard navigation
   useEffect(() => {
@@ -483,6 +535,18 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
   const mappedMedia = mapMediaData(media)
 
+  const handleDownload = async () => {
+    try {
+      const extension = getFileExtension('IMAGE', media.mimeType || null)
+      const filename = generateDownloadFilename(media.originalFilename || null, 'IMAGE', extension)
+      const mediaUrl = getSmartMediaUrl(media, 'detail')
+      await downloadFile(mediaUrl, filename)
+    } catch (error) {
+      console.error('Failed to download image:', error)
+      // You could add a toast notification here if you have a toast system
+    }
+  }
+
   return (
     <ModalEventCatcher>
     <AnimatePresence>
@@ -545,20 +609,16 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               >
                 {isPanelMinimized ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
               </button>
+              
+              {/* Download Button */}
               <button
-                onClick={handleZoomIn}
+                onClick={handleDownload}
                 className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 pointer-events-auto"
-                title="Zoom In"
+                title="Download Image"
               >
-                <ZoomIn className="h-5 w-5" />
+                <Download className="h-5 w-5" />
               </button>
-              <button
-                onClick={handleZoomOut}
-                className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 pointer-events-auto"
-                title="Zoom Out"
-              >
-                <ZoomOut className="h-5 w-5" />
-              </button>
+              
               {(zoom !== 1 || activeCrop) && (
                 <button
                   onClick={resetView}
@@ -725,6 +785,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             </div>
           ) : (
             <MediaMetadataPanel
+              ref={metadataPanelRef}
               media={media}
               isOwner={isOwner}
               onMediaUpdate={onMediaUpdate}
@@ -737,6 +798,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               canNavigate={!!canNavigate}
               allMedia={allMedia}
               mediaType="IMAGE"
+              onUnsavedChangesChange={handleUnsavedChangesChange}
             />
           )}
 
@@ -818,7 +880,15 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         </motion.div>
       </motion.div>
 
-
+      {/* Unsaved Changes Dialog */}
+      <UnsavedChangesDialog
+        isOpen={showUnsavedDialog}
+        onSave={handleSaveChanges}
+        onDiscard={handleDiscardChanges}
+        onCancel={handleCancelAction}
+        title="Unsaved Changes"
+        message="You have unsaved changes to the media metadata. What would you like to do?"
+      />
     </AnimatePresence>
     </ModalEventCatcher>
   )

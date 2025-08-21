@@ -1,13 +1,15 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Send, Play, Pause, Volume2, VolumeX, Maximize, Minimize, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react'
+import { X, MessageCircle, Send, Play, Pause, Volume2, VolumeX, Maximize, Minimize, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMediaComments, useCreateComment, useAuth, useVideoQualities, VideoQuality } from '@/lib/api-hooks'
 import { getMediaUrlFromMedia } from '@/lib/api'
 import { Media, Comment } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
-import { MediaMetadataPanel } from '@/components/common/media-metadata-panel'
+import { MediaMetadataPanel, MediaMetadataPanelRef } from '@/components/common/media-metadata-panel'
+import { UnsavedChangesDialog } from '@/components/common/unsaved-changes-dialog'
+import { downloadFile, generateDownloadFilename, getFileExtension } from '@/lib/download-utils'
 
 /**
  * VideoDetailModal Component
@@ -72,6 +74,12 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
+  // Unsaved changes state
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  const metadataPanelRef = useRef<MediaMetadataPanelRef>(null)
+  
   const { data: commentsData, isLoading: commentsLoading } = useMediaComments(media.id)
   const createCommentMutation = useCreateComment()
   const { data: authData } = useAuth()
@@ -92,6 +100,58 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     slideshowSpeed: 3000
   })
 
+  // Handle unsaved changes
+  const handleUnsavedChangesChange = (hasChanges: boolean) => {
+    setHasUnsavedChanges(hasChanges)
+  }
+
+  // Check for unsaved changes before performing an action
+  const checkUnsavedChanges = (action: () => void) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(() => action)
+      setShowUnsavedDialog(true)
+    } else {
+      action()
+    }
+  }
+
+  // Handle dialog actions
+  const handleSaveChanges = async () => {
+    if (metadataPanelRef.current) {
+      try {
+        await metadataPanelRef.current.saveChanges()
+        setShowUnsavedDialog(false)
+        setPendingAction(null)
+        
+        // Execute the pending action after successful save
+        if (pendingAction) {
+          pendingAction()
+        }
+      } catch (error) {
+        console.error('Failed to save changes:', error)
+        // Keep dialog open if save fails
+      }
+    }
+  }
+
+  const handleDiscardChanges = () => {
+    if (metadataPanelRef.current) {
+      metadataPanelRef.current.discardUnsavedChanges()
+    }
+    setShowUnsavedDialog(false)
+    setPendingAction(null)
+    
+    // Execute the pending action
+    if (pendingAction) {
+      pendingAction()
+    }
+  }
+
+  const handleCancelAction = () => {
+    setShowUnsavedDialog(false)
+    setPendingAction(null)
+  }
+
   // Navigation logic (for compatibility with existing code)
   const canNavigate = allMedia && allMedia.length > 1 && onNavigate
   const currentIndex = canNavigate ? allMedia.findIndex(m => m.id === media.id) : -1
@@ -101,20 +161,24 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
 
   const handleClose = useCallback(() => {
-    onClose()
-  }, [onClose])
+    checkUnsavedChanges(() => {
+      onClose()
+    })
+  }, [onClose, hasUnsavedChanges])
 
   const handleNext = useCallback(() => {
-    if (!canNavigate || !hasNext) return
-    const nextIndex = currentIndex + 1
-    onNavigate(allMedia[nextIndex])
-  }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia])
+    if (!slideshow.hasNext) return
+    checkUnsavedChanges(() => {
+      slideshow.handleNext()
+    })
+  }, [slideshow.hasNext, slideshow.handleNext, hasUnsavedChanges])
 
   const handlePrev = useCallback(() => {
-    if (!canNavigate || !hasPrev) return
-    const prevIndex = currentIndex - 1
-    onNavigate(allMedia[prevIndex])
-  }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia])
+    if (!slideshow.hasPrev) return
+    checkUnsavedChanges(() => {
+      slideshow.handlePrev()
+    })
+  }, [slideshow.hasPrev, slideshow.handlePrev, hasUnsavedChanges])
 
   // Video event handlers
   const handlePlay = () => {
@@ -523,6 +587,18 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setIsPanelMinimized(!isPanelMinimized)
   }
 
+  const handleDownload = async () => {
+    try {
+      const extension = getFileExtension('VIDEO', media.mimeType || null)
+      const filename = generateDownloadFilename(media.originalFilename || null, 'VIDEO', extension)
+      const mediaUrl = getMediaUrlFromMedia(media)
+      await downloadFile(mediaUrl, filename)
+    } catch (error) {
+      console.error('Failed to download video:', error)
+      // You could add a toast notification here if you have a toast system
+    }
+  }
+
   const mappedMedia = mapMediaData(media)
 
   // Auto-play video when navigating to it (if slideshow is active)
@@ -593,6 +669,17 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               transition={{ duration: 0.3 }}
             >
               {isPanelMinimized ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+            </motion.button>
+
+            {/* Download Button */}
+            <motion.button
+              onClick={handleDownload}
+              className="absolute top-4 right-20 z-20 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+              title="Download Video"
+              animate={{ opacity: controlsVisible ? 1 : 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Download className="h-5 w-5" />
             </motion.button>
 
             {/* Navigation Buttons */}
@@ -883,6 +970,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             </div>
           ) : (
             <MediaMetadataPanel
+              ref={metadataPanelRef}
               media={media}
               isOwner={isOwner}
               onMediaUpdate={onMediaUpdate}
@@ -897,6 +985,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               mediaType="VIDEO"
               processingStatus={processingStatus}
               duration={media.duration}
+              onUnsavedChangesChange={handleUnsavedChangesChange}
             />
           )}
 
@@ -976,6 +1065,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         </motion.div>
       </motion.div>
 
+      {/* Unsaved Changes Dialog */}
+      <UnsavedChangesDialog
+        isOpen={showUnsavedDialog}
+        onSave={handleSaveChanges}
+        onDiscard={handleDiscardChanges}
+        onCancel={handleCancelAction}
+        title="Unsaved Changes"
+        message="You have unsaved changes to the media metadata. What would you like to do?"
+      />
 
     </AnimatePresence>
   )
