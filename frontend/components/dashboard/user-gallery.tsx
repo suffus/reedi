@@ -33,6 +33,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [mediaTypeFilter, setMediaTypeFilter] = useState<'IMAGE' | 'VIDEO' | 'ALL'>('ALL')
   const [showFilters, setShowFilters] = useState(false)
+  const [showOnlyUnorganized, setShowOnlyUnorganized] = useState(false)
   
   // Bulk selection state
   const [isBulkSelectMode, setIsBulkSelectMode] = useState(false)
@@ -49,8 +50,11 @@ export function UserGallery({ userId }: UserGalleryProps) {
     if (mediaTypeFilter !== 'ALL') {
       filterObj.mediaType = mediaTypeFilter
     }
+    if (showOnlyUnorganized) {
+      filterObj.showOnlyUnorganized = true
+    }
     return filterObj
-  }, [filterTags, mediaTypeFilter])
+  }, [filterTags, mediaTypeFilter, showOnlyUnorganized])
 
   const { 
     data, 
@@ -473,15 +477,15 @@ export function UserGallery({ userId }: UserGalleryProps) {
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`p-2 rounded-lg transition-colors duration-200 ${
-                  filterTags.length > 0 || mediaTypeFilter !== 'ALL'
+                  filterTags.length > 0 || mediaTypeFilter !== 'ALL' || showOnlyUnorganized
                     ? 'bg-blue-100 text-blue-700'
                     : showFilters
                     ? 'bg-gray-100 text-gray-700'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
                 title={
-                  filterTags.length > 0 || mediaTypeFilter !== 'ALL'
-                    ? `${filterTags.length + (mediaTypeFilter !== 'ALL' ? 1 : 0)} filter(s) active`
+                  filterTags.length > 0 || mediaTypeFilter !== 'ALL' || showOnlyUnorganized
+                    ? `${filterTags.length + (mediaTypeFilter !== 'ALL' ? 1 : 0) + (showOnlyUnorganized ? 1 : 0)} filter(s) active`
                     : 'Filter by tags and media type'
                 }
               >
@@ -519,11 +523,12 @@ export function UserGallery({ userId }: UserGalleryProps) {
               <Filter className="h-4 w-4 mr-2" />
               Filters
             </h3>
-            {(filterTags.length > 0 || mediaTypeFilter !== 'ALL') && (
+            {(filterTags.length > 0 || mediaTypeFilter !== 'ALL' || showOnlyUnorganized) && (
               <button
                 onClick={() => {
                   setFilterTags([])
                   setMediaTypeFilter('ALL')
+                  setShowOnlyUnorganized(false)
                 }}
                 className="text-xs text-gray-500 hover:text-gray-700"
               >
@@ -537,16 +542,28 @@ export function UserGallery({ userId }: UserGalleryProps) {
             placeholder="Enter tags to filter by (comma-separated)..."
             className="w-full"
           />
-          {(filterTags.length > 0 || mediaTypeFilter !== 'ALL') && (
+          {(filterTags.length > 0 || mediaTypeFilter !== 'ALL' || showOnlyUnorganized) && (
             <p className="text-xs text-gray-500 mt-2">
-              {filterTags.length > 0 && mediaTypeFilter !== 'ALL' && (
+              {filterTags.length > 0 && mediaTypeFilter !== 'ALL' && showOnlyUnorganized && (
+                <>Showing {mediaTypeFilter === 'IMAGE' ? 'images' : 'videos'} that contain all selected tags and are not in folders</>
+              )}
+              {filterTags.length > 0 && mediaTypeFilter !== 'ALL' && !showOnlyUnorganized && (
                 <>Showing {mediaTypeFilter === 'IMAGE' ? 'images' : 'videos'} that contain all selected tags</>
               )}
-              {filterTags.length > 0 && mediaTypeFilter === 'ALL' && (
-                <>Showing images that contain all selected tags</>
+              {filterTags.length > 0 && mediaTypeFilter === 'ALL' && showOnlyUnorganized && (
+                <>Showing media that contain all selected tags and are not in folders</>
               )}
-              {filterTags.length === 0 && mediaTypeFilter !== 'ALL' && (
+              {filterTags.length > 0 && mediaTypeFilter === 'ALL' && !showOnlyUnorganized && (
+                <>Showing media that contain all selected tags</>
+              )}
+              {filterTags.length === 0 && mediaTypeFilter !== 'ALL' && showOnlyUnorganized && (
+                <>Showing only {mediaTypeFilter === 'IMAGE' ? 'images' : 'videos'} that are not in folders</>
+              )}
+              {filterTags.length === 0 && mediaTypeFilter !== 'ALL' && !showOnlyUnorganized && (
                 <>Showing only {mediaTypeFilter === 'IMAGE' ? 'images' : 'videos'}</>
+              )}
+              {filterTags.length === 0 && mediaTypeFilter === 'ALL' && showOnlyUnorganized && (
+                <>Showing only media that are not in folders</>
               )}
             </p>
           )}
@@ -589,6 +606,19 @@ export function UserGallery({ userId }: UserGalleryProps) {
                 <span className="text-sm text-gray-700">Videos</span>
               </label>
             </div>
+          </div>
+
+          {/* Only Show Unorganized Filter */}
+          <div className="mt-4">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOnlyUnorganized}
+                onChange={(e) => setShowOnlyUnorganized(e.target.checked)}
+                className="text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-700">Only show media not already in folders</span>
+            </label>
           </div>
           </motion.div>
         )}

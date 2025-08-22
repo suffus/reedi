@@ -42,6 +42,12 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const router = useRouter()
   const [commentText, setCommentText] = useState('')
 
+  // Zoom and pan state for video
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [hasDragged, setHasDragged] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   
   // Update video player state when media prop changes (for navigation)
   useEffect(() => {
@@ -53,6 +59,8 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     setIsMuted(false)
     setIsFullscreen(false)
     setShowControls(true)
+    // Reset zoom and pan when navigating to a new video
+    resetView()
   }, [media?.id])
   const [isPanelMinimized, setIsPanelMinimized] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -398,28 +406,145 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     return selectedQualityData?.url || getMediaUrlFromMedia(media, false)
   }
 
-  // Handle quality change
+  // Handle video quality change
   const handleQualityChange = (quality: string) => {
-    if (videoRef.current) {
+    if (videoRef.current && videoDimensions.width > 0) {
       const currentTime = videoRef.current.currentTime
       const wasPlaying = !videoRef.current.paused
       
+      // Find the new source for the selected quality
+      const newSource = videoQualities?.find((q: VideoQuality) => q.quality === quality)?.url || getMediaUrlFromMedia(media, false)
+      
+      // Update the video source
+      if (newSource) {
+        // Store the current state
+        const savedTime = currentTime
+        const savedPlaying = wasPlaying
+        
+        // Set up event listeners to restore state after loading
+        const handleQualityChangeLoadedMetadata = () => {
+          if (videoRef.current) {
+            // Set the current time after the video has loaded its metadata
+            videoRef.current.currentTime = savedTime
+            
+            // Resume playback if it was playing
+            if (savedPlaying) {
+              videoRef.current.play().catch(console.error)
+            }
+            
+            // Remove the event listener
+            videoRef.current.removeEventListener('loadedmetadata', handleQualityChangeLoadedMetadata)
+          }
+        }
+        
+        // Add the event listener before changing the source
+        videoRef.current.addEventListener('loadedmetadata', handleQualityChangeLoadedMetadata)
+        
+        // Also add a fallback for canplay event in case loadedmetadata doesn't fire
+        const handleCanPlay = () => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = savedTime
+            if (savedPlaying) {
+              videoRef.current.play().catch(console.error)
+            }
+            videoRef.current.removeEventListener('canplay', handleCanPlay)
+          }
+        }
+        videoRef.current.addEventListener('canplay', handleCanPlay)
+        
+        // Change the source
+        videoRef.current.src = newSource
+        
+        // Add a timeout fallback in case events don't fire
+        setTimeout(() => {
+          if (videoRef.current && videoRef.current.readyState >= 1) {
+            videoRef.current.currentTime = savedTime
+            if (savedPlaying) {
+              videoRef.current.play().catch(console.error)
+            }
+          }
+        }, 1000)
+      }
+      
       setSelectedQuality(quality)
       setShowQualityMenu(false)
-      
-      // Update video source
-      const newSource = quality === 'auto' 
-        ? getMediaUrlFromMedia(media, false)
-        : videoQualities?.find(q => q.quality === quality)?.url || getMediaUrlFromMedia(media, false)
-      
-      videoRef.current.src = newSource
-      
-      // Restore playback state
-      videoRef.current.currentTime = currentTime
-      if (wasPlaying) {
-        videoRef.current.play().catch(console.error)
-      }
     }
+  }
+
+  // Zoom and pan handlers
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    const newZoom = Math.max(1.0, Math.min(10, zoom * delta))
+    
+    // Zoom towards the mouse cursor position instead of viewport center
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (rect) {
+      // Get mouse position relative to the container
+      console.log("RECT",rect.left, rect.width, rect.top, rect.height)
+      console.log("MOUSE",e.clientX, e.clientY)
+      const scaleFactor = newZoom / zoom
+      const mouseX = e.clientX + zoom*pan.x
+      const mouseY = e.clientY + zoom*pan.y
+
+      const centerX = zoom*pan.x + rect.width / 2
+      const centerY = zoom*pan.y + rect.height / 2
+
+      const newCenterX = centerX * scaleFactor
+      const newCenterY = centerY * scaleFactor
+
+      const newDeltaMouseX = mouseX * scaleFactor - newCenterX
+      const newDeltaMouseY = mouseY * scaleFactor - newCenterY
+
+      const mouseFactor = 0.2
+
+      let newPanX = (newCenterX + mouseFactor*newDeltaMouseX - rect.width/2) / newZoom
+      let newPanY = (newCenterY + mouseFactor*newDeltaMouseY - rect.height/2) / newZoom
+      
+
+      
+      // Adjust pan so that the point under the mouse stays in the same place
+      setPan({
+        x: newPanX,
+        y: newPanY
+    })
+    }
+    
+    setZoom(newZoom)
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom > 1) {
+      e.preventDefault()
+      setIsDragging(true)
+      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+    }
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      e.preventDefault()
+      setHasDragged(true)
+      setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+    }
+  }
+
+  const handleMouseUp = (e?: React.MouseEvent) => {
+    // Reset view if no drag occurred (just a click) - this provides easy way to reset zoom/pan
+    if (!hasDragged) {
+      resetView()
+    }
+    
+    setIsDragging(false)
+    setHasDragged(false)
+    setDragStart({ x: 0, y: 0 })
+  }
+
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
   }
 
   // Close quality menu when clicking outside
@@ -518,12 +643,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       } else if (e.key === 's' || e.key === 'S') {
         e.preventDefault()
         slideshow.toggleSlideshow()
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        resetView()
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, slideshow.hasNext, slideshow.hasPrev, slideshow.handleNext, slideshow.handlePrev, slideshow.toggleSlideshow, handleTogglePlay, handleFullscreen, handleToggleMute, isProcessing])
+  }, [onClose, slideshow.hasNext, slideshow.hasPrev, slideshow.handleNext, slideshow.handlePrev, slideshow.toggleSlideshow, handleTogglePlay, handleFullscreen, handleToggleMute, isProcessing, resetView])
 
   // Auto-hide controls
   useEffect(() => {
@@ -787,6 +915,9 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               // Video player with optimal scaling to fit viewport while maximizing size
               <div className="w-full h-full flex items-center justify-center p-4 relative">
                 <video
+                  autoPlay={false}
+                  muted={true}
+                  disablePictureInPicture={true}
                   key={`${media.id}-${viewportChangeKey}`}
                   ref={videoRef}
                   className={`${
@@ -798,7 +929,11 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                     ...(isFullscreen ? getFullscreenStyle() : getOptimalVideoStyle()),
                     // Ensure video maintains aspect ratio and fits within viewport
                     maxWidth: '100%',
-                    maxHeight: '100%'
+                    maxHeight: '100%',
+                    // Apply zoom and pan transforms
+                    transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+                    cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                    transition: dragStart.x === 0 ? 'transform 0.2s ease-out' : 'none'
                   }}
                   src={getCurrentVideoSource()}
                   onTimeUpdate={handleTimeUpdate}
@@ -810,7 +945,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                     // Notify slideshow that video ended
                     slideshow.handleVideoEnd()
                   }}
-                  onClick={handleTogglePlay}
+                  onWheel={handleWheel}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={() => {
+                    if (isDragging) {
+                      handleMouseUp()
+                    }
+                  }}
                 >
                   Your browser does not support the video tag.
                 </video>
@@ -924,7 +1067,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                             >
                               Auto
                             </button>
-                            {videoQualities.map((quality) => (
+                            {videoQualities.map((quality: VideoQuality) => (
                               <button
                                 key={quality.quality}
                                 onClick={() => handleQualityChange(quality.quality)}
@@ -932,13 +1075,26 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                                   selectedQuality === quality.quality ? 'bg-white bg-opacity-20' : ''
                                 }`}
                               >
-                                {quality.quality} ({quality.width}x{quality.height})
+                                {quality.quality}
                               </button>
                             ))}
                           </div>
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {/* Reset View Button - only show when zoomed */}
+                  {zoom > 1 && (
+                    <button
+                      onClick={resetView}
+                      className="p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
+                      title="Reset View"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
                   )}
 
                   <button

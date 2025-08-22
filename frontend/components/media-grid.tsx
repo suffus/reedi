@@ -33,6 +33,8 @@ interface MediaGridProps {
   showFileSize?: boolean
   formatFileSize?: (bytes: number) => string
   formatDate?: (dateString: string) => string
+  // Grid customization
+  gridCols?: 'default' | 'gallery' | 'compact'
 }
 
 export function MediaGrid({
@@ -61,7 +63,8 @@ export function MediaGrid({
   showDate = false,
   showFileSize = false,
   formatFileSize,
-  formatDate
+  formatDate,
+  gridCols = 'default'
 }: MediaGridProps) {
   const isMediaSelected = (mediaId: string) => {
     return selectedMedia.some(m => m.id === mediaId)
@@ -86,6 +89,17 @@ export function MediaGrid({
 
   const getMediaTypeLabel = (mediaType: 'IMAGE' | 'VIDEO') => {
     return mediaType === 'VIDEO' ? 'Video' : 'Image'
+  }
+
+  const getGridColsClass = () => {
+    switch (gridCols) {
+      case 'gallery':
+        return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+      case 'compact':
+        return 'grid-cols-3 md:grid-cols-4 lg:grid-cols-6'
+      default:
+        return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6'
+    }
   }
 
   if (media.length === 0) {
@@ -132,7 +146,7 @@ export function MediaGrid({
 
       {/* Grid View */}
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className={`grid ${getGridColsClass()} gap-4`}>
           {media.map((mediaItem, index) => (
             <div
               key={mediaItem.id}

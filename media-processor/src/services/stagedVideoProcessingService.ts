@@ -9,6 +9,7 @@ import {
   ProcessingOutput
 } from '../types/stagedProcessing'
 import logger from '../utils/logger'
+import { TempFileTracker } from '../utils/tempFileTracker'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -18,6 +19,7 @@ export class StagedVideoProcessingService {
   private videoProcessor: StandaloneVideoProcessor
   private tempDir: string
   private queueConfig: QueueConfig
+  private tempFileTracker: TempFileTracker
   
   // Concurrency control
   private maxConcurrentJobs: number
@@ -36,6 +38,7 @@ export class StagedVideoProcessingService {
     this.tempDir = tempDir
     this.queueConfig = rabbitmqService.getQueueConfig()
     this.maxConcurrentJobs = maxConcurrentJobs
+    this.tempFileTracker = new TempFileTracker(tempDir)
   }
 
   async start(): Promise<void> {
@@ -45,6 +48,7 @@ export class StagedVideoProcessingService {
     this.jobCallbacks.set(this.queueConfig.download, (job) => this.handleDownloadStage(job))
     this.jobCallbacks.set(this.queueConfig.processing, (job) => this.handleProcessingStage(job))
     this.jobCallbacks.set(this.queueConfig.upload, (job) => this.handleUploadStage(job))
+    this.jobCallbacks.set(this.queueConfig.cleanup, (job) => this.handleCleanupStage(job))
     
     // Start consumers for each stage
     await this.rabbitmqService.consumeQueue(
@@ -60,6 +64,11 @@ export class StagedVideoProcessingService {
     await this.rabbitmqService.consumeQueue(
       this.queueConfig.upload,
       this.jobCallbacks.get(this.queueConfig.upload)!
+    )
+    
+    await this.rabbitmqService.consumeQueue(
+      this.queueConfig.cleanup,
+      this.jobCallbacks.get(this.queueConfig.cleanup)!
     )
 
     logger.info('Staged video processing service started')
@@ -86,7 +95,7 @@ export class StagedVideoProcessingService {
   }
 
   private async unsubscribeFromAllQueues(): Promise<void> {
-    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload]
+    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload, this.queueConfig.cleanup]
     
     for (const queueName of queues) {
       if (this.rabbitmqService.isSubscribedToQueue(queueName)) {
@@ -101,7 +110,7 @@ export class StagedVideoProcessingService {
   }
 
   private async resubscribeToAllQueues(): Promise<void> {
-    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload]
+    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload, this.queueConfig.cleanup]
     
     for (const queueName of queues) {
       if (!this.rabbitmqService.isSubscribedToQueue(queueName)) {
@@ -138,6 +147,20 @@ export class StagedVideoProcessingService {
     return this.activeJobs.size
   }
 
+  /**
+   * Get temp file statistics for monitoring
+   */
+  getTempFileStats() {
+    return this.tempFileTracker.getSummary()
+  }
+
+  /**
+   * Clean up orphaned temp files
+   */
+  async cleanupOrphanedTempFiles() {
+    return await this.tempFileTracker.cleanupOrphanedFiles()
+  }
+
   private async handleDownloadStage(job: StagedProcessingJob): Promise<void> {
     const { id: jobId, mediaId, s3Key } = job
     
@@ -150,6 +173,9 @@ export class StagedVideoProcessingService {
       
       // Download video from S3
       const localVideoPath = await this.s3Service.downloadVideo(s3Key)
+      
+      // Track the downloaded file
+      this.tempFileTracker.trackFile(jobId, localVideoPath, 'DOWNLOADED', 'input', 'Original video downloaded from S3')
       
       // Extract basic metadata
       const metadata = await this.extractBasicMetadata(localVideoPath)
@@ -217,6 +243,21 @@ export class StagedVideoProcessingService {
         throw new Error(result.error || 'Video processing failed')
       }
       
+      // Track all generated output files
+      if (result.outputs) {
+        for (const output of result.outputs) {
+          if (output.localPath) {
+            this.tempFileTracker.trackFile(
+              jobId, 
+              output.localPath, 
+              'PROCESSED', 
+              'output', 
+              `Generated ${output.type} file: ${output.quality || 'default'}`
+            )
+          }
+        }
+      }
+      
       // Create result for next stage
       const stageResult: StageResult = {
         success: true,
@@ -276,12 +317,13 @@ export class StagedVideoProcessingService {
       // Upload processed files to S3
       const { thumbnails, videoVersions } = await this.uploadResults(jobId, mediaId, outputs)
       
-      // Create result for completion
+      // Create result for cleanup stage
       const result: StageResult = {
         success: true,
-        stage: 'COMPLETED',
+        stage: 'UPLOADED',
         mediaId,
-        jobId
+        jobId,
+        tempFiles: this.tempFileTracker.getJobTempFiles(jobId)
       }
       
       // Send completion update
@@ -297,8 +339,8 @@ export class StagedVideoProcessingService {
         videoVersions
       )
       
-      // Send to next stage (completed)
-      await this.sendToNextStage(result, 'COMPLETED')
+      // Send to cleanup stage
+      await this.sendToNextStage(result, 'CLEANUP')
       
       logger.info(`Upload stage completed for job ${jobId}`)
       
@@ -317,6 +359,53 @@ export class StagedVideoProcessingService {
       }
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'upload_failed', undefined, undefined, result.error)
+      await this.sendToNextStage(result, 'FAILED')
+    } finally {
+      await this.finishJob(jobId)
+    }
+  }
+
+  private async handleCleanupStage(job: StagedProcessingJob): Promise<void> {
+    const { id: jobId, mediaId } = job
+    
+    try {
+      await this.startJob(jobId)
+      logger.info(`Starting cleanup stage for job ${jobId}, media ${mediaId}`)
+      
+      // Clean up all temp files for this job
+      const { cleaned, totalSize } = await this.tempFileTracker.cleanupJobTempFiles(jobId)
+      
+      logger.info(`Cleanup stage completed for job ${jobId}: cleaned ${cleaned} files, freed ${Math.round(totalSize / 1024 / 1024)} MB`)
+      
+      // Create final completion result
+      const result: StageResult = {
+        success: true,
+        stage: 'COMPLETED',
+        mediaId,
+        jobId
+      }
+      
+      // Send to final completion stage
+      await this.sendToNextStage(result, 'COMPLETED')
+      
+    } catch (error) {
+      logger.error(`Cleanup stage failed for job ${jobId}:`, error)
+      
+      // Even if cleanup fails, try to clean up temp files manually
+      try {
+        await this.cleanupJobTempFiles(jobId, mediaId)
+      } catch (cleanupError) {
+        logger.error(`Manual cleanup also failed for job ${jobId}:`, cleanupError)
+      }
+      
+      const result: StageResult = {
+        success: false,
+        stage: 'FAILED',
+        mediaId,
+        jobId,
+        error: error instanceof Error ? error.message : 'Cleanup failed'
+      }
+      
       await this.sendToNextStage(result, 'FAILED')
     } finally {
       await this.finishJob(jobId)
@@ -518,6 +607,9 @@ export class StagedVideoProcessingService {
           // Track successfully uploaded files for cleanup
           uploadedFiles.push(localPath)
           
+          // Mark the file for cleanup in the tracker
+          this.tempFileTracker.markFileForCleanup(jobId, localPath)
+          
           if (output.type === 'thumbnail') {
             thumbnails.push({
               s3Key: output.s3Key,
@@ -581,6 +673,10 @@ export class StagedVideoProcessingService {
         return this.queueConfig.processing
       case 'UPLOADING':
         return this.queueConfig.upload
+      case 'UPLOADED':
+        return this.queueConfig.cleanup
+      case 'CLEANUP':
+        return this.queueConfig.updates
       case 'COMPLETED':
       case 'FAILED':
         return this.queueConfig.updates

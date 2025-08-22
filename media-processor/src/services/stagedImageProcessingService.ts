@@ -8,6 +8,7 @@ import {
   ProcessingOutput
 } from '../types/stagedProcessing'
 import logger from '../utils/logger'
+import { TempFileTracker } from '../utils/tempFileTracker'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -17,6 +18,7 @@ export class StagedImageProcessingService {
   private imageProcessor: StandaloneImageProcessor
   private queueConfig: QueueConfig
   private tempDir: string
+  private tempFileTracker: TempFileTracker
   
   // Concurrency control
   private maxConcurrentJobs: number
@@ -35,6 +37,7 @@ export class StagedImageProcessingService {
     this.queueConfig = rabbitmqService.getQueueConfig()
     this.tempDir = tempDir
     this.maxConcurrentJobs = maxConcurrentJobs
+    this.tempFileTracker = new TempFileTracker(tempDir)
   }
 
   async start(): Promise<void> {
@@ -141,6 +144,20 @@ export class StagedImageProcessingService {
 
   getActiveJobCount(): number {
     return this.activeJobs.size
+  }
+
+  /**
+   * Get temp file statistics for monitoring
+   */
+  getTempFileStats() {
+    return this.tempFileTracker.getSummary()
+  }
+
+  /**
+   * Clean up orphaned temp files
+   */
+  async cleanupOrphanedTempFiles() {
+    return await this.tempFileTracker.cleanupOrphanedFiles()
   }
 
   private async handleDownloadStage(job: any): Promise<void> {

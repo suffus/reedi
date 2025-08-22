@@ -13,6 +13,8 @@ export interface StagedProcessingJob {
   localMediaPath?: string
   metadata?: VideoMetadata | ImageMetadata
   outputs?: ProcessingOutput[]
+  // Temp file tracking
+  tempFiles?: TempFileInfo[]
 }
 
 export type ProcessingStage = 
@@ -21,6 +23,8 @@ export type ProcessingStage =
   | 'PROCESSING'
   | 'PROCESSED'
   | 'UPLOADING'
+  | 'UPLOADED'
+  | 'CLEANUP'
   | 'COMPLETED'
   | 'FAILED'
 
@@ -57,6 +61,16 @@ export interface ProcessingOutput {
   localPath?: string
 }
 
+// New interface for comprehensive temp file tracking
+export interface TempFileInfo {
+  path: string
+  stage: ProcessingStage
+  createdAt: Date
+  size: number
+  type: 'input' | 'output' | 'intermediate'
+  description: string
+}
+
 export interface StageResult {
   success: boolean
   stage: ProcessingStage
@@ -65,6 +79,7 @@ export interface StageResult {
   localMediaPath?: string
   metadata?: VideoMetadata | ImageMetadata
   outputs?: ProcessingOutput[]
+  tempFiles?: TempFileInfo[]
   error?: string
 }
 
@@ -72,6 +87,7 @@ export interface QueueConfig {
   download: string
   processing: string
   upload: string
+  cleanup: string
   updates: string
 }
 

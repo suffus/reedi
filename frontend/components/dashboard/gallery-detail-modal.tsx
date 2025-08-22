@@ -28,6 +28,7 @@ import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useToast } from '../common/toast'
 import { downloadMedia } from '@/lib/download-utils'
+import { MediaGrid } from '../media-grid'
 //import { ModalEventCatcher } from '../common/modal-event-catcher'
 
 interface GalleryDetailModalProps {
@@ -838,7 +839,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                   {viewMode === 'grid' ? (
                     reorderMode ? (
                       orderedMedia.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                           {orderedMedia.map((media: any, index: number) => (
                             <div
                               key={media.id || `media-${index}`}
@@ -887,115 +888,57 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                         </div>
                       )
                     ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                        {orderedMedia.map((media: any, index: number) => (
-                          <motion.div
-                            key={media.id || `media-${index}`}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className={`relative aspect-square bg-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow duration-200 ${
-                              bulkEditMode && selectedMediaItems.some((img: any) => img.id === media.id) 
-                                ? 'ring-2 ring-green-500' 
-                                : ''
-                            }`}
-                          >
-                            <LazyMedia
-                              src={getMediaUrlFromMedia(media, true)}
-                              alt={media.altText || 'Gallery medium'}
-                              className={`w-full h-full object-cover ${bulkEditMode ? 'cursor-pointer' : 'cursor-pointer'}`}
-                              onClick={(e?: React.MouseEvent) => {
-                                if (bulkEditMode) {
-                                  toggleMedia(media, e, index)
-                                } else {
-                                  // Open the unified media viewer
-                                  const mappedMedia = mapMediaData(media)
-                                  const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
-                                  openMediaDetail(mappedMedia, mappedAllMedia)
-                                }
-                              }}
-                              mediaType={media.mediaType || 'IMAGE'}
-                            />
-                            
-                            {/* Bulk Edit Selection Checkbox */}
-                            {bulkEditMode && (
-                              <div className="absolute top-2 left-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    toggleMedia(media, e, index)
-                                  }}
-                                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200 ${
-                                    selectedMediaItems.some((img: any) => img.id === media.id)
-                                      ? 'bg-green-500 border-green-500 text-white'
-                                      : 'bg-white border-gray-300 hover:border-green-400'
-                                  }`}
-                                >
-                                  {selectedMediaItems.some((img: any) => img.id === media.id) && (
-                                    <Check className="h-4 w-4" />
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                            
-                            {/* Cover Image Indicator */}
-                            {gallery.coverMediaId === media.id && (
-                              <div className="absolute top-2 right-2 bg-yellow-500 text-white rounded-full p-1">
-                                <Star className="h-3 w-3" />
-                              </div>
-                            )}
-                            
-                            {/* Overlay Actions */}
-                            {!bulkEditMode && (
-                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
-                                <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                  <button
-                                    onClick={() => {
-                                      // Open the unified media viewer
-                                      const mappedMedia = mapMediaData(media)
-                                      const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
-                                      openMediaDetail(mappedMedia, mappedAllMedia)
-                                    }}
-                                    className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                                  >
-                                    <Eye className="h-4 w-4 text-gray-700" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDownloadMedia(media)}
-                                    className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 transition-colors duration-200"
-                                  >
-                                    <Download className="h-4 w-4 text-gray-700" />
-                                  </button>
-                                  {isOwner && (
-                                    <>
-                                      <button
-                                        onClick={() => handleSetCover(media.id)}
-                                        className={`p-2 rounded-full shadow-lg transition-colors duration-200 ${
-                                          gallery.coverMediaId === media.id
-                                            ? 'bg-yellow-500 text-white'
-                                            : 'bg-white text-gray-700 hover:bg-yellow-50'
-                                        }`}
-                                      >
-                                        {gallery.coverMediaId === media.id ? (
-                                          <StarOff className="h-4 w-4" />
-                                        ) : (
-                                          <Star className="h-4 w-4" />
-                                        )}
-                                      </button>
-                                      <button
-                                        onClick={() => handleRemoveMedia(media.id)}
-                                        disabled={removeMediaMutation.isPending}
-                                        className="p-2 bg-white rounded-full shadow-lg hover:bg-red-50 transition-colors duration-200"
-                                      >
-                                        <Trash2 className="h-4 w-4 text-red-600" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </motion.div>
-                        ))}
-                      </div>
+                      <MediaGrid
+                        media={orderedMedia.map((media: any) => mapMediaData(media))}
+                        viewMode={viewMode}
+                        selectedMedia={selectedMediaItems}
+                        onMediaClick={(media) => {
+                          // Open the unified media viewer
+                          const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
+                          openMediaDetail(media, mappedAllMedia)
+                        }}
+                        onMediaSelect={(media, event) => {
+                          if (bulkEditMode) {
+                            const originalMedia = orderedMedia.find(m => m.id === media.id)
+                            if (originalMedia) {
+                              const index = orderedMedia.findIndex(m => m.id === media.id)
+                              toggleMedia(originalMedia, event, index)
+                            }
+                          }
+                        }}
+                        isSelectable={bulkEditMode}
+                        showActions={!bulkEditMode}
+                        onViewDetails={(media) => {
+                          // Open the unified media viewer
+                          const mappedAllMedia = orderedMedia.map(m => mapMediaData(m))
+                          openMediaDetail(media, mappedAllMedia)
+                        }}
+                        onDownload={(media) => {
+                          const originalMedia = orderedMedia.find(m => m.id === media.id)
+                          if (originalMedia) {
+                            handleDownloadMedia(originalMedia)
+                          }
+                        }}
+                        onDelete={(media) => {
+                          const originalMedia = orderedMedia.find(m => m.id === media.id)
+                          if (originalMedia) {
+                            handleRemoveMedia(originalMedia.id)
+                          }
+                        }}
+                        onSetCover={(media) => {
+                          const originalMedia = orderedMedia.find(m => m.id === media.id)
+                          if (originalMedia) {
+                            handleSetCover(originalMedia.id)
+                          }
+                        }}
+                        isDeleting={removeMediaMutation.isPending}
+                        showMediaInfo={true}
+                        showDate={false}
+                        showFileSize={false}
+                        coverMediaId={gallery?.coverMediaId}
+                        showCoverIndicator={true}
+                        gridCols="gallery"
+                      />
                     )
                                     ) : (
                     reorderMode ? (

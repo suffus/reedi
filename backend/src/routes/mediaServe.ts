@@ -1337,6 +1337,7 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
       processingStatus: true,
       imageProcessingStatus: true,
       imageVersions: true,
+      videoVersions: true,
       s3Key: true, // Fallback to original
       mimeType: true,
       visibility: true,
@@ -1362,21 +1363,27 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
     return
   }
 
-  // Only support images for now
-  if (media.mediaType !== 'IMAGE') {
+  // Support both images and videos for quality selection
+  if (media.mediaType !== 'IMAGE' && media.mediaType !== 'VIDEO') {
     res.status(400).json({
       success: false,
-      error: 'Quality selection only supported for images'
+      error: 'Quality selection only supported for images and videos'
     })
     return
   }
 
-  // Check image processing status specifically
-  const processingStatus = media.imageProcessingStatus || media.processingStatus
+  // Check processing status based on media type
+  let processingStatus: string | null = null
+  if (media.mediaType === 'IMAGE') {
+    processingStatus = media.imageProcessingStatus || media.processingStatus
+  } else if (media.mediaType === 'VIDEO') {
+    processingStatus = media.processingStatus
+  }
+  
   if (processingStatus !== 'COMPLETED') {
     res.status(202).json({
       success: false,
-      error: 'Image is still processing',
+      error: `${media.mediaType === 'VIDEO' ? 'Video' : 'Image'} is still processing`,
       processingStatus: processingStatus
     })
     return
@@ -1385,57 +1392,58 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
   try {
     let s3Key: string | null = null
 
-    // If quality is 'original', use the original image
+    // If quality is 'original', use the original media
     if (quality === 'original') {
       s3Key = media.s3Key
     } else {
-          // Look for the specific quality in imageVersions
-    // Parse imageVersions if it's a JSON string
-    let versions: any[] = []
-    if (media.imageVersions) {
-      if (typeof media.imageVersions === 'string') {
-        try {
-          versions = JSON.parse(media.imageVersions)
-        } catch (error) {
-          console.error('Failed to parse imageVersions JSON:', error)
-        }
-      } else if (Array.isArray(media.imageVersions)) {
-        versions = media.imageVersions
-      }
-    }
-    
-    if (versions && Array.isArray(versions)) {
-      // First try to find exact quality match
-      let targetVersion = versions.find(version => version.quality === quality)
+      // Look for the specific quality in versions based on media type
+      let versions: any[] = []
+      let versionsField = media.mediaType === 'VIDEO' ? media.videoVersions : media.imageVersions
       
-      if (targetVersion) {
-        s3Key = targetVersion.s3Key
-      } else {
-        // Find the best available quality (closest above requested, or highest available)
-        const qualityOrder = ['180p', '360p', '540p', '720p', '1080p', 'original']
-        const requestedIndex = qualityOrder.indexOf(quality)
+      if (versionsField) {
+        if (typeof versionsField === 'string') {
+          try {
+            versions = JSON.parse(versionsField)
+          } catch (error) {
+            console.error(`Failed to parse ${media.mediaType === 'VIDEO' ? 'videoVersions' : 'imageVersions'} JSON:`, error)
+          }
+        } else if (Array.isArray(versionsField)) {
+          versions = versionsField
+        }
+      }
+      
+      if (versions && Array.isArray(versions)) {
+        // First try to find exact quality match
+        let targetVersion = versions.find(version => version.quality === quality)
         
-        if (requestedIndex !== -1) {
-          // Look for the next best quality above the requested one
-          let bestVersion = null
-          let bestIndex = -1
+        if (targetVersion) {
+          s3Key = targetVersion.s3Key || targetVersion.s3_key
+        } else {
+          // Find the best available quality (closest above requested, or highest available)
+          const qualityOrder = ['180p', '360p', '540p', '720p', '1080p', 'original']
+          const requestedIndex = qualityOrder.indexOf(quality)
           
-          for (const version of versions) {
-            const versionIndex = qualityOrder.indexOf(version.quality)
-            if (versionIndex !== -1 && versionIndex >= requestedIndex) {
-              if (bestVersion === null || versionIndex < bestIndex) {
-                bestVersion = version
-                bestIndex = versionIndex
+          if (requestedIndex !== -1) {
+            // Look for the next best quality above the requested one
+            let bestVersion = null
+            let bestIndex = -1
+            
+            for (const version of versions) {
+              const versionIndex = qualityOrder.indexOf(version.quality)
+              if (versionIndex !== -1 && versionIndex >= requestedIndex) {
+                if (bestVersion === null || versionIndex < bestIndex) {
+                  bestVersion = version
+                  bestIndex = versionIndex
+                }
               }
             }
-          }
-          
-          if (bestVersion) {
-            s3Key = bestVersion.s3Key
+            
+            if (bestVersion) {
+              s3Key = bestVersion.s3Key || bestVersion.s3_key
+            }
           }
         }
       }
-    }
     }
 
     // If no specific quality found, fall back to original
@@ -1446,19 +1454,23 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
     if (!s3Key) {
       res.status(404).json({
         success: false,
-        error: 'Image not found'
+        error: `${media.mediaType === 'VIDEO' ? 'Video' : 'Image'} not found`
       })
       return
     }
 
-    // Stream the image
-    await streamImageFromS3(s3Key, media.mimeType, req, res)
+    // Stream the media based on type
+    if (media.mediaType === 'VIDEO') {
+      await streamVideoFromS3(s3Key, 'video/mp4', req, res)
+    } else {
+      await streamImageFromS3(s3Key, media.mimeType, req, res)
+    }
 
   } catch (error) {
-    console.error('Error serving image quality:', error)
+    console.error(`Error serving ${media.mediaType === 'VIDEO' ? 'video' : 'image'} quality:`, error)
     res.status(500).json({
       success: false,
-      error: 'Error serving image'
+      error: `Error serving ${media.mediaType === 'VIDEO' ? 'video' : 'image'}`
     })
   }
 }))

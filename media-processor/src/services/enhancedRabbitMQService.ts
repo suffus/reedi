@@ -60,6 +60,7 @@ export interface QueueConfig {
   download: string
   processing: string
   upload: string
+  cleanup: string
   updates: string
 }
 
@@ -133,6 +134,8 @@ export class EnhancedRabbitMQService {
     logger.info(`Binding queue ${queues.processing} to exchange ${this.exchanges.processing} with routing key ${routingKey+'.processing'}`)
     await (this.channel as any).bindQueue(queues.upload, this.exchanges.processing, routingKey+'.upload')
     logger.info(`Binding queue ${queues.upload} to exchange ${this.exchanges.processing} with routing key ${routingKey+'.upload'}`)
+    await (this.channel as any).bindQueue(queues.cleanup, this.exchanges.processing, routingKey+'.cleanup')
+    logger.info(`Binding queue ${queues.cleanup} to exchange ${this.exchanges.processing} with routing key ${routingKey+'.cleanup'}`)
     await (this.channel as any).bindQueue(queues.updates, this.exchanges.updates, routingKey+'.updates')
     logger.info(`Binding queue ${queues.updates} to exchange ${this.exchanges.updates} with routing key ${routingKey+'.updates'}`)
   }
