@@ -519,6 +519,7 @@ interface UserMediaFilters {
   mediaType?: 'IMAGE' | 'VIDEO'
   startDate?: string
   endDate?: string
+  showOnlyUnorganized?: boolean
 }
 
 export const useFilteredUserMedia = (
@@ -560,6 +561,10 @@ export const useFilteredUserMedia = (
   
   if (filters.endDate) {
     queryParams.append('endDate', filters.endDate)
+  }
+  
+  if (filters.showOnlyUnorganized) {
+    queryParams.append('showOnlyUnorganized', 'true')
   }
   
   return useQuery({
@@ -627,6 +632,10 @@ export const useInfiniteFilteredUserMedia = (
       
       if (filters.endDate) {
         queryParams.append('endDate', filters.endDate)
+      }
+      
+      if (filters.showOnlyUnorganized) {
+        queryParams.append('showOnlyUnorganized', 'true')
       }
       
       const url = `${API_ENDPOINTS.MEDIA.USER(userId)}?${queryParams.toString()}`

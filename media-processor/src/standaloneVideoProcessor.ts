@@ -22,6 +22,7 @@ interface ProcessingOutput {
   fileSize: number
   mimeType: string
   quality?: string
+  localPath?: string
 }
 
 interface ProcessingResult {
@@ -92,7 +93,8 @@ export class StandaloneVideoProcessor {
         height: metadata.height,
         fileSize: fs.statSync(originalOutputPath).size,
         mimeType: 'video/mp4',
-        quality: 'original'
+        quality: 'original',
+        localPath: originalOutputPath
       })
 
       // Generate different quality versions
@@ -210,7 +212,8 @@ export class StandaloneVideoProcessor {
           height: 180,
           fileSize: fs.statSync(thumbnailOutputPath).size,
           mimeType: 'image/jpeg',
-          quality: `${i + 1}`
+          quality: `${i + 1}`,
+          localPath: thumbnailOutputPath
         })
 
         // Clean up temp thumbnail
@@ -271,7 +274,8 @@ export class StandaloneVideoProcessor {
           height: quality.height,
           fileSize: fs.statSync(videoOutputPath).size,
           mimeType: 'video/mp4',
-          quality: quality.name
+          quality: quality.name,
+          localPath: videoOutputPath
         })
 
         // Clean up temp video

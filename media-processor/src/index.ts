@@ -85,6 +85,7 @@ async function main() {
         download: 'video.processing.download',
         processing: 'video.processing.processing',
         upload: 'video.processing.upload',
+        cleanup: 'video.processing.cleanup',
         updates: 'video.processing.updates'
       }
     )
@@ -114,6 +115,7 @@ async function main() {
         download: 'media.images.processing.download',
         processing: 'media.images.processing.processing',
         upload: 'media.images.processing.upload',
+        cleanup: 'media.images.processing.cleanup',
         updates: 'media.images.processing.updates'
       }
     )
@@ -152,6 +154,10 @@ async function main() {
             maxConcurrentJobs: config.processing.maxConcurrentImageJobs,
             activeJobs: imageProcessingService ? imageProcessingService.getActiveJobCount() : 0
           }
+        },
+        tempFiles: {
+          video: videoProcessingService ? videoProcessingService.getTempFileStats() : null,
+          image: imageProcessingService ? imageProcessingService.getTempFileStats() : null
         }
       })
     })

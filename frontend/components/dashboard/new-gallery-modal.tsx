@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, RefreshCw } from 'lucide-react'
-import { useCreateGallery, useAddMediaToGallery, useUserMedia } from '../../lib/api-hooks'
+import { useCreateGallery, useAddMediaToGallery, useInfiniteFilteredUserMedia } from '../../lib/api-hooks'
 import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
@@ -54,34 +54,54 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
     }
   }, [isOpen])
   
+  // Build filters for the backend
+  const mediaFilters = {
+    tags: filterTags.length > 0 ? filterTags : undefined,
+    title: searchQuery.trim() || undefined,
+    // Add other filters as needed
+  }
+
   const { 
     data: galleryData, 
     isLoading: galleryLoading, 
-    loadMore, 
-    hasMore, 
-    isLoadingMore,
-    reset
-  } = useUserMedia(userId)
-  
-  // Map the raw media to our frontend format
-  const galleryMedia = (galleryData?.data?.media || []).map((mediaItem: any) => {
-    const mapped = mapMediaData(mediaItem)
-    return {
-      ...mapped,
-      url: getMediaUrlFromMedia(mapped, false),
-      thumbnail: getMediaUrlFromMedia(mapped, true),
-    }
-  })
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage,
+    refetch
+  } = useInfiniteFilteredUserMedia(userId, mediaFilters)
 
-  // Filter media based on selected tags
-  const filteredMedia = filterTags.length === 0 ? galleryMedia : galleryMedia.filter((mediaItem: any) => {
-    // Check if the media has all the selected tags
-    return filterTags.every(tag => 
-      mediaItem.tags && Array.isArray(mediaItem.tags) && mediaItem.tags.some((mediaTag: string) => 
-        mediaTag && typeof mediaTag === 'string' && mediaTag.toLowerCase().includes(tag.toLowerCase())
-      )
-    )
-  })
+  // Debounced search effect
+  useEffect(() => {
+    if (!isOpen) return
+    
+    const timer = setTimeout(() => {
+      refetch()
+    }, 300) // 300ms delay
+    
+    return () => clearTimeout(timer)
+  }, [searchQuery, isOpen, refetch])
+
+  // Refetch data when tags change (immediate)
+  useEffect(() => {
+    if (isOpen) {
+      refetch()
+    }
+  }, [filterTags, isOpen, refetch])
+  
+  // Map the raw media to our frontend format (flatten pages from infinite query)
+  const galleryMedia = (galleryData?.pages || []).flatMap((page: any) => 
+    (page.data?.media || []).map((mediaItem: any) => {
+      const mapped = mapMediaData(mediaItem)
+      return {
+        ...mapped,
+        url: getMediaUrlFromMedia(mapped, false),
+        thumbnail: getMediaUrlFromMedia(mapped, true),
+      }
+    })
+  )
+
+  // Since filtering is now done server-side, we can use the media directly
+  const filteredMedia = galleryMedia
 
   const handleCreateGallery = async () => {
     if (!galleryName.trim()) {
@@ -149,7 +169,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                 </div>
                 {/* Refresh Button */}
                 <button
-                  onClick={() => reset()}
+                  onClick={() => refetch()}
                   disabled={galleryLoading}
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Refresh media"
@@ -242,11 +262,36 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900">Select Media</h3>
-                    <p className="text-sm text-gray-600">
-                      {selectedMedia.length} media item{selectedMedia.length !== 1 ? 's' : ''} selected
-                    </p>
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p>{selectedMedia.length} media item{selectedMedia.length !== 1 ? 's' : ''} selected</p>
+                      {(filterTags.length > 0 || searchQuery.trim()) && (
+                        <p className="text-xs text-blue-600">
+                          Showing {filteredMedia.length} result{(filteredMedia.length !== 1 ? 's' : '')} from backend filtering
+                          {galleryData?.pages?.[0]?.data?.pagination?.total && (
+                            <span className="ml-1 text-gray-500">
+                              (of {galleryData.pages[0].data.pagination.total} total)
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
+                    {/* Search Input */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search media by title..."
+                        className="px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      />
+                      {galleryLoading && (
+                        <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                        </div>
+                      )}
+                    </div>
                     {/* Filter Toggle Button */}
                     <button
                       onClick={() => setShowFilters(!showFilters)}
@@ -270,12 +315,15 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                         <Filter className="h-4 w-4 mr-2" />
                         Filter by Tags
                       </h3>
-                      {filterTags.length > 0 && (
+                      {(filterTags.length > 0 || searchQuery.trim()) && (
                         <button
-                          onClick={() => setFilterTags([])}
+                          onClick={() => {
+                            setFilterTags([])
+                            setSearchQuery('')
+                          }}
                           className="text-xs text-gray-500 hover:text-gray-700"
                         >
-                          Clear filters
+                          Clear all filters
                         </button>
                       )}
                     </div>
@@ -285,19 +333,50 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                       placeholder="Enter tags to filter by (comma-separated)..."
                       className="w-full"
                     />
-                    {filterTags.length > 0 && (
+                    {(filterTags.length > 0 || searchQuery.trim()) && (
                       <p className="text-xs text-gray-500 mt-2">
-                        Showing media that contain all selected tags
+                        {filterTags.length > 0 && searchQuery.trim() 
+                          ? `Showing media that contain all selected tags and match "${searchQuery}"`
+                          : filterTags.length > 0 
+                            ? 'Showing media that contain all selected tags'
+                            : `Showing media that match "${searchQuery}"`
+                        }
                       </p>
                     )}
                   </div>
                 )}
 
+                {/* Loading State */}
+                {galleryLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <span className="ml-3 text-gray-600">
+                      {searchQuery.trim() || filterTags.length > 0 ? 'Searching...' : 'Loading media...'}
+                    </span>
+                  </div>
+                )}
+
+                {/* No Results State */}
+                {!galleryLoading && filteredMedia.length === 0 && (filterTags.length > 0 || searchQuery.trim()) && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No media found matching your filters.</p>
+                    <button
+                      onClick={() => {
+                        setFilterTags([])
+                        setSearchQuery('')
+                      }}
+                      className="text-primary-600 hover:text-primary-700 text-sm mt-2"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                )}
+
                 {/* Use our reusable MediaGrid component with infinite scroll */}
                 <InfiniteScrollContainer
-                  hasMore={hasMore}
-                  isLoading={isLoadingMore}
-                  onLoadMore={loadMore}
+                  hasMore={hasNextPage}
+                  isLoading={isFetchingNextPage}
+                  onLoadMore={fetchNextPage}
                 >
                   <MediaGrid
                     media={filteredMedia}
