@@ -25,26 +25,41 @@ const s3Client = new S3Client({
 let activeConnections = 0
 let totalConnections = 0
 let failedConnections = 0
+let timeouts = 0
+let totalDataSent = 0
+let totalDataCount = 0
 
 // Log connection stats every 30 seconds
 setInterval(() => {
-  console.log(`🔗 MediaServe Connection Stats: Active: ${activeConnections}, Total: ${totalConnections}, Failed: ${failedConnections}`)
-}, 30000)
+  const totalDataInGB = (totalDataSent/1024/1024/1024).toFixed(3)
+  console.log(`🔗 MediaServe Connection Stats: Active: ${activeConnections}, Total: ${totalConnections}, Failed: ${failedConnections}, Timeouts: ${timeouts} Total Data Sent  : ${totalDataInGB}G Total Data Count: ${totalDataCount}`)
+}, 5000)
 
 // Function to stream video from S3
 async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Request, res: Response) {
   const connectionId = ++totalConnections
-  activeConnections++
   
   console.log(`🎥 [${connectionId}] Starting video stream for ${s3Key}`)
   
   // Track if this connection has been cleaned up
   let connectionCleanedUp = false
   
+  // Create AbortController for this stream
+  const abortController = new AbortController()
+  
   const cleanupConnection = () => {
     if (!connectionCleanedUp) {
       connectionCleanedUp = true
       activeConnections--
+      
+      // Abort the S3 request and destroy the stream
+      try {
+        console.log(`🎥 [${connectionId}] Aborting S3 request and destroying stream...`)
+        abortController.abort()
+      } catch (error) {
+        console.error(`🎥 [${connectionId}] Error aborting stream:`, error)
+      }
+      
       console.log(`🎥 [${connectionId}] Connection cleaned up, active connections: ${activeConnections}`)
     }
   }
@@ -52,6 +67,7 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
   // Set a timeout to force cleanup if connection hangs
   const connectionTimeout = setTimeout(() => {
     console.warn(`🎥 [${connectionId}] Connection timeout - forcing cleanup`)
+    timeouts++
     cleanupConnection()
     if (!res.headersSent) {
       res.status(408).json({
@@ -61,7 +77,7 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
     } else {
       res.end()
     }
-  }, 30000) // 30 second timeout
+  }, 120000) // 120 second timeout
   
   // Add S3 request timeout and detailed debugging
   const s3StartTime = Date.now()
@@ -78,16 +94,18 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
       Key: s3Key,
       ...(range && { Range: range })
     })
+
+    
     
     console.log(`🎥 [${connectionId}] S3 request prepared, sending command...`)
     
     console.log(`🎥 [${connectionId}] S3 request start time: ${s3StartTime}`)
     
-    // Get the object from S3 with detailed timing
+    // Get the object from S3 with abort signal and detailed timing
     const response = await Promise.race([
-      s3Client.send(command),
+      s3Client.send(command, { abortSignal: abortController.signal }),
       new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('S3 request timeout')), 25000)
+        setTimeout(() => reject(new Error('S3 request timeout')), 2500)
       )
     ])
     
@@ -116,12 +134,16 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
     
     console.log(`🎥 [${connectionId}] Starting pipe operation...`)
     
+    activeConnections++
     // Pipe the S3 response to the HTTP response
     const stream = response.Body as any
+    let dataSent = 0
+    let dataCount = 0
     
     // Set up error handling for the stream
     stream.on('error', (error: any) => {
       clearTimeout(connectionTimeout)
+      failedConnections++
       console.error(`🎥 [${connectionId}] Stream error:`, error)
       cleanupConnection()
       
@@ -135,6 +157,24 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
       console.log(`🎥 [${connectionId}] Stream ended successfully`)
       cleanupConnection()
     })
+
+    stream.on('data', (chunk: any) => {
+      // Check if connection is already cleaned up - if so, don't process more data
+      if (connectionCleanedUp) {
+        //console.log(`🎥 [${connectionId}] Ignoring data chunk after cleanup, size: ${chunk.length} bytes`)
+        //return
+      }
+      
+      dataSent += chunk.length
+      totalDataSent += chunk.length
+      totalDataCount++
+      dataCount++
+      if(dataCount % 20 === 0) {
+        const bytesSent = (dataSent/1024/1024).toFixed(3) + " MB"
+        const dataRate = (dataSent/(Date.now() - s3StartTime)/1024*1000).toFixed(3) + " KB/s"
+        console.log(`🎥 [${connectionId}] Stream video data received, total data sent: ${bytesSent} at ${dataRate} is stream closed: ${connectionCleanedUp}`)
+      }
+    })
     
     stream.on('close', () => {
       clearTimeout(connectionTimeout)
@@ -145,6 +185,7 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
     // Handle response events
     res.on('error', (error: any) => {
       clearTimeout(connectionTimeout)
+      failedConnections++
       console.error(`🎥 [${connectionId}] Response error:`, error)
       cleanupConnection()
     })
@@ -179,8 +220,16 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
     
   } catch (error) {
     clearTimeout(connectionTimeout)
+    failedConnections++
     const s3Time = Date.now() - s3StartTime
-    console.error(`🎥 [${connectionId}] Error streaming video from S3 after ${s3Time}ms:`, error)
+    
+    // Check if this was an abort error
+    if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+      console.log(`🎥 [${connectionId}] S3 request aborted after ${s3Time}ms`)
+    } else {
+      console.error(`🎥 [${connectionId}] Error streaming video from S3 after ${s3Time}ms:`, error)
+    }
+    
     cleanupConnection()
     
     // Fallback to buffered download if S3 request fails
@@ -192,6 +241,7 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
 // Fallback function to download video as buffer when streaming fails
 async function fallbackToBufferedDownload(s3Key: string, mimeType: string | null, req: Request, res: Response, connectionId: number) {
   try {
+    throw "We are not trying to fallback to buffered download"
     console.log(`🎥 [${connectionId}] Starting fallback buffered download for ${s3Key}`)
     
     // Import the working S3 service
@@ -234,10 +284,22 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
   // Track if this connection has been cleaned up
   let connectionCleanedUp = false
   
+  // Create AbortController for this stream
+  const abortController = new AbortController()
+  
   const cleanupConnection = () => {
     if (!connectionCleanedUp) {
       connectionCleanedUp = true
       activeConnections--
+      
+      // Abort the S3 request and destroy the stream
+      try {
+        console.log(`🖼️ [${connectionId}] Aborting S3 request and destroying stream...`)
+        abortController.abort()
+      } catch (error) {
+        console.error(`🖼️ [${connectionId}] Error aborting stream:`, error)
+      }
+      
       console.log(`🖼️ [${connectionId}] Connection cleaned up, active connections: ${activeConnections}`)
     }
   }
@@ -245,6 +307,7 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
   // Set a timeout to force cleanup if connection hangs
   const connectionTimeout = setTimeout(() => {
     console.warn(`🖼️ [${connectionId}] Connection timeout - forcing cleanup`)
+    timeouts++
     cleanupConnection()
     if (!res.headersSent) {
       res.status(408).json({
@@ -254,7 +317,7 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     } else {
       res.end()
     }
-  }, 15000) // 15 second timeout for images (shorter than videos)
+  }, 35000) // 15 second timeout for images (shorter than videos)
   
   try {
     const bucket = process.env.IDRIVE_BUCKET_NAME || ''
@@ -267,8 +330,8 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     
     console.log(`🖼️ [${connectionId}] S3 request prepared, sending command...`)
     
-    // Get the object from S3
-    const response = await s3Client.send(command)
+    // Get the object from S3 with abort signal
+    const response = await s3Client.send(command, { abortSignal: abortController.signal })
     
     if (!response.Body) {
       throw new Error('No body in S3 response')
@@ -306,6 +369,16 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
       console.log(`🖼️ [${connectionId}] Stream closed`)
       clearTimeout(connectionTimeout)
       cleanupConnection()
+    })
+
+    stream.on('data', (chunk: any) => {
+      // Check if connection is already cleaned up - if so, don't process more data
+      if (connectionCleanedUp) {
+        console.log(`🖼️ [${connectionId}] Ignoring data chunk after cleanup, size: ${chunk.length} bytes`)
+        return
+      }
+      
+      console.log(`🖼️ [${connectionId}] Stream data received, chunk size: ${chunk.length} bytes`)
     })
     
     // Handle response errors
@@ -347,6 +420,12 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     console.error(`🖼️ [${connectionId}] Error streaming image from S3:`, error)
     failedConnections++
     clearTimeout(connectionTimeout)
+    
+    // Check if this was an abort error
+    if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+      console.log(`🖼️ [${connectionId}] S3 request aborted`)
+    }
+    
     cleanupConnection()
     
     // Fallback to buffered download if S3 request fails
@@ -358,6 +437,7 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
 // Fallback function to download image as buffer when streaming fails
 async function fallbackToBufferedImageDownload(s3Key: string, mimeType: string | null, req: Request, res: Response, connectionId: number) {
   try {
+    throw "We are not trying to fallback to buffered download"
     console.log(`🖼️ [${connectionId}] Starting fallback buffered download for ${s3Key}`)
     
     // Import the working S3 service
@@ -896,6 +976,7 @@ router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandl
 router.get('/:id/stream', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
   const viewerId = req.user?.id
+  console.log("STREAMING VIDEO REQUEST FOR ", id)
 
   // Check if user can view this media
   const canView = await canViewMedia(id, viewerId)

@@ -95,7 +95,8 @@ export class StagedVideoProcessingService {
   }
 
   private async unsubscribeFromAllQueues(): Promise<void> {
-    const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload, this.queueConfig.cleanup]
+    // const queues = [this.queueConfig.download, this.queueConfig.processing, this.queueConfig.upload, this.queueConfig.cleanup]
+    const queues = [this.queueConfig.download]
     
     for (const queueName of queues) {
       if (this.rabbitmqService.isSubscribedToQueue(queueName)) {
@@ -214,8 +215,9 @@ export class StagedVideoProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'download_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
-    } finally {
       await this.finishJob(jobId)
+    } finally {
+      //await this.finishJob(jobId)
     }
   }
 
@@ -225,12 +227,20 @@ export class StagedVideoProcessingService {
     
     if (!localVideoPath) {
       logger.error(`No local video path for job ${jobId}`)
-      await this.finishJob(jobId)
+      // send to failed stage
+      const result : StageResult = {
+        success: false,
+        stage: 'FAILED',
+        mediaId,
+        jobId,
+        error: 'No local video path for job'
+      }
+      await this.sendToNextStage(result, 'FAILED')
       return
     }
     
     try {
-      await this.startJob(jobId)
+      //await this.startJob(jobId)
       logger.info(`Starting processing stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to processing
@@ -293,8 +303,9 @@ export class StagedVideoProcessingService {
       
       await this.sendProgressUpdate(jobId, mediaId, 'failed', 0, 'processing_failed', undefined, undefined, result.error)
       await this.sendToNextStage(result, 'FAILED')
-    } finally {
       await this.finishJob(jobId)
+    } finally {
+      //await this.finishJob(jobId)
     }
   }
 
@@ -303,12 +314,20 @@ export class StagedVideoProcessingService {
     
     if (!outputs || outputs.length === 0) {
       logger.error(`No outputs for job ${jobId}`)
-      await this.finishJob(jobId)
+      // send to failed stage
+      const result : StageResult = {
+        success: false,
+        stage: 'FAILED',
+        mediaId,
+        jobId,
+        error: 'No outputs for job'
+      }
+      await this.sendToNextStage(result, 'FAILED')
       return
     }
     
     try {
-      await this.startJob(jobId)
+      //await this.startJob(jobId)
       logger.info(`Starting upload stage for job ${jobId}, media ${mediaId}`)
       
       // Update status to uploading
@@ -369,7 +388,7 @@ export class StagedVideoProcessingService {
     const { id: jobId, mediaId } = job
     
     try {
-      await this.startJob(jobId)
+      //await this.startJob(jobId)
       logger.info(`Starting cleanup stage for job ${jobId}, media ${mediaId}`)
       
       // Clean up all temp files for this job
@@ -387,6 +406,7 @@ export class StagedVideoProcessingService {
       
       // Send to final completion stage
       await this.sendToNextStage(result, 'COMPLETED')
+      this.finishJob(jobId)  // now we can finish the job!
       
     } catch (error) {
       logger.error(`Cleanup stage failed for job ${jobId}:`, error)
@@ -408,7 +428,7 @@ export class StagedVideoProcessingService {
       
       await this.sendToNextStage(result, 'FAILED')
     } finally {
-      await this.finishJob(jobId)
+      //await this.finishJob(jobId)
     }
   }
 
