@@ -124,6 +124,11 @@ export interface GroupActivity {
   }
 }
 
+// Group-related type definitions
+export type GroupVisibility = 'PUBLIC' | 'PRIVATE_VISIBLE' | 'PRIVATE_HIDDEN'
+export type GroupType = 'GENERAL' | 'SOCIAL_LEARNING' | 'GAMING' | 'JOBS' | 'BUY_SELL' | 'PARENTING' | 'WORK'
+export type GroupModerationPolicy = 'NO_MODERATION' | 'ADMIN_APPROVAL_REQUIRED' | 'AI_FILTER' | 'SELECTIVE_MODERATION'
+
 export interface Post {
   id: string
   title?: string

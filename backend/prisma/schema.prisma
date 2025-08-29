@@ -20,6 +20,8 @@ model User {
   website                  String?
   isPrivate                Boolean                   @default(false)
   isVerified               Boolean                   @default(false)
+  emailVerified            Boolean                   @default(false)
+  emailVerifiedAt          DateTime?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   canPublishLockedMedia    Boolean                   @default(false)
@@ -706,4 +708,16 @@ enum GroupActionType {
   COMMENT_DELETED
   RULES_UPDATED
   SETTINGS_CHANGED
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  email     String
+  code      String   // 6-digit verification code
+  expiresAt DateTime // Code expiration timestamp
+  attempts  Int      @default(0) // Failed verification attempts
+  createdAt DateTime @default(now())
+  
+  @@unique([email, code])
+  @@map("email_verifications")
 }

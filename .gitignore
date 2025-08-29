@@ -11,3 +11,4 @@ media-processor/dist
 media-processor/output/
 media-processor/test-video.mp4
 backend/dist
+.dbbackups
