@@ -466,12 +466,13 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
   if (!isOpen) return null
 
   return (
-    <AnimatePresence>
-
+    <>
+      <AnimatePresence mode="wait">
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-screen items-center justify-center p-4">
             {/* Backdrop */}
             <motion.div
+              key="gallery-modal-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -479,13 +480,14 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
               onClick={onClose}
             />
 
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden"
-          >
+            {/* Modal */}
+            <motion.div
+              key={`gallery-modal-${galleryId}`}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden"
+            >
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div className="flex-1">
@@ -1012,9 +1014,10 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
                       <div className="space-y-4">
                         {orderedMedia.map((media: any, index: number) => (
                           <motion.div
-                            key={media.id || `media-${index}`}
+                            key={`gallery-list-media-${media.id || index}`}
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.05 }}
                             className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${
                               bulkEditMode && selectedMediaItems.some((img: any) => img.id === media.id) 
                                 ? 'ring-2 ring-green-500 bg-green-50' 
@@ -1160,47 +1163,45 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
           </motion.div>
         </div>
       </div>
-
-
-
-      {/* Image Selector Modal */}
-
-      <MediaSelectorModal
-        isOpen={showMediaSelector}
-        onClose={() => setShowMediaSelector(false)}
-        onMediaSelected={async (selectedMedia) => {
-          if (!gallery) return
-          
-          try {
-            const selectedmediaIds = selectedMedia.map(img => img.id)
-            // Add media items to gallery
-            const token = localStorage.getItem('token')
-            if (!token) throw new Error('No token found')
-            
-            const response = await fetch(`${API_BASE_URL}/galleries/${gallery.id}/media`, {
-              method: 'POST',
-              headers: getAuthHeaders(token),
-              body: JSON.stringify({ mediaIds: selectedmediaIds })
-            })
-            
-            if (!response.ok) {
-              throw new Error('Failed to add media items to gallery')
-            }
-            
-            // Refresh gallery data to show newly added media items
-            if (refetchGallery) {
-              await refetchGallery()
-            }
-            
-            setShowMediaSelector(false)
-          } catch (error) {
-                    console.error('Failed to add media items to gallery:', error)
-        alert('Failed to add media items to gallery. Please try again.')
-          }
-        }}
-        userId={authData?.data?.user?.id || "me"}
-        existingGalleryMedia={orderedMedia}
-      />
     </AnimatePresence>
+
+    {/* Image Selector Modal */}
+    <MediaSelectorModal
+      isOpen={showMediaSelector}
+      onClose={() => setShowMediaSelector(false)}
+      onMediaSelected={async (selectedMedia) => {
+        if (!gallery) return
+        
+        try {
+          const selectedmediaIds = selectedMedia.map(img => img.id)
+          // Add media items to gallery
+          const token = localStorage.getItem('token')
+          if (!token) throw new Error('No token found')
+          
+          const response = await fetch(`${API_BASE_URL}/galleries/${gallery.id}/media`, {
+            method: 'POST',
+            headers: getAuthHeaders(token),
+            body: JSON.stringify({ mediaIds: selectedmediaIds })
+          })
+          
+          if (!response.ok) {
+            throw new Error('Failed to add media items to gallery')
+          }
+          
+          // Refresh gallery data to show newly added media items
+          if (refetchGallery) {
+            await refetchGallery()
+          }
+          
+          setShowMediaSelector(false)
+        } catch (error) {
+                  console.error('Failed to add media items to gallery:', error)
+      alert('Failed to add media items to gallery. Please try again.')
+        }
+      }}
+      userId={authData?.data?.user?.id || "me"}
+      existingGalleryMedia={orderedMedia}
+    />
+  </>
   )
 } 

@@ -49,19 +49,35 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [hasDragged, setHasDragged] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   
-  // Update video player state when media prop changes (for navigation)
+  // Initialize and cleanup AbortController for video requests
   useEffect(() => {
-    // Reset video player state when navigating to a new video
-    setIsPlaying(false)
-    setCurrentTime(0)
-    setDuration(0)
-    setVolume(1)
-    setIsMuted(false)
-    setIsFullscreen(false)
-    setShowControls(true)
-    // Reset zoom and pan when navigating to a new video
-    resetView()
-  }, [media?.id])
+    // Create new AbortController when modal opens
+    abortControllerRef.current = new AbortController()
+    console.log('🔄 Video modal opened - created new AbortController')
+    
+    // Cleanup function when modal closes or unmounts
+    return () => {
+      return;
+      console.log('🔄 Video modal closing or unmounting - aborting all video requests')
+      /*
+      if (abortControllerRef?.current) {
+        if(abortControllerRef.current === null ) {
+          return;
+        }
+        abortControllerRef.current.abort()
+        
+        // Also pause and reset video element if it exists
+        if (videoRef.current) {
+          //return;
+          videoRef.current.pause()
+          videoRef.current.src = ''
+          videoRef.current.load()
+        }
+      }
+        */
+    }
+  }, []) // Empty dependency array - runs once on mount, cleanup on unmount
+  
   const [isPanelMinimized, setIsPanelMinimized] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -81,6 +97,9 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  
+  // AbortController for video requests
+  const abortControllerRef = useRef<AbortController | null>(null)
   
   // Unsaved changes state
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -168,29 +187,69 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
 
 
+  // Manual abort function for video requests
+  const abortVideoRequests = useCallback(() => {
+    if (abortControllerRef.current) {
+      console.log('🔄 Manually aborting video requests')
+      abortControllerRef.current.abort()
+      
+      // Also pause and reset video element
+      if (videoRef.current) {
+        videoRef.current.pause()
+        videoRef.current.src = ''
+        videoRef.current.load()
+      }
+    }
+  }, [])
+
   const handleClose = useCallback(() => {
+    // Abort any ongoing video requests before closing
+    abortVideoRequests()
+    
     checkUnsavedChanges(() => {
       onClose()
     })
-  }, [onClose, hasUnsavedChanges])
+  }, [onClose, hasUnsavedChanges, abortVideoRequests])
 
   const handleNext = useCallback(() => {
     if (!slideshow.hasNext) return
     checkUnsavedChanges(() => {
+      // Abort current video requests before navigating
+      abortVideoRequests()
       slideshow.handleNext()
     })
-  }, [slideshow.hasNext, slideshow.handleNext, hasUnsavedChanges])
+  }, [slideshow.hasNext, slideshow.handleNext, hasUnsavedChanges, abortVideoRequests])
 
   const handlePrev = useCallback(() => {
     if (!slideshow.hasPrev) return
     checkUnsavedChanges(() => {
+      // Abort current video requests before navigating
+      abortVideoRequests()
       slideshow.handlePrev()
     })
-  }, [slideshow.hasPrev, slideshow.handlePrev, hasUnsavedChanges])
+  }, [slideshow.hasPrev, slideshow.handlePrev, hasUnsavedChanges, abortVideoRequests])
+
+  // Update video player state when media prop changes (for navigation)
+  useEffect(() => {
+    // Abort any ongoing video requests when navigating to a new video
+    //abortVideoRequests()
+    
+    // Reset video player state when navigating to a new video
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+    setVolume(1)
+    setIsMuted(false)
+    setIsFullscreen(false)
+    setShowControls(true)
+    // Reset zoom and pan when navigating to a new video
+    resetView()
+  }, [media?.id, abortVideoRequests])
 
   // Video event handlers
   const handlePlay = () => {
     if (videoRef.current) {
+      console.log("Video src is now", videoRef.current.src)
       videoRef.current.play()
       setIsPlaying(true)
     }
@@ -324,13 +383,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
 
     return {
-      width: `${width}px`,
-      height: `${height}px`,
+      width: `${width*2}px`,
+      height: `${height*2}px`,
       maxWidth: '100%',
       maxHeight: '100%',
       objectFit: 'contain' as const
     }
   }
+
+  
 
   // Calculate proper fullscreen scaling based on aspect ratios
   const getFullscreenStyle = (): React.CSSProperties => {
@@ -399,7 +460,9 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   // Get current video source based on selected quality
   const getCurrentVideoSource = () => {
     if (selectedQuality === 'auto' || !videoQualities || videoQualities.length === 0) {
-      return getMediaUrlFromMedia(media, false)
+      const   url = getMediaUrlFromMedia(media, false)
+      console.log("AUTO URL", url)
+      return url
     }
     
     const selectedQualityData = videoQualities.find(q => q.quality === selectedQuality)
@@ -483,36 +546,15 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     const rect = containerRef.current?.getBoundingClientRect()
     if (rect) {
       // Get mouse position relative to the container
-      console.log("RECT",rect.left, rect.width, rect.top, rect.height)
-      console.log("MOUSE",e.clientX, e.clientY)
       const scaleFactor = newZoom / zoom
-      const mouseX = e.clientX + zoom*pan.x
-      const mouseY = e.clientY + zoom*pan.y
 
-      const centerX = zoom*pan.x + rect.width / 2
-      const centerY = zoom*pan.y + rect.height / 2
-
-      const newCenterX = centerX * scaleFactor
-      const newCenterY = centerY * scaleFactor
-
-      const newDeltaMouseX = mouseX * scaleFactor - newCenterX
-      const newDeltaMouseY = mouseY * scaleFactor - newCenterY
-
-      const mouseFactor = 0.2
-
-      let newPanX = (newCenterX + mouseFactor*newDeltaMouseX - rect.width/2) / newZoom
-      let newPanY = (newCenterY + mouseFactor*newDeltaMouseY - rect.height/2) / newZoom
-      
-
-      
       // Adjust pan so that the point under the mouse stays in the same place
       setPan({
-        x: newPanX,
-        y: newPanY
-    })
+        x: pan.x * scaleFactor,
+        y: pan.y * scaleFactor
+      })
+      setZoom(newZoom)
     }
-    
-    setZoom(newZoom)
   }
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -527,7 +569,31 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     if (isDragging) {
       e.preventDefault()
       setHasDragged(true)
-      setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+      // work out if we are trying to drag the video away from the viewport
+      // calculate current pan in terms of original viewport
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const originalViewport = {
+        width: rect.width,
+        height: rect.height
+      }
+
+      // calculate the new pan in terms of the new viewport
+      let newXPan = e.clientX - dragStart.x
+      if( newXPan/zoom < -originalViewport.width/2 ) {
+        newXPan = -originalViewport.width/2*zoom
+      }
+      if( newXPan/zoom > (originalViewport.width*(zoom-0.5)/zoom) ) {
+        newXPan = originalViewport.width*(zoom-0.5)
+      }
+      let newYPan = e.clientY - dragStart.y
+      if( newYPan/zoom < -originalViewport.height/2 ) {
+        newYPan = -originalViewport.height/2*zoom
+      }
+      if( newYPan/zoom > originalViewport.height*(zoom-0.5)/zoom ) {
+        newYPan = originalViewport.height*(zoom-0.5)
+      }
+      setPan({ x: newXPan, y: newYPan })
     }
   }
 
@@ -751,6 +817,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   return (
     <AnimatePresence>
       <motion.div
+        key="video-detail-modal"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -780,6 +847,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
           >
             {/* Close Button */}
             <motion.button
+              key="close-button"
               onClick={handleClose}
               className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
               animate={{ opacity: controlsVisible ? 1 : 0 }}
@@ -790,6 +858,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
             {/* Panel Toggle */}
             <motion.button
+              key="panel-toggle"
               onClick={togglePanel}
               className="absolute top-4 right-4 z-20 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
               title={isPanelMinimized ? "Show Panel" : "Hide Panel"}
@@ -801,6 +870,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
             {/* Download Button */}
             <motion.button
+              key="download-button"
               onClick={handleDownload}
               className="absolute top-4 right-20 z-20 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
               title="Download Video"
@@ -815,6 +885,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               <>
                 {/* Previous Button */}
                 <motion.button
+                  key="prev-button"
                   onClick={slideshow.handlePrev}
                   className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
                     !slideshow.hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
@@ -829,6 +900,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
                 {/* Next Button */}
                 <motion.button
+                  key="next-button"
                   onClick={slideshow.handleNext}
                   className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
                     !slideshow.hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
@@ -843,6 +915,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
                 {/* Video Counter */}
                 <motion.div 
+                  key="video-counter"
                   className="absolute bottom-20 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full"
                   animate={{ opacity: controlsVisible ? 1 : 0 }}
                   transition={{ duration: 0.3 }}
@@ -852,6 +925,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
                 {/* Slideshow Controls */}
                 <motion.div 
+                  key="slideshow-controls"
                   className="absolute bottom-20 right-4 z-10 flex items-center space-x-2"
                   animate={{ opacity: controlsVisible ? 1 : 0 }}
                   transition={{ duration: 0.3 }}
@@ -988,6 +1062,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
             {/* Video Controls Overlay */}
             {!isProcessing && (
               <motion.div
+                key="video-controls-overlay"
                 className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4"
                 animate={{ opacity: showControls ? 1 : 0 }}
                 transition={{ duration: 0.3 }}
@@ -1113,6 +1188,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
         {/* Comments Section */}
         <motion.div 
+          key="comments-panel"
           className={`border-l border-gray-200 flex flex-col bg-white overflow-hidden ${
             isPanelMinimized ? 'w-0' : 'w-[450px]'
           }`}

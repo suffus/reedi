@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useCallback } from 'react'
 import { ImageDetailModal } from '../dashboard/image-detail-modal'
 import { VideoDetailModal } from '../dashboard/video-detail-modal'
 import { useMediaDetail } from './media-detail-context'
@@ -17,21 +17,21 @@ export function SharedMediaDetailModal() {
   const mediaType = currentMedia.mediaType || 
                    (currentMedia.mimeType?.startsWith('video/') ? 'VIDEO' : 'IMAGE')
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     closeMediaDetail()
-  }
+  }, [closeMediaDetail])
 
-  const handleMediaUpdate = () => {
+  const handleMediaUpdate = useCallback(() => {
     // Handle media updates if needed
-  }
+  }, [])
 
-  const updateMedia = (mediaId: string, updates: Partial<any>) => {
+  const updateMedia = useCallback((mediaId: string, updates: Partial<any>) => {
     // Handle media updates if needed
-  }
+  }, [])
 
-  const handleNavigate = (media: Media) => {
+  const handleNavigate = useCallback((media: Media) => {
     navigateToMedia(media)
-  }
+  }, [navigateToMedia])
 
   // Convert FlexibleMedia to Media for the specialized modals
   const mediaForModal = currentMedia as Media

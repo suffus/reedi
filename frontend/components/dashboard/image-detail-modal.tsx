@@ -548,9 +548,9 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   }
 
   return (
-    <ModalEventCatcher>
     <AnimatePresence>
       <motion.div
+        key="image-detail-modal"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -572,6 +572,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         <div className="flex-1 flex flex-col bg-black">
           {/* Close Button */}
           <motion.button
+            key="close-button"
             onClick={handleClose}
             className="absolute top-4 left-4 z-10 p-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200"
             animate={{ opacity: controlsVisible ? 1 : 0 }}
@@ -584,6 +585,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
           {/* Image Container */}
           <motion.div 
+            key="image-container"
             ref={containerRef}
             className="relative w-full h-full flex items-center justify-center p-4 cursor-grab active:cursor-grabbing"
             onMouseDown={handleMouseDown}
@@ -598,6 +600,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
           >
             {/* Zoom Controls - Positioned on the edge of the image container */}
             <motion.div 
+              key="zoom-controls"
               className="absolute top-4 right-4 z-20 flex flex-col space-y-2 pointer-events-none"
               animate={{ opacity: controlsVisible ? 1 : 0 }}
               transition={{ duration: 0.3 }}
@@ -670,6 +673,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               <>
                 {/* Previous Button */}
                 <motion.button
+                  key="prev-button"
                   onClick={handlePrev}
                   className={`absolute left-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 pointer-events-auto ${
                     !hasPrev ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
@@ -684,6 +688,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
                 {/* Next Button */}
                 <motion.button
+                  key="next-button"
                   onClick={handleNext}
                   className={`absolute right-4 top-1/2 transform -translate-y-1/2 z-10 p-3 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 pointer-events-auto ${
                     !hasNext ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
@@ -698,6 +703,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
                 {/* Image Counter */}
                 <motion.div 
+                  key="image-counter"
                   className="absolute bottom-4 left-4 z-10 px-3 py-1 bg-black bg-opacity-50 text-white text-sm rounded-full pointer-events-auto"
                   animate={{ opacity: controlsVisible ? 1 : 0 }}
                   transition={{ duration: 0.3 }}
@@ -772,6 +778,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
 
         {/* Comments Section */}
         <motion.div 
+          key="comments-panel"
           className={`border-l border-gray-200 flex flex-col bg-white overflow-hidden z-30 ${
             isPanelMinimized ? 'w-0' : 'w-[450px]'
           }`}
@@ -890,6 +897,5 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         message="You have unsaved changes to the media metadata. What would you like to do?"
       />
     </AnimatePresence>
-    </ModalEventCatcher>
   )
 } 

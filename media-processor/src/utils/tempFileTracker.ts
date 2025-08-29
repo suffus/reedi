@@ -67,7 +67,7 @@ export class TempFileTracker {
     const files = this.tempFiles.get(jobId)
     if (files) {
       const fileIndex = files.findIndex(f => f.path === filePath)
-      if (fileIndex !== -1) {
+      if (fileIndex !== -1 && files[fileIndex]) {
         files[fileIndex].type = 'intermediate' // Mark as ready for cleanup
         logger.debug(`Marked file for cleanup: ${filePath}`)
       }

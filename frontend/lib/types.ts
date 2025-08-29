@@ -105,6 +105,25 @@ export interface GroupAction {
   user?: User
 }
 
+export interface GroupActivity {
+  type: 'action' | 'post'
+  id: string
+  timestamp: string
+  actionType?: string
+  description?: string
+  user?: User
+  metadata?: any
+  status?: string
+  post?: {
+    id: string
+    title?: string
+    content: string
+    authorId: string
+    createdAt: string
+    author: User
+  }
+}
+
 export interface Post {
   id: string
   title?: string

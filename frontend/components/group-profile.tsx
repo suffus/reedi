@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { API_BASE_URL, getAuthHeaders } from '@/lib/api'
-import { User, Group, GroupMember, GroupPost } from '@/lib/types'
+import { User, Group, GroupMember, GroupPost, GroupActivity } from '@/lib/types'
 import { 
   Users, 
   Calendar, 
@@ -28,6 +28,9 @@ import { useToast } from '@/components/common/toast'
 import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { GroupPostForm } from '@/components/common/group-post-form'
 import { useMediaDetail } from '@/components/common/media-detail-context'
+import { GroupSettingsModal } from './group-settings-modal'
+import { useGroupActivity } from '@/lib/api-hooks'
+import { useQueryClient } from '@tanstack/react-query'
 
 
 interface GroupProfileProps {
@@ -39,6 +42,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
   const params = useParams()
   const { showToast } = useToast()
   const { openMediaDetail } = useMediaDetail()
+  const queryClient = useQueryClient()
 
   
   // Helper function to get group image URL
@@ -68,6 +72,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
   const [showApplyModal, setShowApplyModal] = useState(false)
   const [showPostModal, setShowPostModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState<{ postId: string; isOpen: boolean }>({ postId: '', isOpen: false })
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [applyMessage, setApplyMessage] = useState('')
   const [pendingApplications, setPendingApplications] = useState<any[]>([])
@@ -75,6 +80,9 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
   const [isLoadingMembers, setIsLoadingMembers] = useState(false)
 
   const groupId = params?.identifier as string
+  
+  // Group activity hook
+  const { data: groupActivity, isLoading: isLoadingActivity } = useGroupActivity(groupId, 10)
 
 
 
@@ -187,6 +195,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
           message: 'You have joined the group!'
         })
         loadGroupData()
+        // Invalidate activity cache to refresh the management timeline
+        invalidateActivityCache()
       } else {
         // Show application modal for private groups
         setShowApplyModal(true)
@@ -212,6 +222,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
       })
       setShowApplyModal(false)
       setApplyMessage('')
+      // Invalidate activity cache to refresh the management timeline
+      invalidateActivityCache()
       showToast({
         type: 'success',
         message: 'Your application has been submitted for review'
@@ -280,6 +292,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
         // Reload member data
         loadDetailedMembers()
         loadGroupData()
+        // Invalidate activity cache to refresh the management timeline
+        invalidateActivityCache()
       } else {
         const errorData = await response.json()
         showToast({
@@ -337,6 +351,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
         // Reload detailed data
         loadDetailedMembers()
         loadGroupData()
+        // Invalidate activity cache to refresh the management timeline
+        invalidateActivityCache()
       } else {
         const errorData = await response.json()
         showToast({
@@ -415,6 +431,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
         })
         // Reload group data to update the feed
         loadGroupData()
+        // Invalidate activity cache to refresh the management timeline
+        invalidateActivityCache()
         // Close reject modal if it was open
         if (action === 'reject') {
           setShowRejectModal({ postId: '', isOpen: false })
@@ -434,6 +452,23 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
         message: `Failed to ${action} post`
       })
     }
+  }
+
+  // Handle group settings update
+  const handleGroupSettingsUpdate = (updatedGroup: Group) => {
+    setGroupData(updatedGroup)
+    setShowSettingsModal(false)
+    // Invalidate activity cache to refresh the management timeline
+    invalidateActivityCache()
+    showToast({
+      type: 'success',
+      message: 'Group settings updated successfully'
+    })
+  }
+
+  // Invalidate group activity cache to refresh the timeline
+  const invalidateActivityCache = () => {
+    queryClient.invalidateQueries({ queryKey: ['group-activity', groupId] })
   }
 
   const getVisibilityIcon = () => {
@@ -932,9 +967,22 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                   <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
                     <h4 className="text-lg font-semibold mb-3 text-gray-900">SETTINGS</h4>
                     <p className="text-gray-600 mb-4">Update group information, visibility, and policies.</p>
-                    <button className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-sm font-medium text-sm transition-colors duration-200">
-                      EDIT SETTINGS
-                    </button>
+                    {(userRole === 'ADMIN' || userRole === 'OWNER') ? (
+                      <button 
+                        onClick={() => setShowSettingsModal(true)}
+                        className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-sm font-medium text-sm transition-colors duration-200"
+                      >
+                        EDIT SETTINGS
+                      </button>
+                    ) : (
+                      <button 
+                        disabled
+                        className="bg-gray-400 text-white px-4 py-2 rounded-sm font-medium text-sm cursor-not-allowed"
+                        title="Only admins and owners can edit group settings"
+                      >
+                        EDIT SETTINGS
+                      </button>
+                    )}
                   </div>
 
                   <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
@@ -956,24 +1004,62 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
 
                 {/* Recent Activity */}
                 <div className="bg-white p-6 rounded-lg shadow-md">
-                  <h4 className="text-lg font-semibold mb-4 text-gray-900">RECENT ACTIVITY</h4>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-semibold text-gray-900">RECENT ACTIVITY</h4>
+                    <button
+                      onClick={invalidateActivityCache}
+                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                      title="Refresh activity timeline"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  </div>
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-sm">
-                      <div className="w-2 h-2 bg-olive-600 rounded-full"></div>
-                      <span className="text-sm text-gray-600">New member joined the group</span>
-                      <span className="text-xs text-gray-400 ml-auto">2 hours ago</span>
-                      <span className="text-xs text-gray-400 ml-auto">2 hours ago</span>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-sm">
-                      <div className="w-2 h-2 bg-olive-600 rounded-full"></div>
-                      <span className="text-sm text-gray-600">Post approved by moderator</span>
-                      <span className="text-xs text-gray-400 ml-auto">5 hours ago</span>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-sm">
-                      <div className="w-2 h-2 bg-olive-600 rounded-full"></div>
-                      <span className="text-sm text-gray-600">Group settings updated</span>
-                      <span className="text-xs text-gray-400 ml-auto">1 day ago</span>
-                    </div>
+                    {isLoadingActivity ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-olive-600 mx-auto"></div>
+                      </div>
+                    ) : groupActivity && groupActivity.length > 0 ? (
+                      groupActivity.map((activity: any) => (
+                        <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-sm">
+                          <div className="w-2 h-2 bg-olive-600 rounded-full"></div>
+                          <div className="flex-1 min-w-0">
+                            {activity.type === 'action' && (
+                              <span className="text-sm text-gray-600">{activity.description}</span>
+                            )}
+                            {activity.type === 'post' && (
+                              <div>
+                                <span className="text-sm text-gray-600">
+                                  {activity.status === 'PENDING_APPROVAL' && 'Post submitted for approval'}
+                                  {activity.status === 'APPROVED' && 'Post approved'}
+                                  {activity.status === 'REJECTED' && 'Post rejected'}
+                                </span>
+                                {activity.post && (
+                                  <div className="text-xs text-gray-500 mt-1 truncate">
+                                    "{activity.post.title || activity.post.content.substring(0, 50)}..."
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2 text-xs text-gray-400">
+                            {activity.user && (
+                              <span className="text-olive-600 font-medium">
+                                {activity.user.name}
+                              </span>
+                            )}
+                            <span>{formatDistanceToNow(new Date(activity.timestamp))} ago</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full mx-auto mb-2"></div>
+                        <p>No recent activity</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1462,6 +1548,8 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                 onPostCreated={() => {
                   setShowPostModal(false)
                   loadGroupData()
+                  // Invalidate activity cache to refresh the management timeline
+                  invalidateActivityCache()
                   showToast({
                     type: 'success',
                     message: 'Post created successfully! It will be reviewed by moderators if required.'
@@ -1508,6 +1596,16 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Group Settings Modal */}
+      {showSettingsModal && (
+        <GroupSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          group={groupData!}
+          onGroupUpdated={handleGroupSettingsUpdate}
+        />
       )}
     </div>
   )
