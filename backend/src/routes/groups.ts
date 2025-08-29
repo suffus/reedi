@@ -462,7 +462,10 @@ router.get('/:identifier', authMiddleware, asyncHandler(async (req: Authenticate
 }))
 
 // Update group (owner/admin only)
-router.put('/:groupIdentifier', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:groupIdentifier', authMiddleware, upload.fields([
+  { name: 'avatar', maxCount: 1 },
+  { name: 'coverPhoto', maxCount: 1 }
+]), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { groupIdentifier } = req.params
   
@@ -491,10 +494,78 @@ router.put('/:groupIdentifier', authMiddleware, asyncHandler(async (req: Authent
 
   const validatedData = updateGroupSchema.parse(req.body)
   
+  // Handle file uploads if provided
+  let avatarMediaId: string | undefined
+  let coverPhotoMediaId: string | undefined
+
+  if (req.files) {
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] }
+    
+    // Handle avatar upload
+    if (files.avatar && files.avatar[0]) {
+      const avatarFile = files.avatar[0]
+      const avatarKey = `groups/${group.id}/avatar/${Date.now()}-${avatarFile.originalname}`
+      
+      // Upload to S3
+      const { uploadImageToS3 } = await import('@/utils/s3Service')
+      await uploadImageToS3(avatarFile.buffer, avatarKey, avatarFile.mimetype)
+      
+      // Create media record
+      const avatarMedia = await prisma.media.create({
+        data: {
+          url: `${process.env.IDRIVE_ENDPOINT}/${process.env.IDRIVE_BUCKET_NAME}/${avatarKey}`,
+          s3Key: avatarKey,
+          mimeType: avatarFile.mimetype,
+          mediaType: 'IMAGE',
+          processingStatus: 'COMPLETED',
+          authorId: userId,
+          visibility: 'PUBLIC'
+        }
+      })
+      
+      avatarMediaId = avatarMedia.id
+    }
+    
+    // Handle cover photo upload
+    if (files.coverPhoto && files.coverPhoto[0]) {
+      const coverFile = files.coverPhoto[0]
+      const coverKey = `groups/${group.id}/cover/${Date.now()}-${coverFile.originalname}`
+      
+      // Upload to S3
+      const { uploadImageToS3 } = await import('@/utils/s3Service')
+      await uploadImageToS3(coverFile.buffer, coverKey, coverFile.mimetype)
+      
+      // Create media record
+      const coverMedia = await prisma.media.create({
+        data: {
+          url: `${process.env.IDRIVE_ENDPOINT}/${process.env.IDRIVE_BUCKET_NAME}/${coverKey}`,
+          s3Key: coverKey,
+          mimeType: coverFile.mimetype,
+          mediaType: 'IMAGE',
+          processingStatus: 'COMPLETED',
+          authorId: userId,
+          visibility: 'PUBLIC'
+        }
+      })
+      
+      coverPhotoMediaId = coverMedia.id
+    }
+  }
+  
   const updatedGroup = await prisma.$transaction(async (tx) => {
+    // Prepare update data
+    const updateData: any = { ...validatedData }
+    
+    if (avatarMediaId) {
+      updateData.avatarId = avatarMediaId
+    }
+    if (coverPhotoMediaId) {
+      updateData.coverPhotoId = coverPhotoMediaId
+    }
+    
     const result = await tx.group.update({
       where: { id: group.id },
-      data: validatedData,
+      data: updateData,
       include: {
         members: {
           include: {
@@ -518,7 +589,13 @@ router.put('/:groupIdentifier', authMiddleware, asyncHandler(async (req: Authent
         userId,
         actionType: 'GROUP_UPDATED',
         description: 'Group settings updated',
-        metadata: { updatedFields: Object.keys(validatedData) }
+        metadata: { 
+          updatedFields: Object.keys(validatedData),
+          filesUpdated: {
+            avatar: !!avatarMediaId,
+            coverPhoto: !!coverPhotoMediaId
+          }
+        }
       }
     })
 
@@ -527,7 +604,7 @@ router.put('/:groupIdentifier', authMiddleware, asyncHandler(async (req: Authent
 
   res.json({
     success: true,
-    data: { group },
+    data: { group: updatedGroup },
     message: 'Group updated successfully'
   })
 }))
@@ -1781,6 +1858,117 @@ router.get('/search', asyncHandler(async (req: Request, res: Response) => {
         pages: Math.ceil(total / Number(limit))
       }
     }
+  })
+}))
+
+// Get recent group activity (admin/owner only)
+router.get('/:groupIdentifier/activity', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { groupIdentifier } = req.params
+  const { limit = 20 } = req.query
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Find the group by identifier
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
+  // Check permissions
+  if (!(await hasGroupPermission(userId, group.id, 'ADMIN'))) {
+    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  }
+
+  // Get recent group actions
+  const recentActions = await prisma.groupAction.findMany({
+    where: {
+      groupId: group.id
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true
+        }
+      }
+    },
+    orderBy: {
+      createdAt: 'desc'
+    },
+    take: Number(limit)
+  })
+
+  // Get recent post submissions and approvals
+  const recentPosts = await prisma.groupPost.findMany({
+    where: {
+      groupId: group.id,
+      status: { in: ['PENDING_APPROVAL', 'APPROVED', 'REJECTED'] }
+    },
+    include: {
+      post: {
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          authorId: true,
+          createdAt: true,
+          author: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              avatar: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: {
+      createdAt: 'desc'
+    },
+    take: Number(limit)
+  })
+
+  // Combine and sort activities by date
+  const activities = [
+    ...recentActions.map(action => ({
+      type: 'action' as const,
+      id: action.id,
+      timestamp: action.createdAt,
+      actionType: action.actionType,
+      description: action.description,
+      user: action.user,
+      metadata: action.metadata
+    })),
+    ...recentPosts.map(groupPost => ({
+      type: 'post' as const,
+      id: groupPost.id,
+      timestamp: groupPost.createdAt,
+      status: groupPost.status,
+      post: groupPost.post,
+      metadata: {
+        postId: groupPost.postId,
+        isPriority: groupPost.isPriority
+      }
+    }))
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+  res.json({
+    success: true,
+    data: { activities: activities.slice(0, Number(limit)) }
   })
 }))
 
