@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from 'lucide-react'
 import { useLogin, useRegister } from '../lib/api-hooks'
+import { EmailVerificationForm } from './email-verification-form'
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email'),
@@ -30,6 +31,10 @@ export function AuthSection() {
   const [isLogin, setIsLogin] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  
+  // Registration flow state
+  const [registrationStep, setRegistrationStep] = useState<'form' | 'verification'>('form')
+  const [registrationData, setRegistrationData] = useState<{ email: string; name: string } | null>(null)
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -69,8 +74,9 @@ export function AuthSection() {
 
       console.log('Signup successful:', result)
       
-      // Redirect to dashboard
-      window.location.href = '/dashboard'
+      // Store registration data and move to verification step
+      setRegistrationData({ email: data.email, name: data.name })
+      setRegistrationStep('verification')
     } catch (error) {
       console.error('Signup error:', error)
       alert(error instanceof Error ? error.message : 'An error occurred during signup. Please try again.')
@@ -78,14 +84,28 @@ export function AuthSection() {
   }
 
   const isLoading = loginMutation.isPending || registerMutation.isPending
+
+  const handleVerificationSuccess = (userData: any) => {
+    // Store token and redirect to dashboard
+    localStorage.setItem('token', userData.token)
+    window.location.href = '/dashboard'
+  }
+
+  const handleBackToRegistration = () => {
+    setRegistrationStep('form')
+    setRegistrationData(null)
+    signupForm.reset()
+  }
   return (
     <div className="card-elevated max-w-md mx-auto bg-white/95 shadow-2xl border-primary-100">
       <div className="text-center mb-10">
         <h2 className="text-3xl font-serif font-semibold text-primary-900 mb-4">
-          {isLogin ? 'Welcome Back' : 'Join Reedi'}
+          {isLogin ? 'Welcome Back' : 
+           registrationStep === 'verification' ? 'Verify Your Email' : 'Join Reedi'}
         </h2>
         <p className="text-primary-600 leading-relaxed">
-          {isLogin ? 'Sign in to your account' : 'Create your account to get started'}
+          {isLogin ? 'Sign in to your account' : 
+           registrationStep === 'verification' ? 'Enter the 6-digit code sent to your email' : 'Create your account to get started'}
         </p>
       </div>
 
@@ -266,13 +286,37 @@ export function AuthSection() {
         )}
       </AnimatePresence>
 
+      {/* Show verification form when in verification step */}
+      {!isLogin && registrationStep === 'verification' && registrationData && (
+        <EmailVerificationForm
+          email={registrationData.email}
+          name={registrationData.name}
+          onVerificationSuccess={handleVerificationSuccess}
+          onBack={handleBackToRegistration}
+        />
+      )}
+
       <div className="mt-8 text-center">
-        <button
-          onClick={() => setIsLogin(!isLogin)}
-          className="text-primary-600 hover:text-primary-900 transition-colors duration-200 text-sm"
-        >
-          {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-        </button>
+        {registrationStep === 'verification' ? (
+          <button
+            onClick={handleBackToRegistration}
+            className="text-primary-600 hover:text-primary-900 transition-colors duration-200 text-sm"
+          >
+            ← Back to Registration
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setIsLogin(!isLogin)
+              setRegistrationStep('form')
+              setRegistrationData(null)
+              signupForm.reset()
+            }}
+            className="text-primary-600 hover:text-primary-900 transition-colors duration-200 text-sm"
+          >
+            {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+          </button>
+        )}
       </div>
     </div>
   )

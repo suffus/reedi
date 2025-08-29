@@ -189,7 +189,8 @@ export const useRegister = () => {
       return data
     },
     onSuccess: (data) => {
-      localStorage.setItem('token', data.data.token)
+      // Don't automatically log in - user needs to verify email first
+      // localStorage.setItem('token', data.data.token)
       queryClient.invalidateQueries({ queryKey: ['auth'] })
     }
   })
@@ -1556,5 +1557,40 @@ export const useGroupActivity = (groupIdentifier: string, limit: number = 20) =>
     },
     enabled: !!groupIdentifier,
     staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
+// Email verification hooks
+export const useVerifyEmail = () => {
+  return useMutation({
+    mutationFn: async (data: { email: string; code: string }) => {
+      const response = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Verification failed')
+      
+      return result
+    }
+  })
+}
+
+export const useResendVerification = () => {
+  return useMutation({
+    mutationFn: async (data: { email: string }) => {
+      const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to resend verification code')
+      
+      return result
+    }
   })
 } 

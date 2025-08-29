@@ -6,6 +6,8 @@ import { prisma } from '@/index'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
+import { emailService } from '@/services/emailService'
+import { verificationService } from '@/services/verificationService'
 
 const router = Router()
 
@@ -24,12 +26,21 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required')
 })
 
+const verifyEmailSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  code: z.string().length(6, 'Verification code must be 6 digits')
+})
+
+const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address')
+})
+
 // Generate JWT token
 const generateToken = (userId: string): string => {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' })
 }
 
-// Register new user
+// Register new user (Step 1: Create unverified account and send verification code)
 router.post('/register', asyncHandler(async (req: Request, res: Response) => {
   const { name, email, username, password } = registerSchema.parse(req.body)
 
@@ -51,16 +62,28 @@ router.post('/register', asyncHandler(async (req: Request, res: Response) => {
     return
   }
 
+  // Check if user can request a new verification code
+  const canRequestNew = await verificationService.canRequestNewCode(email)
+  if (!canRequestNew) {
+    res.status(429).json({
+      success: false,
+      error: 'Please wait before requesting another verification code'
+    })
+    return
+  }
+
   // Hash password
   const hashedPassword = await bcrypt.hash(password, 12)
 
-  // Create user
+  // Create unverified user
   const user = await prisma.user.create({
     data: {
       name,
       email,
       username,
-      password: hashedPassword
+      password: hashedPassword,
+      emailVerified: false,
+      isVerified: false
     },
     select: {
       id: true,
@@ -73,22 +96,43 @@ router.post('/register', asyncHandler(async (req: Request, res: Response) => {
       website: true,
       isPrivate: true,
       isVerified: true,
+      emailVerified: true,
       createdAt: true,
       updatedAt: true
     }
   })
 
-  // Generate token
-  const token = generateToken(user.id)
+  try {
+    // Generate and send verification code
+    const verificationCode = await verificationService.createVerificationCode(email)
+    const emailSent = await emailService.sendVerificationEmail(email, verificationCode, name)
 
-  res.status(201).json({
-    success: true,
-    data: {
-      user,
-      token
-    },
-    message: 'User registered successfully'
-  })
+    if (!emailSent) {
+      // If email fails, delete the user and return error
+      await prisma.user.delete({ where: { id: user.id } })
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send verification email. Please try again.'
+      })
+      return
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        user: { ...user, emailVerified: false },
+        message: 'Please check your email for verification code'
+      },
+      message: 'Registration successful. Please verify your email to complete registration.'
+    })
+  } catch (error) {
+    // If verification code creation fails, delete the user and return error
+    await prisma.user.delete({ where: { id: user.id } })
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create verification code. Please try again.'
+    })
+  }
 }))
 
 // Login user
@@ -115,6 +159,16 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
     res.status(401).json({
       success: false,
       error: 'Invalid email or password'
+    })
+    return
+  }
+
+  // Check if email is verified
+  if (!user.emailVerified) {
+    res.status(403).json({
+      success: false,
+      error: 'Please verify your email address before logging in. Check your email for a verification code.',
+      needsVerification: true
     })
     return
   }
@@ -282,6 +336,179 @@ router.put('/change-password', authMiddleware, asyncHandler(async (req: Authenti
   res.json({
     success: true,
     message: 'Password changed successfully'
+  })
+}))
+
+// Verify email with verification code (Step 2: Complete registration)
+router.post('/verify-email', asyncHandler(async (req: Request, res: Response) => {
+  const { email, code } = verifyEmailSchema.parse(req.body)
+
+  // Find the user
+  const user = await prisma.user.findUnique({
+    where: { email }
+  })
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  if (user.emailVerified) {
+    res.status(400).json({
+      success: false,
+      error: 'Email is already verified'
+    })
+    return
+  }
+
+  // Verify the code
+  const isValidCode = await verificationService.verifyCode(email, code)
+  if (!isValidCode) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid or expired verification code'
+    })
+    return
+  }
+
+  // Mark user as verified
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+      isVerified: true
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      username: true,
+      avatar: true,
+      bio: true,
+      location: true,
+      website: true,
+      isPrivate: true,
+      isVerified: true,
+      emailVerified: true,
+      emailVerifiedAt: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  })
+
+  // Generate token
+  const token = generateToken(updatedUser.id)
+
+  res.json({
+    success: true,
+    data: {
+      user: updatedUser,
+      token
+    },
+    message: 'Email verified successfully. Welcome to Reedi!'
+  })
+}))
+
+// Resend verification code
+router.post('/resend-verification', asyncHandler(async (req: Request, res: Response) => {
+  const { email } = resendVerificationSchema.parse(req.body)
+
+  // Find the user
+  const user = await prisma.user.findUnique({
+    where: { email }
+  })
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  if (user.emailVerified) {
+    res.status(400).json({
+      success: false,
+      error: 'Email is already verified'
+    })
+    return
+  }
+
+  // Check if user can request a new code
+  const canRequestNew = await verificationService.canRequestNewCode(email)
+  if (!canRequestNew) {
+    res.status(429).json({
+      success: false,
+      error: 'Please wait before requesting another verification code'
+    })
+    return
+  }
+
+  try {
+    // Generate and send new verification code
+    const verificationCode = await verificationService.createVerificationCode(email)
+    const emailSent = await emailService.sendVerificationEmail(email, verificationCode, user.name)
+
+    if (!emailSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send verification email. Please try again.'
+      })
+      return
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification code sent successfully. Please check your email.'
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send verification code. Please try again.'
+    })
+  }
+}))
+
+// Get verification status
+router.get('/verification-status/:email', asyncHandler(async (req: Request, res: Response) => {
+  const { email } = req.params
+
+  // Find the user
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      emailVerified: true,
+      emailVerifiedAt: true
+    }
+  })
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  // Get verification service status
+  const verificationStatus = await verificationService.getVerificationStatus(email)
+
+  res.json({
+    success: true,
+    data: {
+      user: {
+        email: user.email,
+        emailVerified: user.emailVerified,
+        emailVerifiedAt: user.emailVerifiedAt
+      },
+      verification: verificationStatus
+    }
   })
 }))
 
