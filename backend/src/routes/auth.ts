@@ -167,8 +167,13 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   if (!user.emailVerified) {
     res.status(403).json({
       success: false,
-      error: 'Please verify your email address before logging in. Check your email for a verification code.',
-      needsVerification: true
+      error: 'Please verify your email address before logging in.',
+      needsVerification: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      }
     })
     return
   }

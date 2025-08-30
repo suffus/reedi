@@ -3,6 +3,7 @@ import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Cloc
 import { TagInput } from '../tag-input'
 import { Media } from '@/lib/types'
 import { useUpdateMedia, useReprocessMedia } from '@/lib/api-hooks'
+import { useMediaDetail } from './media-detail-context'
 
 interface MediaMetadataPanelProps {
   media: Media
@@ -54,6 +55,16 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
   
   const updateMediaMutation = useUpdateMedia()
   const reprocessMediaMutation = useReprocessMedia()
+  
+  // Safely get the updateMediaInContext function if available
+  let updateMediaInContext: ((mediaId: string, updates: Partial<any>) => void) | null = null
+  try {
+    const mediaDetailContext = useMediaDetail()
+    updateMediaInContext = mediaDetailContext.updateMediaInContext
+  } catch (error) {
+    // Component is not within MediaDetailProvider, which is fine
+    updateMediaInContext = null
+  }
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = isEditing && (
@@ -139,6 +150,15 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
       // Update the media prop if updateMedia function is provided
       if (updateMedia && media.id) {
         updateMedia(media.id, {
+          altText: editTitle,
+          caption: editDescription,
+          tags: editTags
+        })
+      }
+      
+      // Update the MediaDetailProvider context to keep navigation state in sync
+      if (media.id && updateMediaInContext) {
+        updateMediaInContext(media.id, {
           altText: editTitle,
           caption: editDescription,
           tags: editTags

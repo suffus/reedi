@@ -12,3 +12,6 @@ media-processor/output/
 media-processor/test-video.mp4
 backend/dist
 .dbbackups
+.env~
+.env.local~
+.env.live~
