@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from 'lucide-react'
 import { useLogin, useRegister } from '../lib/api-hooks'
 import { EmailVerificationForm } from './email-verification-form'
+import { CompleteRegistration } from './complete-registration'
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email'),
@@ -35,6 +36,10 @@ export function AuthSection() {
   // Registration flow state
   const [registrationStep, setRegistrationStep] = useState<'form' | 'verification'>('form')
   const [registrationData, setRegistrationData] = useState<{ email: string; name: string } | null>(null)
+  
+  // Complete registration state (for existing unverified users)
+  const [showCompleteRegistration, setShowCompleteRegistration] = useState(false)
+  const [unverifiedUserData, setUnverifiedUserData] = useState<{ id: string; email: string; name: string } | null>(null)
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -58,8 +63,16 @@ export function AuthSection() {
       
       // Redirect to dashboard
       window.location.href = '/dashboard'
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error)
+      
+      // Handle unverified users
+      if (error.needsVerification && error.userData) {
+        setUnverifiedUserData(error.userData)
+        setShowCompleteRegistration(true)
+        return
+      }
+      
       alert(error instanceof Error ? error.message : 'An error occurred during login. Please try again.')
     }
   }
@@ -96,15 +109,29 @@ export function AuthSection() {
     setRegistrationData(null)
     signupForm.reset()
   }
+
+  const handleCompleteRegistrationSuccess = (userData: any) => {
+    // Store token and redirect to dashboard
+    localStorage.setItem('token', userData.token)
+    window.location.href = '/dashboard'
+  }
+
+  const handleBackToLogin = () => {
+    setShowCompleteRegistration(false)
+    setUnverifiedUserData(null)
+    loginForm.reset()
+  }
   return (
     <div className="card-elevated max-w-md mx-auto bg-white/95 shadow-2xl border-primary-100">
       <div className="text-center mb-10">
         <h2 className="text-3xl font-serif font-semibold text-primary-900 mb-4">
-          {isLogin ? 'Welcome Back' : 
+          {showCompleteRegistration ? 'Complete Your Registration' :
+           isLogin ? 'Welcome Back' : 
            registrationStep === 'verification' ? 'Verify Your Email' : 'Join Reedi'}
         </h2>
         <p className="text-primary-600 leading-relaxed">
-          {isLogin ? 'Sign in to your account' : 
+          {showCompleteRegistration ? 'Verify your email address to complete your account setup' :
+           isLogin ? 'Sign in to your account' : 
            registrationStep === 'verification' ? 'Enter the 6-digit code sent to your email' : 'Create your account to get started'}
         </p>
       </div>
@@ -296,8 +323,24 @@ export function AuthSection() {
         />
       )}
 
+      {/* Show complete registration form for existing unverified users */}
+      {showCompleteRegistration && unverifiedUserData && (
+        <CompleteRegistration
+          userData={unverifiedUserData}
+          onVerificationSuccess={handleCompleteRegistrationSuccess}
+          onBack={handleBackToLogin}
+        />
+      )}
+
       <div className="mt-8 text-center">
-        {registrationStep === 'verification' ? (
+        {showCompleteRegistration ? (
+          <button
+            onClick={handleBackToLogin}
+            className="text-primary-600 hover:text-primary-900 transition-colors duration-200 text-sm"
+          >
+            ← Back to Login
+          </button>
+        ) : registrationStep === 'verification' ? (
           <button
             onClick={handleBackToRegistration}
             className="text-primary-600 hover:text-primary-900 transition-colors duration-200 text-sm"

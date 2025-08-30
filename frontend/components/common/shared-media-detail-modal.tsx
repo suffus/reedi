@@ -31,7 +31,7 @@ export function SharedMediaDetailModal() {
 
   const handleNavigate = useCallback((media: Media) => {
     navigateToMedia(media)
-  }, [navigateToMedia])
+  }, [navigateToMedia,allMedia])
 
   // Convert FlexibleMedia to Media for the specialized modals
   const mediaForModal = currentMedia as Media

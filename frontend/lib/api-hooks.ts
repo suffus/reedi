@@ -161,7 +161,16 @@ export const useLogin = () => {
       })
       
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Login failed')
+      if (!response.ok) {
+        // Handle unverified users specially
+        if (response.status === 403 && data.needsVerification) {
+          const error = new Error(data.error || 'Login failed')
+          ;(error as any).needsVerification = true
+          ;(error as any).userData = data.user
+          throw error
+        }
+        throw new Error(data.error || 'Login failed')
+      }
       
       return data
     },
@@ -816,12 +825,11 @@ export const useUpdateMedia = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ mediaId, title, description, tags, onOptimisticUpdate }: { 
+    mutationFn: async ({ mediaId, title, description, tags }: { 
       mediaId: string; 
       title?: string; 
       description?: string;
       tags?: string[];
-      onOptimisticUpdate?: (mediaId: string, updates: any) => void;
     }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
@@ -837,35 +845,166 @@ export const useUpdateMedia = () => {
       
       return data
     },
-    onMutate: async ({ mediaId, title, description, tags, onOptimisticUpdate }) => {
-      // Apply optimistic update to local state if callback provided
-      if (onOptimisticUpdate) {
-        onOptimisticUpdate(mediaId, {
-          altText: title || null,
-          caption: description || null,
-          title: title || null,
-          description: description || null,
-          tags: tags || []
-        })
-      }
-      
+    onMutate: async ({ mediaId, title, description, tags }) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['media'] })
+      await queryClient.cancelQueries({ queryKey: ['posts'] })
+      await queryClient.cancelQueries({ queryKey: ['gallery'] })
       
-      // Snapshot the previous value
-      const previousMedia = queryClient.getQueriesData({ queryKey: ['media'] })
+      // Snapshot the previous values for potential rollback
+      const previousMediaQueries = queryClient.getQueriesData({ queryKey: ['media'] })
+      const previousPostQueries = queryClient.getQueriesData({ queryKey: ['posts'] })
+      const previousGalleryQueries = queryClient.getQueriesData({ queryKey: ['gallery'] })
       
-      return { previousMedia, onOptimisticUpdate }
+      // Optimistically update media queries
+      queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: any) => {
+        if (!oldData) return oldData
+        
+        // Handle different data structures
+        if (oldData.data?.media) {
+          // For queries that return { data: { media: [...] } }
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              media: oldData.data.media.map((item: any) => 
+                item.id === mediaId ? {
+                  ...item,
+                  altText: title !== undefined ? title : item.altText,
+                  caption: description !== undefined ? description : item.caption,
+                  tags: tags !== undefined ? tags : item.tags
+                } : item
+              )
+            }
+          }
+        } else if (Array.isArray(oldData)) {
+          // For queries that return array of media
+          return oldData.map((item: any) => 
+            item.id === mediaId ? {
+              ...item,
+              altText: title !== undefined ? title : item.altText,
+              caption: description !== undefined ? description : item.caption,
+              tags: tags !== undefined ? tags : item.tags
+            } : item
+          )
+        } else if (oldData.id === mediaId) {
+          // For single media item queries
+          return {
+            ...oldData,
+            altText: title !== undefined ? title : oldData.altText,
+            caption: description !== undefined ? description : oldData.caption,
+            tags: tags !== undefined ? tags : oldData.tags
+          }
+        }
+        
+        return oldData
+      })
+      
+      // Optimistically update post queries that contain this media
+      queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: any) => {
+        if (!oldData) return oldData
+        
+        if (oldData.data?.posts) {
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              posts: oldData.data.posts.map((post: any) => ({
+                ...post,
+                media: post.media?.map((pm: any) => {
+                  const mediaItem = pm.media || pm
+                  if (mediaItem.id === mediaId) {
+                    return {
+                      ...pm,
+                      media: {
+                        ...mediaItem,
+                        altText: title !== undefined ? title : mediaItem.altText,
+                        caption: description !== undefined ? description : mediaItem.caption,
+                        tags: tags !== undefined ? tags : mediaItem.tags
+                      }
+                    }
+                  }
+                  return pm
+                })
+              }))
+            }
+          }
+        }
+        
+        return oldData
+      })
+      
+      // Optimistically update gallery queries that contain this media
+      queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: any) => {
+        if (!oldData) return oldData
+        
+        if (oldData.data?.gallery?.media) {
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              gallery: {
+                ...oldData.data.gallery,
+                media: oldData.data.gallery.media.map((item: any) => 
+                  item.id === mediaId ? {
+                    ...item,
+                    altText: title !== undefined ? title : item.altText,
+                    caption: description !== undefined ? description : item.caption,
+                    tags: tags !== undefined ? tags : item.tags
+                  } : item
+                )
+              }
+            }
+          }
+        }
+        
+        return oldData
+      })
+      
+      return { 
+        previousMediaQueries, 
+        previousPostQueries, 
+        previousGalleryQueries 
+      }
     },
     onError: (err, variables, context) => {
-      // If the mutation fails, we could rollback the optimistic update
-      // but since we're using local state, we'll just let the error be handled
       console.error('Failed to update media:', err)
+      
+      // Rollback optimistic updates on error
+      if (context?.previousMediaQueries) {
+        context.previousMediaQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+      if (context?.previousPostQueries) {
+        context.previousPostQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+      if (context?.previousGalleryQueries) {
+        context.previousGalleryQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
     },
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
-      console.log('Invalidating media queries...')
+      console.log('Invalidating media queries and related data...')
+      
+      // Invalidate media queries
       queryClient.invalidateQueries({ queryKey: ['media'] })
+      
+      // Invalidate posts queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
+      
+      // Invalidate gallery queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      
+      // Invalidate user media queries
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }
@@ -879,15 +1018,13 @@ export const useBulkUpdateMedia = () => {
       title, 
       description, 
       tags, 
-      mergeTags = false,
-      onOptimisticUpdate 
+      mergeTags = false
     }: { 
       mediaIds: string[]; 
       title?: string; 
       description?: string;
       tags?: string[];
       mergeTags?: boolean;
-      onOptimisticUpdate?: (mediaId: string, updates: any) => void;
     }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
@@ -930,49 +1067,168 @@ export const useBulkUpdateMedia = () => {
       
       return results
     },
-    onMutate: async ({ mediaIds, title, description, tags, mergeTags, onOptimisticUpdate }) => {
-      // Apply optimistic updates to local state if callback provided
-      if (onOptimisticUpdate) {
-        mediaIds.forEach(mediaId => {
-          const updates: any = {}
+    onMutate: async ({ mediaIds, title, description, tags, mergeTags }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['media'] })
+      await queryClient.cancelQueries({ queryKey: ['posts'] })
+      await queryClient.cancelQueries({ queryKey: ['gallery'] })
+      
+      // Snapshot the previous values for potential rollback
+      const previousMediaQueries = queryClient.getQueriesData({ queryKey: ['media'] })
+      const previousPostQueries = queryClient.getQueriesData({ queryKey: ['posts'] })
+      const previousGalleryQueries = queryClient.getQueriesData({ queryKey: ['gallery'] })
+      
+      // Optimistically update media queries for all affected media
+      mediaIds.forEach(mediaId => {
+        queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: any) => {
+          if (!oldData) return oldData
           
-          if (title !== undefined) {
-            updates.altText = title
-            updates.title = title
-          }
-          if (description !== undefined) {
-            updates.caption = description
-            updates.description = description
-          }
-          if (tags !== undefined) {
-            if (mergeTags) {
-              // For optimistic updates with tag merging, we'll let the backend handle it
-              // and just update the tags field - the actual merging will be done by the backend
-              updates.tags = tags
-            } else {
-              updates.tags = tags
+          // Handle different data structures
+          if (oldData.data?.media) {
+            // For queries that return { data: { media: [...] } }
+            return {
+              ...oldData,
+              data: {
+                ...oldData.data,
+                media: oldData.data.media.map((item: any) => 
+                  item.id === mediaId ? {
+                    ...item,
+                    altText: title !== undefined ? title : item.altText,
+                    caption: description !== undefined ? description : item.caption,
+                    tags: tags !== undefined ? tags : item.tags
+                  } : item
+                )
+              }
+            }
+          } else if (Array.isArray(oldData)) {
+            // For queries that return array of media
+            return oldData.map((item: any) => 
+              item.id === mediaId ? {
+                ...item,
+                altText: title !== undefined ? title : item.altText,
+                caption: description !== undefined ? description : item.caption,
+                tags: tags !== undefined ? tags : item.tags
+              } : item
+            )
+          } else if (oldData.id === mediaId) {
+            // For single media item queries
+            return {
+              ...oldData,
+              altText: title !== undefined ? title : oldData.altText,
+              caption: description !== undefined ? description : oldData.caption,
+              tags: tags !== undefined ? tags : oldData.tags
             }
           }
           
-          onOptimisticUpdate(mediaId, updates)
+          return oldData
         })
+        
+        // Optimistically update post queries that contain this media
+        queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: any) => {
+          if (!oldData) return oldData
+          
+          if (oldData.data?.posts) {
+            return {
+              ...oldData,
+              data: {
+                ...oldData.data,
+                posts: oldData.data.posts.map((post: any) => ({
+                  ...post,
+                  media: post.media?.map((pm: any) => {
+                    const mediaItem = pm.media || pm
+                    if (mediaItem.id === mediaId) {
+                      return {
+                        ...pm,
+                        media: {
+                          ...mediaItem,
+                          altText: title !== undefined ? title : mediaItem.altText,
+                          caption: description !== undefined ? description : mediaItem.caption,
+                          tags: tags !== undefined ? tags : mediaItem.tags
+                        }
+                      }
+                    }
+                    return pm
+                  })
+                }))
+              }
+            }
+          }
+          
+          return oldData
+        })
+        
+        // Optimistically update gallery queries that contain this media
+        queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: any) => {
+          if (!oldData) return oldData
+          
+          if (oldData.data?.gallery?.media) {
+            return {
+              ...oldData,
+              data: {
+                ...oldData.data,
+                gallery: {
+                  ...oldData.data.gallery,
+                  media: oldData.data.gallery.media.map((item: any) => 
+                    item.id === mediaId ? {
+                      ...item,
+                      altText: title !== undefined ? title : item.altText,
+                      caption: description !== undefined ? description : item.caption,
+                      tags: tags !== undefined ? tags : item.tags
+                    } : item
+                  )
+                }
+              }
+            }
+          }
+          
+          return oldData
+        })
+      })
+      
+      return { 
+        previousMediaQueries, 
+        previousPostQueries, 
+        previousGalleryQueries 
       }
-      
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['media'] })
-      
-      // Snapshot the previous value
-      const previousMedia = queryClient.getQueriesData({ queryKey: ['media'] })
-      
-      return { previousMedia, onOptimisticUpdate }
     },
     onError: (err, variables, context) => {
       console.error('Failed to bulk update media:', err)
+      
+      // Rollback optimistic updates on error
+      if (context?.previousMediaQueries) {
+        context.previousMediaQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+      if (context?.previousPostQueries) {
+        context.previousPostQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+      if (context?.previousGalleryQueries) {
+        context.previousGalleryQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
     },
     onSettled: () => {
       // Always refetch after error or success to ensure cache consistency
+      console.log('Invalidating media queries and related data after bulk update...')
+      
+      // Invalidate media queries
       queryClient.invalidateQueries({ queryKey: ['media'] })
+      
+      // Invalidate posts queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
+      
+      // Invalidate gallery queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      
+      // Invalidate user media queries
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }
@@ -996,7 +1252,22 @@ export const useDeleteMedia = () => {
       return data
     },
     onSuccess: () => {
+      console.log('Invalidating media queries and related data after deletion...')
+      
+      // Invalidate media queries
       queryClient.invalidateQueries({ queryKey: ['media'] })
+      
+      // Invalidate posts queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
+      
+      // Invalidate gallery queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
+      queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      
+      // Invalidate user media queries
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }
@@ -1499,10 +1770,23 @@ export const useReprocessMedia = () => {
       return data
     },
     onSuccess: (_, mediaId) => {
+      console.log('Invalidating media queries and related data after reprocessing...')
+      
       // Invalidate media queries to refresh the processing status
       queryClient.invalidateQueries({ queryKey: ['media', mediaId] })
       queryClient.invalidateQueries({ queryKey: ['media'] })
+      
+      // Invalidate posts queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
+      
+      // Invalidate gallery queries since they contain media
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
+      
+      // Invalidate user media queries
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }

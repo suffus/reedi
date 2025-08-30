@@ -32,6 +32,7 @@ interface MediaDetailContextType {
   openMediaDetail: (media: Media | FlexibleMedia, allMedia?: (Media | FlexibleMedia)[]) => void
   closeMediaDetail: () => void
   navigateToMedia: (media: Media | FlexibleMedia) => void
+  updateMediaInContext: (mediaId: string, updates: Partial<Media | FlexibleMedia>) => void
   isOpen: boolean
   currentMedia: Media | FlexibleMedia | null
   allMedia: (Media | FlexibleMedia)[]
@@ -60,12 +61,26 @@ export function MediaDetailProvider({ children }: { children: ReactNode }) {
     setCurrentMedia(media)
   }
 
+  const updateMediaInContext = (mediaId: string, updates: Partial<Media | FlexibleMedia>) => {
+    setAllMedia(prevAllMedia => 
+      prevAllMedia.map(media => 
+        media.id === mediaId ? { ...media, ...updates } : media
+      )
+    )
+    
+    // Also update currentMedia if it's the one being updated
+    setCurrentMedia(prevCurrentMedia => 
+      prevCurrentMedia?.id === mediaId ? { ...prevCurrentMedia, ...updates } : prevCurrentMedia
+    )
+  }
+
   return (
     <MediaDetailContext.Provider
       value={{
         openMediaDetail,
         closeMediaDetail,
         navigateToMedia,
+        updateMediaInContext,
         isOpen,
         currentMedia,
         allMedia

@@ -76,9 +76,26 @@ const GroupsPage: React.FC = () => {
       if (selectedType) params.append('type', selectedType)
       if (selectedVisibility) params.append('visibility', selectedVisibility)
 
-      const response = await fetch(`${API_BASE_URL}/groups/search?${params.toString()}`, {
-        headers: getAuthHeaders(token)
-      })
+      let response: Response
+      let endpoint: string
+
+      if (token) {
+        // Try authenticated search first (includes all groups user can see)
+        endpoint = 'search'
+        response = await fetch(`${API_BASE_URL}/groups/search?${params.toString()}`, {
+          headers: getAuthHeaders(token)
+        })
+        
+        if (response.status === 401) {
+          // Token expired or invalid, try public endpoint
+          endpoint = 'public'
+          response = await fetch(`${API_BASE_URL}/groups/public?${params.toString()}`)
+        }
+      } else {
+        // No token, use public endpoint
+        endpoint = 'public'
+        response = await fetch(`${API_BASE_URL}/groups/public?${params.toString()}`)
+      }
       
       if (response.ok) {
         const data = await response.json()
@@ -88,6 +105,11 @@ const GroupsPage: React.FC = () => {
           total: data.data.pagination.total,
           pages: data.data.pagination.pages
         }))
+        
+        // Log which endpoint was used for debugging
+        console.log(`Groups loaded from ${endpoint} endpoint`)
+      } else {
+        console.error(`Failed to load groups from ${endpoint} endpoint:`, response.status)
       }
     } catch (error) {
       console.error('Error loading groups:', error)
@@ -207,6 +229,11 @@ const GroupsPage: React.FC = () => {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Groups</h1>
               <p className="text-gray-600 mt-2">Discover and join communities that interest you</p>
+              {typeof window !== 'undefined' && !localStorage.getItem('token') && (
+                <p className="text-sm text-blue-600 mt-1">
+                  🔒 Showing public groups only. <Link href="/" className="underline hover:text-blue-800">Sign in</Link> to see all groups you have access to.
+                </p>
+              )}
             </div>
             <button onClick={() => setShowCreateModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
               <Plus className="w-4 h-4 mr-2" />
@@ -250,8 +277,12 @@ const GroupsPage: React.FC = () => {
               <select value={selectedVisibility} onChange={(e) => setSelectedVisibility(e.target.value)} className="w-40">
                 <option value="">All Visibility</option>
                 <option value="PUBLIC">Public</option>
-                <option value="PRIVATE_VISIBLE">Private (Visible)</option>
-                <option value="PRIVATE_HIDDEN">Private (Hidden)</option>
+                {typeof window !== 'undefined' && localStorage.getItem('token') && (
+                  <>
+                    <option value="PRIVATE_VISIBLE">Private (Visible)</option>
+                    <option value="PRIVATE_HIDDEN">Private (Hidden)</option>
+                  </>
+                )}
               </select>
 
               {/* View Mode Toggle */}

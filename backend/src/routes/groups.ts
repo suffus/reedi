@@ -355,6 +355,164 @@ router.get('/user/:userId', authMiddleware, asyncHandler(async (req: Authenticat
   })
 }))
 
+// Get public groups (no authentication required)
+router.get('/public', asyncHandler(async (req: Request, res: Response) => {
+  const { page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  const whereClause: any = {
+    isActive: true,
+    visibility: 'PUBLIC'
+  }
+
+  const [groups, total] = await Promise.all([
+    prisma.group.findMany({
+      where: whereClause as any,
+      include: {
+        avatarMedia: {
+          select: {
+            id: true
+          }
+        },
+        coverPhotoMedia: {
+          select: {
+            id: true
+          }
+        },
+        _count: {
+          select: {
+            members: { where: { status: 'ACTIVE' } },
+            posts: { where: { status: 'APPROVED' } }
+          }
+        }
+      },
+      orderBy: [
+        { createdAt: 'desc' }
+      ],
+      skip: offset,
+      take: Number(limit)
+    }),
+    prisma.group.count({ where: whereClause as any })
+  ])
+
+  // Map the response to include avatar and coverPhoto fields
+  const groupsWithImages = groups.map(group => ({
+    ...group,
+    avatar: group.avatarMedia?.id,
+    coverPhoto: group.coverPhotoMedia?.id
+  }))
+
+  res.json({
+    success: true,
+    data: {
+      groups: groupsWithImages,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    }
+  })
+}))
+
+// Search groups (authenticated users only)
+router.get('/search', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { q, type, visibility, page = 1, limit = 20 } = req.query
+  const offset = (Number(page) - 1) * Number(limit)
+
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Authentication required' })
+  }
+
+  const whereClause: any = {
+    isActive: true
+  }
+
+  if (q) {
+    whereClause.OR = [
+      { name: { contains: q as string, mode: 'insensitive' } },
+      { description: { contains: q as string, mode: 'insensitive' } }
+    ]
+  }
+
+  if (type) {
+    whereClause.type = type
+  }
+
+  if (visibility) {
+    whereClause.visibility = visibility
+  } else {
+    // Show all groups that the user can see:
+    // - Public groups
+    // - Private visible groups  
+    // - Private hidden groups where user is a member
+    whereClause.OR = [
+      { visibility: { in: ['PUBLIC', 'PRIVATE_VISIBLE'] } },
+      {
+        visibility: 'PRIVATE_HIDDEN',
+        members: {
+          some: {
+            userId: userId,
+            status: 'ACTIVE'
+          }
+        }
+      }
+    ]
+  }
+
+  const [groups, total] = await Promise.all([
+    prisma.group.findMany({
+      where: whereClause,
+      include: {
+        avatarMedia: {
+          select: {
+            id: true
+          }
+        },
+        coverPhotoMedia: {
+          select: {
+            id: true
+          }
+        },
+        _count: {
+          select: {
+            members: { where: { status: 'ACTIVE' } },
+            posts: { where: { status: 'APPROVED' } }
+          }
+        }
+      },
+      orderBy: [
+        { createdAt: 'desc' }
+      ],
+      skip: offset,
+      take: Number(limit)
+    }),
+    prisma.group.count({ where: whereClause })
+  ])
+
+  // Map the response to include avatar and coverPhoto fields
+  const groupsWithImages = groups.map(group => ({
+    ...group,
+    avatar: group.avatarMedia?.id,
+    coverPhoto: group.coverPhotoMedia?.id
+  }))
+
+  res.json({
+    success: true,
+    data: {
+      groups: groupsWithImages,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    }
+  })
+}))
+
 // Get group by username or ID
 router.get('/:identifier', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { identifier } = req.params
@@ -1783,83 +1941,7 @@ router.put('/:groupIdentifier/posts/:postId/moderate', authMiddleware, asyncHand
   })
 }))
 
-// Search groups
-router.get('/search', asyncHandler(async (req: Request, res: Response) => {
-  const { q, type, visibility, page = 1, limit = 20 } = req.query
-  const offset = (Number(page) - 1) * Number(limit)
 
-  const whereClause: any = {
-    isActive: true
-  }
-
-  if (q) {
-    whereClause.OR = [
-      { name: { contains: q as string, mode: 'insensitive' } },
-      { description: { contains: q as string, mode: 'insensitive' } }
-    ]
-  }
-
-  if (type) {
-    whereClause.type = type
-  }
-
-  if (visibility) {
-    whereClause.visibility = visibility
-  } else {
-    // Only show public and private visible groups in search
-    whereClause.visibility = { in: ['PUBLIC', 'PRIVATE_VISIBLE'] }
-  }
-
-  const [groups, total] = await Promise.all([
-    prisma.group.findMany({
-      where: whereClause,
-      include: {
-        avatarMedia: {
-          select: {
-            id: true
-          }
-        },
-        coverPhotoMedia: {
-          select: {
-            id: true
-          }
-        },
-        _count: {
-          select: {
-            members: { where: { status: 'ACTIVE' } },
-            posts: { where: { status: 'APPROVED' } }
-          }
-        }
-      },
-      orderBy: [
-        { createdAt: 'desc' }
-      ],
-      skip: offset,
-      take: Number(limit)
-    }),
-    prisma.group.count({ where: whereClause })
-  ])
-
-  // Map the response to include avatar and coverPhoto fields
-  const groupsWithImages = groups.map(group => ({
-    ...group,
-    avatar: group.avatarMedia?.id,
-    coverPhoto: group.coverPhotoMedia?.id
-  }))
-
-  res.json({
-    success: true,
-    data: {
-      groups: groupsWithImages,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit))
-      }
-    }
-  })
-}))
 
 // Get recent group activity (admin/owner only)
 router.get('/:groupIdentifier/activity', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
