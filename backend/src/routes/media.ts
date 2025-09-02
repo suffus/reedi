@@ -73,7 +73,8 @@ router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => 
     visibility, 
     mediaType,
     startDate,
-    endDate
+    endDate,
+    showOnlyUnorganized
   } = req.query
   const offset = (Number(page) - 1) * Number(limit)
 
@@ -125,6 +126,11 @@ router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => 
       ...whereClause.createdAt,
       lte: new Date(endDate)
     }
+  }
+
+  // Filter by showOnlyUnorganized - show only media not in galleries
+  if (showOnlyUnorganized === 'true') {
+    whereClause.galleryId = null
   }
 
   const [media, total] = await Promise.all([

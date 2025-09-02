@@ -272,6 +272,14 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
   const handleReprocess = async () => {
     try {
       await reprocessMediaMutation.mutateAsync(media.id)
+      
+      // Update the MediaDetailProvider context to reflect the new processing status
+      if (updateMediaInContext) {
+        updateMediaInContext(media.id, {
+          processingStatus: 'PENDING'
+        })
+      }
+      
       // The query invalidation in the hook will automatically refresh the UI
     } catch (error) {
       console.error('Failed to reprocess media:', error)
@@ -389,18 +397,31 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
           {/* Reprocess button - only show for failed media owned by the user */}
           {!isEditing && isOwner && (
             (processingStatus === 'FAILED') && (
-            <button
-              onClick={handleReprocess}
-              disabled={reprocessMediaMutation.isPending}
-              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors duration-200"
-              title="Reprocess Media"
-            >
-              {reprocessMediaMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
+            <div className="flex flex-col items-end space-y-2">
+              <button
+                onClick={handleReprocess}
+                disabled={reprocessMediaMutation.isPending}
+                className={`p-2 rounded-lg transition-colors duration-200 ${
+                  reprocessMediaMutation.isPending 
+                    ? 'text-blue-600 bg-blue-100' 
+                    : 'text-red-400 hover:text-red-600 hover:bg-red-100'
+                }`}
+                title={reprocessMediaMutation.isPending ? "Reprocessing..." : "Reprocess Media"}
+              >
+                {reprocessMediaMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </button>
+              
+              {/* Reprocessing status message */}
+              {reprocessMediaMutation.isPending && (
+                <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  Reprocessing...
+                </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
       </div>

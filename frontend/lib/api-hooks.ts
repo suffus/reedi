@@ -1769,6 +1769,138 @@ export const useReprocessMedia = () => {
       
       return data
     },
+    onMutate: async (mediaId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['media'] })
+      await queryClient.cancelQueries({ queryKey: ['posts'] })
+      await queryClient.cancelQueries({ queryKey: ['gallery'] })
+      
+      // Snapshot the previous values for potential rollback
+      const previousMediaQueries = queryClient.getQueriesData({ queryKey: ['media'] })
+      const previousPostQueries = queryClient.getQueriesData({ queryKey: ['posts'] })
+      const previousGalleryQueries = queryClient.getQueriesData({ queryKey: ['gallery'] })
+      
+      // Optimistically update media queries to show PENDING status
+      queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: any) => {
+        if (!oldData) return oldData
+        
+        // Handle different data structures
+        if (oldData.data?.media) {
+          // For queries that return { data: { media: [...] } }
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              media: oldData.data.media.map((item: any) => 
+                item.id === mediaId ? {
+                  ...item,
+                  processingStatus: 'PENDING'
+                } : item
+              )
+            }
+          }
+        } else if (Array.isArray(oldData)) {
+          // For queries that return array of media
+          return oldData.map((item: any) => 
+            item.id === mediaId ? {
+              ...item,
+              processingStatus: 'PENDING'
+            } : item
+          )
+        } else if (oldData.id === mediaId) {
+          // For single media item queries
+          return {
+            ...oldData,
+            processingStatus: 'PENDING'
+          }
+        }
+        
+        return oldData
+      })
+      
+      // Optimistically update post queries that contain this media
+      queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: any) => {
+        if (!oldData) return oldData
+        
+        if (oldData.data?.posts) {
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              posts: oldData.data.posts.map((post: any) => ({
+                ...post,
+                media: post.media?.map((pm: any) => {
+                  const mediaItem = pm.media || pm
+                  if (mediaItem.id === mediaId) {
+                    return {
+                      ...pm,
+                      media: {
+                        ...mediaItem,
+                        processingStatus: 'PENDING'
+                      }
+                    }
+                  }
+                  return pm
+                })
+              }))
+            }
+          }
+        }
+        
+        return oldData
+      })
+      
+      // Optimistically update gallery queries that contain this media
+      queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: any) => {
+        if (!oldData) return oldData
+        
+        if (oldData.data?.gallery?.media) {
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              gallery: {
+                ...oldData.data.gallery,
+                media: oldData.data.gallery.media.map((item: any) => 
+                  item.id === mediaId ? {
+                    ...item,
+                    processingStatus: 'PENDING'
+                  } : item
+                )
+              }
+            }
+          }
+        }
+        
+        return oldData
+      })
+      
+      return { 
+        previousMediaQueries, 
+        previousPostQueries, 
+        previousGalleryQueries 
+      }
+    },
+    onError: (err, mediaId, context) => {
+      console.error('Failed to reprocess media:', err)
+      
+      // Rollback optimistic updates on error
+      if (context?.previousMediaQueries) {
+        context.previousMediaQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+      if (context?.previousPostQueries) {
+        context.previousPostQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+      if (context?.previousGalleryQueries) {
+        context.previousGalleryQueries.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueriesData(queryKey, data)
+        })
+      }
+    },
     onSuccess: (_, mediaId) => {
       console.log('Invalidating media queries and related data after reprocessing...')
       

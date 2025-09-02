@@ -41,6 +41,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [isCropping, setIsCropping] = useState(false)
   const [cropStart, setCropStart] = useState({ x: 0, y: 0 })
   const [activeCrop, setActiveCrop] = useState<{ x: number, y: number, width: number, height: number } | null>(null)
+  const [isImageLoading, setIsImageLoading] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   
   // Unsaved changes state
@@ -106,10 +107,14 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     // Reset view state when navigating to a new media
     // We'll set zoom to 1 initially, then adjust it in handleImageLoad
     console.log('setting zoom to 1')
-    setZoom(initialZoom)
+    // setZoom(initialZoom)
     setPan({ x: 0, y: 0 })
     setCropArea({ x: 0, y: 0, width: 0, height: 0 })
     setActiveCrop(null)
+    
+    // Set loading state when navigating to new media
+    // This will be cleared when the image loads
+    setIsImageLoading(true)
     
     // We'll defer optimal scaling to handleImageLoad
     // This ensures we have the actual image dimensions
@@ -146,6 +151,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     if (!canNavigate || !hasNext) return
     checkUnsavedChanges(() => {
       const nextIndex = currentIndex + 1
+      setIsImageLoading(true)
       onNavigate(allMedia[nextIndex])
     })
   }, [canNavigate, hasNext, currentIndex, onNavigate, allMedia, hasUnsavedChanges])
@@ -154,23 +160,27 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     if (!canNavigate || !hasPrev) return
     checkUnsavedChanges(() => {
       const prevIndex = currentIndex - 1
+      setIsImageLoading(true)
       onNavigate(allMedia[prevIndex])
     })
   }, [canNavigate, hasPrev, currentIndex, onNavigate, allMedia, hasUnsavedChanges])
 
   const handleFirst = useCallback(() => {
     if (!canNavigate) return
+    setIsImageLoading(true)
     onNavigate(allMedia[0])
   }, [canNavigate, onNavigate, allMedia])
 
   const handleLast = useCallback(() => {
     if (!canNavigate) return
+    setIsImageLoading(true)
     onNavigate(allMedia[allMedia.length - 1])
   }, [canNavigate, onNavigate, allMedia])
 
   // Handle image load for slideshow and initial scaling
   const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     console.log('Image loaded')
+    setIsImageLoading(false)
     slideshow.handleMediaLoad()
     
     // Calculate initial scale to fit viewport
@@ -179,6 +189,17 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     const imgHeight = img.naturalHeight
     
     const containerRect = containerRef.current?.getBoundingClientRect()
+    const scale = calculateInitialZoom(e)
+    setZoom(scale)
+    setInitialZoom(scale)
+  }, [slideshow, isPanelMinimized])
+
+  const calculateInitialZoom = (e: React.SyntheticEvent<HTMLImageElement>) : number => {
+    const containerRect = containerRef.current?.getBoundingClientRect()
+
+    const img = e.currentTarget
+    const imgWidth = img.naturalWidth
+    const imgHeight = img.naturalHeight
     if (containerRect) {
       const containerWidth = isPanelMinimized ? containerRect.width : containerRect.width - 32 // Account for padding
       const containerHeight = containerRect.height - 32
@@ -192,18 +213,16 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         const scaleY = containerHeight / imgHeight
         
         // Use the smaller scale factor to ensure the entire image fits
-        const scale = Math.min(scaleX, scaleY, 2.0) // Cap at 1.0 to avoid excessive scaling
+        const scale = Math.min(scaleX, scaleY, 3.0) // Cap at 1.0 to avoid excessive scaling
         
         // Only scale up if the image is significantly smaller than the viewport
         if (scale > 1.1) { // Add a threshold to avoid minimal scaling
-          console.log('Setting initial scale to', scale)
-          setInitialZoom(scale)
-          setZoom(scale)
+          return scale
         }
       }
     }
-  }, [slideshow, isPanelMinimized])
-
+    return 1
+  }
 
 
   const toggleCropMode = () => {
@@ -247,13 +266,13 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         if (img.naturalWidth < containerWidth && img.naturalHeight < containerHeight && optimalScale > 1.1) {
           setZoom(optimalScale)
         } else {
-          setZoom(1)
+          setZoom(initialZoom);
         }
       } else {
-        setZoom(1)
+        setZoom(initialZoom);
       }
     } else {
-      setZoom(1)
+      setZoom(initialZoom);
     }
     
     setPan({ x: 0, y: 0 })
@@ -724,7 +743,7 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 height: 'auto',
                 objectFit: 'contain', // Ensure the image maintains aspect ratio
                 transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-                cursor: slideshow.isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'))
+                cursor: isImageLoading ? 'wait' : (slideshow.isSlideshowActive && !controlsVisible ? 'none' : (isCropMode ? 'crosshair' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default')))
               }}
               onLoad={(e) => handleImageLoad(e)}
               onClick={(e) => {
@@ -735,6 +754,16 @@ export function ImageDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 }
               }}
             />
+            
+            {/* Loading Overlay - Only show during manual navigation, not during slideshow */}
+            {isImageLoading && !slideshow.isSlideshowActive && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 pointer-events-none z-10">
+                <div className="bg-white bg-opacity-90 rounded-lg p-4 flex items-center space-x-3 shadow-lg">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="text-gray-700 font-medium">Loading image...</span>
+                </div>
+              </div>
+            )}
             
             {/* Crop Overlay */}
             {isCropMode && (
