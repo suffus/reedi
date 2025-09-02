@@ -33,7 +33,8 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [selectedGalleryId, setSelectedGalleryId] = useState<string>('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
+  const [showOnlyUnorganized, setShowOnlyUnorganized] = useState(true)
   const [lastSelectedMediaId, setLastSelectedMediaId] = useState<string | null>(null)
 
   console.log("userId", userId)
@@ -45,7 +46,8 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
   // Build filters for the filtered user media hook
   const mediaFilters = {
     ...(selectedGalleryId && { galleryId: selectedGalleryId }),
-    ...(filterTags.length > 0 && { tags: filterTags })
+    ...(filterTags.length > 0 && { tags: filterTags }),
+    showOnlyUnorganized: showOnlyUnorganized
   }
   
   // Get filtered user media with infinite scroll
@@ -337,19 +339,19 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                           <button
                             onClick={() => setShowFilters(!showFilters)}
                             className={`p-2 rounded-lg transition-colors duration-200 ${
-                              showFilters || filterTags.length > 0 || selectedGalleryId
+                              showFilters || filterTags.length > 0 || selectedGalleryId || !showOnlyUnorganized
                                 ? 'bg-blue-100 text-blue-700'
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                             }`}
                             title={
-                              filterTags.length > 0 || selectedGalleryId 
-                                ? `${filterTags.length} tag filter(s)${selectedGalleryId ? ', gallery filter' : ''} active` 
-                                : 'Filter by tags and galleries'
+                              filterTags.length > 0 || selectedGalleryId || !showOnlyUnorganized
+                                ? `${filterTags.length + (selectedGalleryId ? 1 : 0) + (!showOnlyUnorganized ? 1 : 0)} filter(s) active` 
+                                : 'Filter by tags, galleries, and gallery status'
                             }
                           >
                             <Filter className="h-4 w-4" />
                           </button>
-                          {(filterTags.length > 0 || selectedGalleryId) && (
+                          {(filterTags.length > 0 || selectedGalleryId || !showOnlyUnorganized) && (
                             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
                           )}
                         </div>
@@ -364,11 +366,12 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                             <Filter className="h-4 w-4 mr-2" />
                             Filter Options
                           </h4>
-                          {(filterTags.length > 0 || selectedGalleryId) && (
+                          {(filterTags.length > 0 || selectedGalleryId || !showOnlyUnorganized) && (
                             <button
                               onClick={() => {
                                 setFilterTags([])
                                 setSelectedGalleryId('')
+                                setShowOnlyUnorganized(true)
                               }}
                               className="text-xs text-gray-500 hover:text-gray-700"
                             >
@@ -396,6 +399,19 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                           </select>
                         </div>
                         
+                        {/* Show Only Unorganized Filter */}
+                        <div className="mb-4">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showOnlyUnorganized}
+                              onChange={(e) => setShowOnlyUnorganized(e.target.checked)}
+                              className="text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">Only show media not already in galleries</span>
+                          </label>
+                        </div>
+                        
                         {/* Tag Filter */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -407,9 +423,16 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                             placeholder="Enter tags to filter by (comma-separated)..."
                             className="w-full"
                           />
-                          {filterTags.length > 0 && (
+                          {(filterTags.length > 0 || !showOnlyUnorganized) && (
                             <p className="text-xs text-gray-500 mt-2">
-                              Showing media that contain all selected tags
+                              {filterTags.length > 0 && !showOnlyUnorganized
+                                ? 'Showing media that contain all selected tags and are not in galleries'
+                                : filterTags.length > 0
+                                  ? 'Showing media that contain all selected tags and are not in galleries'
+                                  : !showOnlyUnorganized
+                                    ? 'Showing all media (including media already in galleries)'
+                                    : 'Showing only media not already in galleries'
+                              }
                             </p>
                           )}
                         </div>
@@ -484,10 +507,20 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                       <Video className="h-12 w-12 text-gray-400" />
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      {searchQuery ? 'No media found' : 'No media in gallery'}
+                      {searchQuery || filterTags.length > 0 || selectedGalleryId
+                        ? 'No media found'
+                        : showOnlyUnorganized
+                        ? 'No unorganized media found'
+                        : 'No media in gallery'
+                      }
                     </h3>
                     <p className="text-gray-600">
-                      {searchQuery ? 'Try adjusting your search terms' : 'Upload some media to get started'}
+                      {searchQuery || filterTags.length > 0 || selectedGalleryId
+                        ? 'Try adjusting your search terms or filters'
+                        : showOnlyUnorganized
+                        ? 'All your media is already organized in galleries!'
+                        : 'Upload some media to get started'
+                      }
                     </p>
                   </div>
                 )}

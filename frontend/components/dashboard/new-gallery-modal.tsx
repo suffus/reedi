@@ -26,7 +26,8 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [filterTags, setFilterTags] = useState<string[]>([])
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
+  const [showOnlyUnorganized, setShowOnlyUnorganized] = useState(true)
 
   // Media selection state
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
@@ -47,7 +48,8 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
         setLastSelectedMediaId(null)
         setSearchQuery('')
         setFilterTags([])
-        setShowFilters(false)
+        setShowFilters(true)
+        setShowOnlyUnorganized(true)
       }, 0)
       
       return () => clearTimeout(timer)
@@ -58,6 +60,7 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
   const mediaFilters = {
     tags: filterTags.length > 0 ? filterTags : undefined,
     title: searchQuery.trim() || undefined,
+    showOnlyUnorganized: showOnlyUnorganized,
     // Add other filters as needed
   }
 
@@ -296,11 +299,17 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                     <button
                       onClick={() => setShowFilters(!showFilters)}
                       className={`p-2 rounded-lg transition-colors duration-200 ${
-                        showFilters
+                        filterTags.length > 0 || !showOnlyUnorganized
                           ? 'bg-blue-100 text-blue-700'
+                          : showFilters
+                          ? 'bg-gray-100 text-gray-700'
                           : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                       }`}
-                      title={filterTags.length > 0 ? `${filterTags.length} filter(s) active` : 'Filter by tags'}
+                      title={
+                        filterTags.length > 0 || !showOnlyUnorganized
+                          ? `${filterTags.length + (!showOnlyUnorganized ? 1 : 0)} filter(s) active`
+                          : 'Filter by tags and gallery status'
+                      }
                     >
                       <Filter className="h-4 w-4" />
                     </button>
@@ -313,13 +322,14 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-medium text-gray-700 flex items-center">
                         <Filter className="h-4 w-4 mr-2" />
-                        Filter by Tags
+                        Filters
                       </h3>
-                      {(filterTags.length > 0 || searchQuery.trim()) && (
+                      {(filterTags.length > 0 || searchQuery.trim() || !showOnlyUnorganized) && (
                         <button
                           onClick={() => {
                             setFilterTags([])
                             setSearchQuery('')
+                            setShowOnlyUnorganized(true)
                           }}
                           className="text-xs text-gray-500 hover:text-gray-700"
                         >
@@ -327,19 +337,43 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                         </button>
                       )}
                     </div>
+                    
+                    {/* Show Only Unorganized Filter */}
+                    <div className="mb-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showOnlyUnorganized}
+                          onChange={(e) => setShowOnlyUnorganized(e.target.checked)}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">Only show media not already in galleries</span>
+                      </label>
+                    </div>
+                    
                     <TagInput
                       tags={filterTags}
                       onTagsChange={setFilterTags}
                       placeholder="Enter tags to filter by (comma-separated)..."
                       className="w-full"
                     />
-                    {(filterTags.length > 0 || searchQuery.trim()) && (
+                    {(filterTags.length > 0 || searchQuery.trim() || !showOnlyUnorganized) && (
                       <p className="text-xs text-gray-500 mt-2">
-                        {filterTags.length > 0 && searchQuery.trim() 
-                          ? `Showing media that contain all selected tags and match "${searchQuery}"`
-                          : filterTags.length > 0 
-                            ? 'Showing media that contain all selected tags'
-                            : `Showing media that match "${searchQuery}"`
+                        {filterTags.length > 0 && searchQuery.trim() && !showOnlyUnorganized
+                          ? `Showing media that contain all selected tags, match "${searchQuery}", and are not in galleries`
+                          : filterTags.length > 0 && searchQuery.trim()
+                            ? `Showing media that contain all selected tags, match "${searchQuery}", and are not in galleries`
+                          : filterTags.length > 0 && !showOnlyUnorganized
+                            ? 'Showing media that contain all selected tags and are not in galleries'
+                          : filterTags.length > 0
+                            ? 'Showing media that contain all selected tags and are not in galleries'
+                          : searchQuery.trim() && !showOnlyUnorganized
+                            ? `Showing media that match "${searchQuery}" and are not in galleries`
+                          : searchQuery.trim()
+                            ? `Showing media that match "${searchQuery}" and are not in galleries`
+                          : !showOnlyUnorganized
+                            ? 'Showing all media (including media already in galleries)'
+                            : 'Showing only media not already in galleries'
                         }
                       </p>
                     )}
@@ -357,13 +391,19 @@ export function NewGalleryModal({ isOpen, onClose, userId, onGalleryCreated }: N
                 )}
 
                 {/* No Results State */}
-                {!galleryLoading && filteredMedia.length === 0 && (filterTags.length > 0 || searchQuery.trim()) && (
+                {!galleryLoading && filteredMedia.length === 0 && (filterTags.length > 0 || searchQuery.trim() || showOnlyUnorganized) && (
                   <div className="text-center py-8">
-                    <p className="text-gray-500">No media found matching your filters.</p>
+                    <p className="text-gray-500">
+                      {showOnlyUnorganized && filteredMedia.length === 0 && filterTags.length === 0 && !searchQuery.trim()
+                        ? 'No unorganized media found. All your media is already in galleries!'
+                        : 'No media found matching your filters.'
+                      }
+                    </p>
                     <button
                       onClick={() => {
                         setFilterTags([])
                         setSearchQuery('')
+                        setShowOnlyUnorganized(true)
                       }}
                       className="text-primary-600 hover:text-primary-700 text-sm mt-2"
                     >

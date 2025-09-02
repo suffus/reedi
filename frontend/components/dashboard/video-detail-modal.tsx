@@ -94,6 +94,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 })
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 })
   const [viewportChangeKey, setViewportChangeKey] = useState(0)
+  const [isVideoLoading, setIsVideoLoading] = useState(false)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -216,6 +217,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     checkUnsavedChanges(() => {
       // Abort current video requests before navigating
       abortVideoRequests()
+      setIsVideoLoading(true)
       slideshow.handleNext()
     })
   }, [slideshow.hasNext, slideshow.handleNext, hasUnsavedChanges, abortVideoRequests])
@@ -225,6 +227,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     checkUnsavedChanges(() => {
       // Abort current video requests before navigating
       abortVideoRequests()
+      setIsVideoLoading(true)
       slideshow.handlePrev()
     })
   }, [slideshow.hasPrev, slideshow.handlePrev, hasUnsavedChanges, abortVideoRequests])
@@ -233,6 +236,9 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   useEffect(() => {
     // Abort any ongoing video requests when navigating to a new video
     //abortVideoRequests()
+    
+    // Set loading state when navigating to new video
+    setIsVideoLoading(true)
     
     // Reset video player state when navigating to a new video
     setIsPlaying(false)
@@ -283,6 +289,8 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
         width: videoRef.current.videoWidth,
         height: videoRef.current.videoHeight
       })
+      // Clear loading state when video metadata is loaded
+      setIsVideoLoading(false)
       // Notify slideshow that media has loaded
       slideshow.handleMediaLoad()
       
@@ -1006,7 +1014,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                     maxHeight: '100%',
                     // Apply zoom and pan transforms
                     transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-                    cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                    cursor: isVideoLoading ? 'wait' : (zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'),
                     transition: dragStart.x === 0 ? 'transform 0.2s ease-out' : 'none'
                   }}
                   src={getCurrentVideoSource()}
@@ -1031,6 +1039,16 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
                 >
                   Your browser does not support the video tag.
                 </video>
+                
+                {/* Loading Overlay - Only show during manual navigation, not during slideshow */}
+                {isVideoLoading && !slideshow.isSlideshowActive && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 pointer-events-none z-10">
+                    <div className="bg-white bg-opacity-90 rounded-lg p-4 flex items-center space-x-3 shadow-lg">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="text-gray-700 font-medium">Loading video...</span>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Seek Indicator */}
                 {showSeekIndicator && (
