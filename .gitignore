@@ -17,3 +17,4 @@ backend/dist
 .env.live~
 .env
 
+reedi_database_dump.sql
