@@ -82,12 +82,12 @@ export class EnhancedRabbitMQService {
 
   constructor(
     url: string = 'amqp://localhost',
-    exchanges = {
-      requests: 'media.requests',
-      processing: 'media.processing',
-      updates: 'media.updates'
+    exchanges: {
+      requests: string,
+      processing: string,
+      updates: string
     },
-    routingKey = 'define-the-routing-key',
+    routingKey: 'video' | 'images',
     queues: QueueConfig 
   ) {
     this.url = url
