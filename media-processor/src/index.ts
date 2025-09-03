@@ -8,6 +8,7 @@ import { EnhancedRabbitMQService } from './services/enhancedRabbitMQService'
 import { S3ProcessorService } from './services/s3ProcessorService'
 import dotenv from 'dotenv'
 import logger from './utils/logger'
+import { createNamespacedExchanges, createNamespacedStagedQueues } from './utils/rabbitmqNamespace'
 
 dotenv.config()
 
@@ -19,19 +20,9 @@ async function main() {
     },
     rabbitmq: {
       url: process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
-      exchanges: {
-        requests: process.env['RABBITMQ_REQUESTS_EXCHANGE'] || 'media.requests',
-        processing: process.env['RABBITMQ_PROCESSING_EXCHANGE'] || 'media.processing',
-        updates: process.env['RABBITMQ_UPDATES_EXCHANGE'] || 'media.updates'
-      },
-      video_queues: {
-        requests: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.video.processing.requests',
-        updates: process.env['RABBITMQ_UPDATES_QUEUE'] || 'media.video.processing.updates'
-      },
-      image_queues: {
-        requests: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.image.processing.requests',
-        updates: process.env['RABBITMQ_REQUESTS_QUEUE'] || 'media.image.processing.updates'
-      }
+      exchanges: createNamespacedExchanges(),
+      staged_video_queues: createNamespacedStagedQueues('video'),
+      staged_image_queues: createNamespacedStagedQueues('images')
     },
     s3: {
       region: process.env['IDRIVE_REGION'] || 'us-east-1',
@@ -75,19 +66,9 @@ async function main() {
     logger.info('Starting staged video processing service...')
     const videoRabbitmqService = new EnhancedRabbitMQService(
       config.rabbitmq.url,
-      {
-        requests: 'media.requests',
-        processing: 'media.processing',
-        updates: 'media.updates'
-      },
+      config.rabbitmq.exchanges,
       'video',
-      {
-        download: 'video.processing.download',
-        processing: 'video.processing.processing',
-        upload: 'video.processing.upload',
-        cleanup: 'video.processing.cleanup',
-        updates: 'video.processing.updates'
-      }
+      config.rabbitmq.staged_video_queues
     )
 
     videoProcessingService = new StagedVideoProcessingService(
@@ -105,19 +86,9 @@ async function main() {
     logger.info('Starting staged image processing service...')
     const imageRabbitmqService = new EnhancedRabbitMQService(
       config.rabbitmq.url,
-      {
-        requests: 'media.requests',
-        processing: 'media.processing',
-        updates: 'media.updates'
-      },
+      config.rabbitmq.exchanges,
       'images',
-      {
-        download: 'media.images.processing.download',
-        processing: 'media.images.processing.processing',
-        upload: 'media.images.processing.upload',
-        cleanup: 'media.images.processing.cleanup',
-        updates: 'media.images.processing.updates'
-      }
+      config.rabbitmq.staged_image_queues
     )
 
     imageProcessingService = new StagedImageProcessingService(
@@ -172,25 +143,15 @@ async function main() {
           video: {
             status: videoProcessingService ? 'running' : 'stopped',
             exchanges: config.rabbitmq.exchanges,
-            queues: {
-              download: 'video.processing.download',
-              processing: 'video.processing.processing',
-              upload: 'video.processing.upload',
-              updates: 'video.processing.updates'
-            }
+            queues: config.rabbitmq.staged_video_queues
           },
           image: {
             status: imageProcessingService ? 'running' : 'stopped',
-            exchanges: {
-              processing: 'reedi.images.processing',
-              updates: 'reedi.images.updates'
-            },
-            queues: {
-              download: 'reedi.images.processing.download',
-              processing: 'reedi.images.processing.processing',
-              upload: 'reedi.images.processing.upload',
-              updates: 'reedi.images.processing.updates'
-            }
+              exchanges: {
+                processing: 'reedi.images.processing',
+                updates: 'reedi.images.updates'
+              },
+            queues: config.rabbitmq.staged_image_queues
           }
         },
         rabbitmq: {

@@ -275,7 +275,7 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
           <div className="grid grid-cols-4 gap-2">
             {thumbs.map((mediaItem, index) => {
               const isVideo = mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
-              const mediaUrl = getBestMediaUrl(mediaItem, isVideo)
+              const mediaUrl = getBestMediaUrl(mediaItem, true)
               const videoUrl = getCachedVideoUrl(mediaItem)
               
               return (

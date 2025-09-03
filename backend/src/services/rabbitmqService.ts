@@ -1,5 +1,6 @@
 import * as amqp from 'amqplib'
 import logger from '../utils/logger'
+import { createNamespacedExchanges, createNamespacedStagedQueues } from '../utils/rabbitmqNamespace'
 
 export interface ImageProcessingRequest {
   type: 'image_processing_request'
@@ -119,15 +120,15 @@ export class RabbitMQService {
 
   constructor(
     url: string = process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
-    exchanges = {
-      processing: 'media.processing',
-      updates: 'media.updates'
+    exchanges: {
+      processing: string,
+      updates: string
     },
     routingKey = 'media',
-    queues = {
-      requests: 'media.video.processing.requests',
-      updates: 'media.video.processing.updates'
-    },
+    queues: {
+      requests: string,
+      updates: string
+    } 
   ) {
     this.url = url
     this.exchanges = exchanges

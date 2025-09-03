@@ -294,7 +294,11 @@ export function PostMediaDisplay({
   const mainVideoUrl = getCachedVideoUrl(main);
   
   // Calculate aspect ratio for main media
-  const mainAspectRatio = typeof main === 'string' ? 1 : (main.media?.width && main.media?.height ? main.media?.width / main.media?.height : 1);
+  const mainAspectRatio = typeof main === 'string' ? 1 : (
+    main.media?.width && main.media?.height && main.media.width > 0 && main.media.height > 0
+      ? main.media.width / main.media.height 
+      : 0.75 // Default to portrait aspect ratio when dimensions are unknown
+  );
   const isPortrait = mainAspectRatio < 1;
   
   if (isPortrait) {
@@ -321,7 +325,7 @@ export function PostMediaDisplay({
               <LazyMedia
                 src={mainMediaUrl}
                 alt={typeof main === 'string' ? 'Main post media' : (main.media?.caption || main.media?.altText || 'Main post media')}
-                className={`rounded-lg object-contain transition-opacity ${
+                className={`rounded-lg object-cover transition-opacity ${
                   isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
                 } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
                 style={{
@@ -357,7 +361,7 @@ export function PostMediaDisplay({
         <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
           {thumbs.map((mediaItem, idx) => {
             const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
-            const mediaUrl = getSmartMediaUrl(mediaItem, 'small');
+            const mediaUrl = getSmartMediaUrl(mediaItem, 'thumbnail');
             const videoUrl = getCachedVideoUrl(mediaItem);
             const actualIndex = idx + 1; // +1 because main media is at index 0
             return (
@@ -459,7 +463,7 @@ export function PostMediaDisplay({
         <div className="flex gap-2 overflow-x-auto">
           {thumbs.map((mediaItem, idx) => {
             const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
-            const mediaUrl = getSmartMediaUrl(mediaItem, 'small');
+            const mediaUrl = getSmartMediaUrl(mediaItem, 'thumbnail');
             const videoUrl = getCachedVideoUrl(mediaItem);
             const actualIndex = idx + 1; // +1 because main media is at index 0
             return (

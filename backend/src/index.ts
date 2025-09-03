@@ -30,6 +30,7 @@ import { MessagingService } from '@/services/messagingService'
 import { StagedVideoProcessingService } from '@/services/stagedVideoProcessingService'
 import { ImageProcessingService } from '@/services/imageProcessingService'
 import { RabbitMQService } from '@/services/rabbitmqService'
+import { createNamespacedExchanges, createNamespacedImageQueues, createNamespacedVideoQueues } from '@/utils/rabbitmqNamespace'
 
 // Import middleware
 import { errorHandler } from '@/middleware/errorHandler'
@@ -190,15 +191,9 @@ async function startServer() {
     try {
       const rabbitmqService = new RabbitMQService(
         process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
-        {
-          processing: 'media.processing',
-          updates: 'media.updates'
-        },
+        createNamespacedExchanges(),
         'video',
-        {
-          requests: 'media.video.processing.requests',
-          updates: 'media.video.processing.updates'
-        }
+        createNamespacedVideoQueues()
       )
       videoProcessingService = new StagedVideoProcessingService(prisma, rabbitmqService)
       await videoProcessingService.start()
@@ -213,15 +208,9 @@ async function startServer() {
     try {
       const imageRabbitmqService = new RabbitMQService(
         process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
-        {
-          processing: 'media.processing',
-          updates: 'media.updates'
-        },
+        createNamespacedExchanges(),
         'images',
-        {
-          requests: 'media.images.processing.requests',
-          updates: 'media.images.processing.updates'
-        }
+        createNamespacedImageQueues()
       )
       imageProcessingService = new ImageProcessingService(prisma, imageRabbitmqService)
       await imageProcessingService.start()
