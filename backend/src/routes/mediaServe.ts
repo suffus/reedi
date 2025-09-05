@@ -77,7 +77,7 @@ async function streamVideoFromS3(s3Key: string, mimeType: string | null, req: Re
     } else {
       res.end()
     }
-  }, 120000) // 120 second timeout
+  }, 1200000) // 120 second timeout
   
   // Add S3 request timeout and detailed debugging
   const s3StartTime = Date.now()
@@ -274,6 +274,7 @@ async function fallbackToBufferedDownload(s3Key: string, mimeType: string | null
   }
 }
 
+
 // Function to stream image from S3
 async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Request, res: Response) {
   const connectionId = ++totalConnections
@@ -317,7 +318,7 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     } else {
       res.end()
     }
-  }, 35000) // 15 second timeout for images (shorter than videos)
+  }, 35000) // 35 second timeout for images (shorter than videos)
   
   try {
     const bucket = process.env.IDRIVE_BUCKET_NAME || ''
@@ -333,6 +334,10 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
     // Get the object from S3 with abort signal
     const response = await s3Client.send(command, { abortSignal: abortController.signal })
     
+    const s3StartTime = Date.now()
+
+    let dataSent = 0
+
     if (!response.Body) {
       throw new Error('No body in S3 response')
     }
@@ -377,8 +382,15 @@ async function streamImageFromS3(s3Key: string, mimeType: string | null, req: Re
         console.log(`🖼️ [${connectionId}] Ignoring data chunk after cleanup, size: ${chunk.length} bytes`)
         return
       }
-      
-      console.log(`🖼️ [${connectionId}] Stream data received, chunk size: ${chunk.length} bytes`)
+      dataSent += chunk.length
+      totalDataSent += chunk.length
+      totalDataCount++
+      if(totalDataCount % 20 === 0) {
+        const bytesSent = (dataSent/1024/1024).toFixed(3) + " MB"
+        const dataRate = (dataSent/(Date.now() - s3StartTime)/1024*1000).toFixed(3) + " KB/s"
+        console.log(`🎥 [${connectionId}] Stream image data received, total data sent: ${bytesSent} at ${dataRate} is stream closed: ${connectionCleanedUp}`)
+      }
+    
     })
     
     // Handle response errors
@@ -534,6 +546,7 @@ async function getMediaAndCheckPermissions(
     mimeType?: boolean
     mediaType?: boolean
     processingStatus?: boolean
+    videoVersions?: boolean
   }
 ) {
   // First check if media exists
@@ -633,7 +646,8 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     videoS3Key: true,
     mimeType: true,
     mediaType: true,
-    processingStatus: true
+    processingStatus: true,
+    videoVersions: true
   })
 
   const dbTime = Date.now() - dbStartTime
@@ -687,8 +701,33 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
   try {
     // Determine which S3 key to serve
     let s3Key = media.s3Key
-    if (mediaType === 'VIDEO' && media.videoS3Key) {
-      s3Key = media.videoS3Key // Use processed video if available
+    
+    if (mediaType === 'VIDEO') {
+      // For videos, prefer 540p quality if available, otherwise fall back to processed video or original
+      let preferredS3Key = null
+      
+      // Check if 540p version exists in videoVersions
+      if (media.videoVersions && Array.isArray(media.videoVersions)) {
+        const videoVersions = media.videoVersions as any[]
+        const version540p = videoVersions.find((version: any) => version.quality === '540p')
+        if (version540p) {
+          preferredS3Key = version540p.s3Key || version540p.s3_key
+          console.log(`📺 [${id}] Found 540p version, using S3 key: ${preferredS3Key}`)
+        }
+      }
+      
+      // If 540p not found, fall back to processed video or original
+      if (!preferredS3Key) {
+        if (media.videoS3Key) {
+          preferredS3Key = media.videoS3Key
+          console.log(`📺 [${id}] No 540p version found, using processed video S3 key: ${preferredS3Key}`)
+        } else {
+          preferredS3Key = media.s3Key
+          console.log(`📺 [${id}] No processed video found, using original S3 key: ${preferredS3Key}`)
+        }
+      }
+      
+      s3Key = preferredS3Key
     }
 
     if (!s3Key) {

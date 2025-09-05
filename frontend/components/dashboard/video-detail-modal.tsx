@@ -468,9 +468,14 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   // Get current video source based on selected quality
   const getCurrentVideoSource = () => {
     if (selectedQuality === 'auto' || !videoQualities || videoQualities.length === 0) {
-      const   url = getMediaUrlFromMedia(media, false)
+      const url = getMediaUrlFromMedia(media, false)
       console.log("AUTO URL", url)
       return url
+    }
+    
+    if (selectedQuality === 'original') {
+      // For original, use the by_quality endpoint with original
+      return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/media/serve/by_quality/${media?.id}/original`
     }
     
     const selectedQualityData = videoQualities.find(q => q.quality === selectedQuality)
@@ -484,7 +489,17 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
       const wasPlaying = !videoRef.current.paused
       
       // Find the new source for the selected quality
-      const newSource = videoQualities?.find((q: VideoQuality) => q.quality === quality)?.url || getMediaUrlFromMedia(media, false)
+      let newSource: string
+      if (quality === 'auto') {
+        // For auto, use the main endpoint which will serve 540p by default
+        newSource = getMediaUrlFromMedia(media, false)
+      } else if (quality === 'original') {
+        // For original, use the by_quality endpoint with original
+        newSource = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/media/serve/by_quality/${media?.id}/original`
+      } else {
+        // For other qualities, use the quality-specific URL
+        newSource = videoQualities?.find((q: VideoQuality) => q.quality === quality)?.url || getMediaUrlFromMedia(media, false)
+      }
       
       // Update the video source
       if (newSource) {
