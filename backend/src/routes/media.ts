@@ -163,7 +163,7 @@ router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => 
         updatedAt: true,
         authorId: true,
         galleryId: true,
-        visibility: true
+        visibility: true,
       }
     }),
     prisma.media.count({
@@ -249,7 +249,7 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
         videoS3Key: true,
         createdAt: true,
         updatedAt: true,
-        authorId: true
+        authorId: true,
       }
     }),
     prisma.media.count({

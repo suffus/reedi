@@ -10,14 +10,15 @@ const envSchema = Joi.object({
   // Redis Configuration
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().default(6379),
-  REDIS_PASSWORD: Joi.string().optional(),
+  REDIS_PASSWORD: Joi.string().allow('').optional(),
   REDIS_DB: Joi.number().default(0),
 
-  // AWS S3 Configuration
-  AWS_REGION: Joi.string().required(),
-  AWS_ACCESS_KEY_ID: Joi.string().required(),
-  AWS_SECRET_ACCESS_KEY: Joi.string().required(),
-  S3_BUCKET: Joi.string().required(),
+  // IDrive S3 Configuration
+  IDRIVE_REGION: Joi.string().required(),
+  IDRIVE_ENDPOINT: Joi.string().uri().required(),
+  IDRIVE_ACCESS_KEY_ID: Joi.string().required(),
+  IDRIVE_SECRET_ACCESS_KEY: Joi.string().required(),
+  IDRIVE_BUCKET_NAME: Joi.string().required(),
 
   // API Backend Configuration
   API_BASE_URL: Joi.string().uri().required(),
@@ -36,6 +37,7 @@ const envSchema = Joi.object({
   VIDEO_QUALITIES: Joi.string().default('1080p,720p,480p'),
   VIDEO_BITRATES: Joi.string().default('5000k,2500k,1000k'),
   THUMBNAIL_TIME: Joi.string().default('00:00:05'),
+  THUMBNAIL_SIZE: Joi.string().default('640x360'),
 
   // Image Processing Settings
   IMAGE_QUALITIES: Joi.string().default('original,large,medium,small'),
@@ -108,7 +110,8 @@ export const config = {
     ffprobePath: envVars.FFPROBE_PATH,
     videoQualities: parseVideoQualities(),
     imageQualities: parseImageQualities(),
-    thumbnailTime: envVars.THUMBNAIL_TIME
+    thumbnailTime: envVars.THUMBNAIL_TIME,
+    thumbnailSize: envVars.THUMBNAIL_SIZE
   } as ProcessingConfig,
 
   queue: {
@@ -131,10 +134,11 @@ export const config = {
   } as JobQueueConfig,
 
   s3: {
-    region: envVars.AWS_REGION,
-    accessKeyId: envVars.AWS_ACCESS_KEY_ID,
-    secretAccessKey: envVars.AWS_SECRET_ACCESS_KEY,
-    bucket: envVars.S3_BUCKET
+    region: envVars.IDRIVE_REGION,
+    endpoint: envVars.IDRIVE_ENDPOINT,
+    accessKeyId: envVars.IDRIVE_ACCESS_KEY_ID,
+    secretAccessKey: envVars.IDRIVE_SECRET_ACCESS_KEY,
+    bucket: envVars.IDRIVE_BUCKET_NAME
   } as S3Config,
 
   api: {

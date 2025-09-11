@@ -2,9 +2,9 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Send, Play, Pause, Volume2, VolumeX, Maximize, Minimize, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMediaComments, useCreateComment, useAuth, useVideoQualities, VideoQuality } from '@/lib/api-hooks'
-import { getMediaUrlFromMedia } from '@/lib/api'
-import { Media, Comment } from '@/lib/types'
+import { useAuth, useVideoQualities, VideoQuality } from '@/lib/api-hooks'
+import { getMediaUrlFromMedia, fetchFreshMediaData } from '@/lib/api'
+import { Media } from '@/lib/types'
 import { mapMediaData } from '@/lib/media-utils'
 import { useSlideshow } from '@/lib/hooks/use-slideshow'
 import { MediaMetadataPanel, MediaMetadataPanelRef } from '@/components/common/media-metadata-panel'
@@ -34,13 +34,35 @@ interface VideoDetailModalProps {
 }
 
 export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, allMedia, onNavigate }: VideoDetailModalProps) {
+  // State for fresh media data
+  const [freshMediaData, setFreshMediaData] = useState<Media | null>(null)
+  const [isLoadingFreshData, setIsLoadingFreshData] = useState(false)
+
+  // Fetch fresh media data when modal opens
+  useEffect(() => {
+    if (media?.id) {
+      setIsLoadingFreshData(true)
+      fetchFreshMediaData(media.id)
+        .then(freshData => {
+          setFreshMediaData(mapMediaData(freshData))
+        })
+        .catch(error => {
+          console.error('Failed to fetch fresh media data:', error)
+          // Fallback to original media data
+          setFreshMediaData(media)
+        })
+        .finally(() => {
+          setIsLoadingFreshData(false)
+        })
+    }
+  }, [media?.id])
+
   // Return early if no media or if it's not a video
   if (!media || media.mediaType !== 'VIDEO') {
     return null
   }
 
   const router = useRouter()
-  const [commentText, setCommentText] = useState('')
 
   // Zoom and pan state for video
   const [zoom, setZoom] = useState(1)
@@ -108,8 +130,6 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
   const metadataPanelRef = useRef<MediaMetadataPanelRef>(null)
   
-  const { data: commentsData, isLoading: commentsLoading } = useMediaComments(media.id)
-  const createCommentMutation = useCreateComment()
   const { data: authData } = useAuth()
   
   // Video quality functionality
@@ -767,32 +787,6 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
     }
   }, [isPlaying])
 
-  const handleSubmitComment = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!commentText.trim()) return
-
-    try {
-      await createCommentMutation.mutateAsync({
-        mediaId: media.id,
-        content: commentText.trim()
-      })
-      setCommentText('')
-    } catch (error) {
-      console.error('Failed to create comment:', error)
-    }
-  }
-
-
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
 
   const handleAuthorClick = (authorId: string, authorUsername: string | null) => {
     if (authorUsername) {
@@ -1013,7 +1007,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               <div className="w-full h-full flex items-center justify-center p-4 relative">
                 <video
                   autoPlay={false}
-                  muted={true}
+                  muted={isMuted}
                   disablePictureInPicture={true}
                   key={`${media.id}-${viewportChangeKey}`}
                   ref={videoRef}
@@ -1236,7 +1230,7 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
           ) : (
             <MediaMetadataPanel
               ref={metadataPanelRef}
-              media={media}
+              media={freshMediaData || media}
               isOwner={isOwner}
               onMediaUpdate={onMediaUpdate}
               updateMedia={updateMedia}
@@ -1249,84 +1243,11 @@ export function VideoDetailModal({ media, onClose, onMediaUpdate, updateMedia, a
               allMedia={allMedia}
               mediaType="VIDEO"
               processingStatus={processingStatus}
-              duration={media.duration}
+              duration={freshMediaData?.duration || media.duration}
               onUnsavedChangesChange={handleUnsavedChangesChange}
             />
           )}
 
-          {/* Comments */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-4">
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">Comments</h4>
-              
-              {commentsLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="animate-pulse">
-                      <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
-                        <div className="flex-1">
-                          <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
-                          <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : commentsData?.data?.comments?.length ? (
-                <div className="space-y-4">
-                  {commentsData.data.comments.map((comment: Comment) => (
-                    <div key={comment.id} className="flex items-start space-x-3">
-                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium text-gray-600">
-                        {comment.author?.username?.charAt(0).toUpperCase() || 'U'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <button
-                            onClick={() => handleAuthorClick(comment.authorId, comment.author?.username || null)}
-                            className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors duration-200"
-                          >
-                            {comment.author?.username || 'Unknown User'}
-                          </button>
-                          <span className="text-xs text-gray-500">
-                            {formatDate(comment.createdAt)}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700">{comment.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-sm">No comments yet. Be the first to comment!</p>
-              )}
-            </div>
-          </div>
-
-          {/* Comment Form */}
-          <div className="p-4 border-t border-gray-200">
-            <form onSubmit={handleSubmitComment} className="flex space-x-2">
-              <input
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                disabled={createCommentMutation.isPending}
-              />
-              <button
-                type="submit"
-                disabled={!commentText.trim() || createCommentMutation.isPending}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 text-sm"
-              >
-                {createCommentMutation.isPending ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </button>
-            </form>
-          </div>
         </motion.div>
       </motion.div>
 

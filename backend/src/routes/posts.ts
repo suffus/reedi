@@ -97,7 +97,10 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
         },
         media: {
           include: { 
-            media: true
+            media: {
+              include: {
+              }
+            }
           },
           orderBy: { order: 'asc' }
         },
@@ -281,7 +284,10 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
         },
         media: {
           include: { 
-            media: true
+            media: {
+              include: {
+              }
+            }
           },
           orderBy: { order: 'asc' }
         },
@@ -601,7 +607,15 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
               bitrate: true,
               framerate: true,
               videoUrl: true,
-              videoS3Key: true
+              videoS3Key: true,
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  username: true,
+                  avatar: true
+                }
+              }
             }
           }
         },
@@ -1301,7 +1315,10 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
         },
         media: {
           include: { 
-            media: true
+            media: {
+              include: {
+              }
+            }
           },
           orderBy: { order: 'asc' }
         },
@@ -1390,7 +1407,10 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
         },
         media: {
           include: { 
-            media: true
+            media: {
+              include: {
+              }
+            }
           },
           orderBy: { order: 'asc' }
         },

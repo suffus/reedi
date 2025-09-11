@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Clock, RefreshCw } from 'lucide-react'
+import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Clock, RefreshCw, MessageCircle, Send } from 'lucide-react'
 import { TagInput } from '../tag-input'
-import { Media } from '@/lib/types'
-import { useUpdateMedia, useReprocessMedia } from '@/lib/api-hooks'
+import { Media, Comment } from '@/lib/types'
+import { useUpdateMedia, useReprocessMedia, useMediaComments, useCreateComment, useAuth } from '@/lib/api-hooks'
+import { fetchFreshMediaData } from '@/lib/api'
+import { mapMediaData } from '@/lib/media-utils'
 import { useMediaDetail } from './media-detail-context'
 
 interface MediaMetadataPanelProps {
@@ -45,16 +47,56 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
   duration,
   onUnsavedChangesChange
 }, ref) => {
+  // Metadata state - starts with prop but gets updated with fresh data
+  const [metadataMedia, setMetadataMedia] = useState<Media>(media)
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(false)
+  
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editTags, setEditTags] = useState<string[]>([])
-  const [localTitle, setLocalTitle] = useState(media?.altText || '')
-  const [localDescription, setLocalDescription] = useState(media?.caption || '')
-  const [localTags, setLocalTags] = useState<string[]>(media?.tags || [])
+  const [localTitle, setLocalTitle] = useState(metadataMedia?.altText || '')
+  const [localDescription, setLocalDescription] = useState(metadataMedia?.caption || '')
+  const [localTags, setLocalTags] = useState<string[]>(metadataMedia?.tags || [])
+  
+  // Comments state
+  const [commentText, setCommentText] = useState('')
+  const [showComments, setShowComments] = useState(false)
   
   const updateMediaMutation = useUpdateMedia()
   const reprocessMediaMutation = useReprocessMedia()
+  
+  // Comments hooks
+  const { data: commentsData, isLoading: commentsLoading } = useMediaComments(media?.id || '')
+  const createCommentMutation = useCreateComment()
+  const { data: authData } = useAuth()
+  
+  // Fetch fresh metadata when component mounts or media ID changes
+  useEffect(() => {
+    if (media?.id) {
+      setIsLoadingMetadata(true)
+      console.log('Fetching fresh metadata for media:', media.id)
+      fetchFreshMediaData(media.id)
+        .then(freshData => {
+          const mappedData = mapMediaData(freshData)
+          setMetadataMedia(mappedData)
+        })
+        .catch(error => {
+          console.error('Failed to fetch fresh metadata:', error)
+          // Keep using the original media data if fetch fails
+        })
+        .finally(() => {
+          setIsLoadingMetadata(false)
+        })
+    }
+  }, [media?.id])
+  
+  // Update local state when metadataMedia changes
+  useEffect(() => {
+    setLocalTitle(metadataMedia?.altText || '')
+    setLocalDescription(metadataMedia?.caption || '')
+    setLocalTags(metadataMedia?.tags || [])
+  }, [metadataMedia?.altText, metadataMedia?.caption, metadataMedia?.tags])
   
   // Safely get the updateMediaInContext function if available
   let updateMediaInContext: ((mediaId: string, updates: Partial<any>) => void) | null = null
@@ -80,17 +122,6 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
     }
   }, [hasUnsavedChanges, onUnsavedChangesChange])
 
-  // Update local state when media prop changes
-  useEffect(() => {
-    setLocalTitle(media?.altText || '')
-    setLocalDescription(media?.caption || '')
-    setLocalTags(media?.tags || [])
-    // Reset edit state when navigating to a new media
-    setIsEditing(false)
-    setEditTitle('')
-    setEditDescription('')
-    setEditTags([])
-  }, [media?.id, media?.altText, media?.caption, media?.tags])
 
   const handleEditTitleChange = (value: string) => {
     setEditTitle(value)
@@ -197,6 +228,22 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
     }
   }
 
+  // Comments handling functions
+  const handleCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!commentText.trim() || !media?.id) return
+
+    try {
+      await createCommentMutation.mutateAsync({
+        mediaId: media.id,
+        content: commentText.trim()
+      })
+      setCommentText('')
+    } catch (error) {
+      console.error('Failed to create comment:', error)
+    }
+  }
+
   // Get status message and icon for video processing
   const getProcessingInfo = () => {
     if (!processingStatus || mediaType !== 'VIDEO') return null
@@ -287,7 +334,16 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
   }
 
   return (
-    <div className="p-4 border-b border-gray-200">
+    <div className="h-full flex flex-col bg-white">
+      {/* Loading indicator */}
+      {isLoadingMetadata && (
+        <div className="flex items-center justify-center p-2 bg-blue-50 border-b border-blue-200">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600 mr-2" />
+          <span className="text-sm text-blue-600">Loading fresh metadata...</span>
+        </div>
+      )}
+      
+      <div className="p-4 border-b border-gray-200">
       <div className="flex items-start justify-between mb-2">
         {isEditing ? (
           <div className="flex-1 space-y-3">
@@ -350,21 +406,21 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
             <div className="flex items-center space-x-4 text-xs text-gray-500">
               <span className="flex items-center">
                 <Calendar className="h-3 w-3 mr-1" />
-                {formatDate(media.createdAt)}
+                {formatDate(metadataMedia.createdAt)}
               </span>
               <span className="flex items-center">
                 <User className="h-3 w-3 mr-1" />
                 <button
-                  onClick={() => handleAuthorClick(media.authorId, null)}
+                  onClick={() => handleAuthorClick(metadataMedia.authorId, metadataMedia.author?.username || null)}
                   className="hover:text-blue-600 transition-colors duration-200"
                 >
-                  Unknown User
+                  {metadataMedia.author?.name || metadataMedia.author?.username || 'Unknown User'}
                 </button>
               </span>
-              {media.originalFilename && (
+              {metadataMedia.originalFilename && (
                 <span className="flex items-center">
                   <FileText className="h-3 w-3 mr-1" />
-                  {media.originalFilename.slice(0, 10)}
+                  {metadataMedia.originalFilename.slice(0, 10)}
                 </span>
               )}
               {mediaType === 'VIDEO' && duration && (
@@ -426,6 +482,91 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
         </div>
       </div>
 
+      {/* Comments Section */}
+      <div className="mt-4 border-t border-gray-200">
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-medium text-gray-900 flex items-center">
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Comments
+            </h4>
+            <button
+              onClick={() => setShowComments(!showComments)}
+              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              {showComments ? 'Hide' : 'Show'} Comments
+            </button>
+          </div>
+
+          {showComments && (
+            <>
+              {/* Comments List */}
+              <div className="mb-4 max-h-64 overflow-y-auto">
+                {commentsLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : commentsData?.data?.comments?.length ? (
+                  <div className="space-y-4">
+                    {commentsData.data.comments.map((comment: Comment) => (
+                      <div key={comment.id} className="flex items-start space-x-3">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium text-gray-600">
+                          {comment.author?.username?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <button
+                              onClick={() => handleAuthorClick(comment.authorId, comment.author?.username || null)}
+                              className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors duration-200"
+                            >
+                              {comment.author?.username || 'Unknown User'}
+                            </button>
+                            <span className="text-xs text-gray-500">
+                              {formatDate(comment.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700">{comment.content}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">No comments yet. Be the first to comment!</p>
+                )}
+              </div>
+
+              {/* Comment Form */}
+              {authData?.data?.user && (
+                <form onSubmit={handleCommentSubmit} className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder="Add a comment..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={createCommentMutation.isPending}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!commentText.trim() || createCommentMutation.isPending}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center space-x-1"
+                  >
+                    {createCommentMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        <span>Post</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Slideshow Speed Control */}
       {slideshow && slideshow.isSlideshowActive && canNavigate && allMedia && allMedia.length > 1 && (
         <div className="mt-4 p-4 border-t border-gray-200 bg-blue-50">
@@ -457,6 +598,7 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 })

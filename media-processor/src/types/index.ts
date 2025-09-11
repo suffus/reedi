@@ -84,6 +84,7 @@ export interface ProcessingConfig {
   videoQualities: VideoQuality[]
   imageQualities: ImageQuality[]
   thumbnailTime: string
+  thumbnailSize: string
 }
 
 export interface JobQueueConfig {
@@ -107,6 +108,7 @@ export interface JobQueueConfig {
 
 export interface S3Config {
   region: string
+  endpoint: string
   accessKeyId: string
   secretAccessKey: string
   bucket: string

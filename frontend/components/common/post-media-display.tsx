@@ -114,8 +114,10 @@ export function PostMediaDisplay({
       return ''
     }
     
-    if (useThumbnail) {
-      // For thumbnails, use the smart thumbnail URL
+    // For videos, always use thumbnail for display (not the video file itself)
+    const isVideo = mediaItem.media?.mediaType === 'VIDEO' || mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
+    if (isVideo || useThumbnail) {
+      // For thumbnails and videos, use the smart thumbnail URL
       return getSmartMediaUrl(mediaItem, 'thumbnail')
     }
     
@@ -177,7 +179,7 @@ export function PostMediaDisplay({
   if (reorderedMedia.length === 1) {
     const mediaItem = reorderedMedia[0];
     const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
-    const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
+    const mediaUrl = getBestMediaUrl(mediaItem, false);
     const videoUrl = getCachedVideoUrl(mediaItem);
     
     return (
@@ -236,7 +238,7 @@ export function PostMediaDisplay({
         <div className={`grid grid-cols-${reorderedMedia.length} gap-2`}>
           {reorderedMedia.map((mediaItem, idx) => {
             const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
-            const mediaUrl = getBestMediaUrl(mediaItem, isVideo);
+            const mediaUrl = getBestMediaUrl(mediaItem, false);
             const videoUrl = getCachedVideoUrl(mediaItem);
             
             return (
@@ -290,7 +292,7 @@ export function PostMediaDisplay({
   // 4+ media items: Layout based on main media aspect ratio
   const [main, ...thumbs] = reorderedMedia;
   const isMainVideo = typeof main !== 'string' && main.media?.mediaType === 'VIDEO';
-  const mainMediaUrl = getBestMediaUrl(main, isMainVideo);
+  const mainMediaUrl = getBestMediaUrl(main, false);
   const mainVideoUrl = getCachedVideoUrl(main);
   
   // Calculate aspect ratio for main media

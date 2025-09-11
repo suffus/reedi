@@ -1954,6 +1954,28 @@ export const useVideoQualities = (mediaId: string) => {
   })
 }
 
+// User hook for fetching individual user data
+export const useUser = (userId: string) => {
+  return useQuery({
+    queryKey: ['user', userId],
+    queryFn: async (): Promise<User> => {
+      const token = getToken()
+      if (!token) throw new Error('No token found')
+      
+      const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+        headers: getAuthHeaders(token)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch user')
+      
+      return data.data.user
+    },
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
 // Group activity hook
 export const useGroupActivity = (groupIdentifier: string, limit: number = 20) => {
   return useQuery({

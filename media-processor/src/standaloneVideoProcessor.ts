@@ -1,6 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg'
 import * as path from 'path'
 import * as fs from 'fs'
+import { config } from './utils/config'
 
 interface VideoMetadata {
   duration: number
@@ -183,11 +184,17 @@ export class StandaloneVideoProcessor {
   private async generateThumbnails(videoPath: string, mediaId: string, duration: number): Promise<ProcessingOutput[]> {
     const outputs: ProcessingOutput[] = []
     
+    // Parse thumbnail size from config
+    const [thumbnailWidth, thumbnailHeight] = config.processing.thumbnailSize.split('x').map(Number)
+    if (!thumbnailWidth || !thumbnailHeight) {
+      throw new Error(`Invalid thumbnail size format: ${config.processing.thumbnailSize}. Expected format: WIDTHxHEIGHT`)
+    }
+    
     // Generate one thumbnail for every 15 seconds of video
     const thumbnailInterval = 15 // seconds
     const numThumbnails = Math.max(1, Math.ceil(duration / thumbnailInterval))
     
-    console.log(`Generating ${numThumbnails} thumbnails for ${duration}s video (one every ${thumbnailInterval}s)`)
+    console.log(`Generating ${numThumbnails} thumbnails for ${duration}s video (one every ${thumbnailInterval}s) at ${config.processing.thumbnailSize}`)
 
     for (let i = 0; i < numThumbnails; i++) {
       // Calculate timestamp: start at 15s, then 30s, 45s, etc.
@@ -208,8 +215,8 @@ export class StandaloneVideoProcessor {
         outputs.push({
           type: 'thumbnail',
           s3Key,
-          width: 320,
-          height: 180,
+          width: thumbnailWidth,
+          height: thumbnailHeight,
           fileSize: fs.statSync(thumbnailOutputPath).size,
           mimeType: 'image/jpeg',
           quality: `${i + 1}`,
@@ -232,7 +239,7 @@ export class StandaloneVideoProcessor {
       ffmpeg(videoPath)
         .seekInput(time)
         .frames(1)
-        .size('320x180')
+        .size(config.processing.thumbnailSize)
         .output(outputPath)
         .on('end', () => resolve())
         .on('error', (err) => reject(err))
