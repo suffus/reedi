@@ -35,10 +35,12 @@ export function mapMediaData(rawMedia: any, order: number = 0): Media {
     authorId: rawMedia.authorId,
     // Add missing required properties
     order: order,
-    author: rawMedia.author || {
+    author: {
       id: rawMedia.authorId || '',
-      name: 'Unknown User',
-      email: '',
+      name: rawMedia.author?.name || '',
+      avatar: rawMedia.author?.avatar || '',
+      username: rawMedia.author?.username || '',
+      email: rawMedia.author?.email || '',
       isPrivate: false,
       isVerified: false,
       createdAt: rawMedia.createdAt || new Date().toISOString(),

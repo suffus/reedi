@@ -11,7 +11,7 @@ import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { Post, Comment } from '@/lib/types'
 
 import { PostAuthorForm } from './post-author-form'
-import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality } from '../../lib/api'
+import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality, fetchFreshMediaData } from '../../lib/api'
 import { getBestThumbnailUrl, getSmartMediaUrl } from '../../lib/media-utils'
 import { LazyMedia } from '../lazy-media'
 import { InfiniteScrollContainer } from '../infinite-scroll-container'
@@ -181,44 +181,36 @@ export function PersonalFeed() {
 
   const handleMediaClick = async (media: any, postId?: string, postMedia?: any[]) => {
     try {
-      // Fetch complete media data from backend
-      const token = localStorage.getItem('token')
-      if (!token) return
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8088/api'}/media/${media.id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch media details')
+      // Map the media data to the format expected by MediaDetailModal
+      const mappedMedia = {
+        id: media.id,
+        s3Key: media.s3Key || media.url,
+        thumbnailS3Key: media.thumbnailS3Key || media.thumbnail || media.url,
+        url: media.s3Key || media.url, // Keep for backward compatibility
+        thumbnail: media.thumbnailS3Key || media.thumbnail || media.url, // Keep for backward compatibility
+        altText: media.altText,
+        caption: media.caption,
+        createdAt: media.createdAt,
+        authorId: media.authorId,
+        author: media.author || {
+          id: media.authorId || '',
+          name: 'Loading...',
+          email: '',
+          isPrivate: false,
+          isVerified: false,
+          createdAt: media.createdAt || new Date().toISOString(),
+          updatedAt: media.updatedAt || new Date().toISOString()
+        },
+        tags: media.tags || [],
+        mediaType: media.mediaType || 'IMAGE',
+        processingStatus: media.processingStatus || 'COMPLETED',
+        width: media.width || null,
+        height: media.height || null,
+        size: media.size || null,
+        mimeType: media.mimeType || null,
+        visibility: media.visibility || 'PUBLIC',
+        updatedAt: media.updatedAt
       }
-      
-      const data = await response.json()
-      if (data.success) {
-        // Map the backend media data to the format expected by MediaDetailModal
-        const mappedMedia = {
-          id: data.data.media.id,
-          s3Key: data.data.media.s3Key || data.data.media.url,
-          thumbnailS3Key: data.data.media.thumbnailS3Key || data.data.media.thumbnail || data.data.media.url,
-          url: data.data.media.s3Key || data.data.media.url, // Keep for backward compatibility
-          thumbnail: data.data.media.thumbnailS3Key || data.data.media.thumbnail || data.data.media.url, // Keep for backward compatibility
-          altText: data.data.media.altText,
-          caption: data.data.media.caption,
-          createdAt: data.data.media.createdAt,
-          authorId: data.data.media.authorId,
-          tags: data.data.media.tags || [],
-          mediaType: data.data.media.mediaType || 'IMAGE',
-          processingStatus: data.data.media.processingStatus || 'COMPLETED',
-          width: data.data.media.width || null,
-          height: data.data.media.height || null,
-          size: data.data.media.size || null,
-          mimeType: data.data.media.mimeType || null,
-          visibility: data.data.media.visibility || 'PUBLIC',
-          updatedAt: data.data.media.updatedAt
-        }
         
 
         
@@ -234,6 +226,15 @@ export function PersonalFeed() {
             caption: mediaItem.caption,
             createdAt: mediaItem.createdAt,
             authorId: mediaItem.authorId,
+            author: mediaItem.author || {
+              id: mediaItem.authorId || '',
+              name: 'Loading...',
+              email: '',
+              isPrivate: false,
+              isVerified: false,
+              createdAt: mediaItem.createdAt || new Date().toISOString(),
+              updatedAt: mediaItem.updatedAt || new Date().toISOString()
+            },
             tags: mediaItem.tags || [],
             mediaType: mediaItem.mediaType || 'IMAGE',
             processingStatus: mediaItem.processingStatus || 'COMPLETED',
@@ -249,8 +250,7 @@ export function PersonalFeed() {
         } else {
           openMediaDetail(mappedMedia)
         }
-      }
-    } catch (error) {
+      } catch (error) {
       console.error('Failed to fetch media details:', error)
       // Fallback to using the post media data if fetch fails
       // Ensure the fallback media has the correct structure

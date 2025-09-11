@@ -10,6 +10,7 @@ import {
   VideoQuality 
 } from '../types'
 import logger from '../utils/logger'
+import { config } from '../utils/config'
 
 export class VideoProcessor {
   private readonly tempDir: string
@@ -132,6 +133,12 @@ export class VideoProcessor {
   private async generateThumbnails(videoPath: string, mediaId: string): Promise<ProcessingOutput[]> {
     const outputs: ProcessingOutput[] = []
     const thumbnailTimes = ['00:00:05', '00:00:10', '00:00:15'] // Generate 3 thumbnails at different times
+    
+    // Parse thumbnail size from config
+    const [thumbnailWidth, thumbnailHeight] = config.processing.thumbnailSize.split('x').map(Number)
+    if (!thumbnailWidth || !thumbnailHeight) {
+      throw new Error(`Invalid thumbnail size format: ${config.processing.thumbnailSize}. Expected format: WIDTHxHEIGHT`)
+    }
 
     for (let i = 0; i < thumbnailTimes.length; i++) {
       const time = thumbnailTimes[i] || '00:00:00'
@@ -146,8 +153,8 @@ export class VideoProcessor {
         outputs.push({
           type: 'thumbnail',
           s3Key,
-          width: 320,
-          height: 180,
+          width: thumbnailWidth,
+          height: thumbnailHeight,
           fileSize: fs.statSync(outputPath).size,
           mimeType: 'image/jpeg',
           quality: `${i + 1}`
@@ -169,7 +176,7 @@ export class VideoProcessor {
       ffmpeg(videoPath)
         .seekInput(time)
         .frames(1)
-        .size('320x180')
+        .size(config.processing.thumbnailSize)
         .output(outputPath)
         .on('end', () => resolve())
         .on('error', (err) => reject(err))

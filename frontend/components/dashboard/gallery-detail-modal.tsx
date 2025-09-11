@@ -20,7 +20,7 @@ import {
 } from '../../lib/api-hooks'
 import { MediaSelectorModal } from './media-selector-modal'
 import { useMediaDetail } from '../common/media-detail-context'
-import { getMediaUrlFromMedia, API_BASE_URL, getAuthHeaders } from '../../lib/api'
+import { getMediaUrlFromMedia, API_BASE_URL, getAuthHeaders, fetchFreshMediaData } from '../../lib/api'
 import { LazyMedia } from '../lazy-media'
 import { FullScreenWrapper } from '../full-screen-wrapper'
 import { TagInput } from '../tag-input'

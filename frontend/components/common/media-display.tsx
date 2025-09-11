@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { Lock } from 'lucide-react'
 import { LazyMedia } from '../lazy-media'
-import { getMediaUrlFromMedia } from '@/lib/api'
-import { getBestThumbnailUrl, getSmartMediaUrl } from '@/lib/media-utils'
+import { getMediaUrlFromMedia, fetchFreshMediaData } from '@/lib/api'
+import { getBestThumbnailUrl, getSmartMediaUrl, mapMediaData } from '@/lib/media-utils'
 import { getVideoUrlWithQuality } from '@/lib/api'
 import { useMediaDetail } from './media-detail-context'
 import { Media } from '@/lib/types'
@@ -15,8 +15,10 @@ const getBestMediaUrl = (mediaItem: any, useThumbnail: boolean = false) => {
     return ''
   }
   
-  if (useThumbnail) {
-    // For thumbnails, use the smart thumbnail URL
+  // For videos, always use thumbnail for display (not the video file itself)
+  const isVideo = mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
+  if (isVideo || useThumbnail) {
+    // For thumbnails and videos, use the smart thumbnail URL
     return getSmartMediaUrl(mediaItem, 'thumbnail')
   }
   
@@ -103,7 +105,6 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
       onMediaClick(mediaItem, media)
     } else {
       // Default behavior: open in shared media detail modal
-      
       // Ensure media has the right structure for the modal
       const mediaForModal = {
         ...mediaItem,
@@ -117,7 +118,7 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
   if (media.length === 1) {
     const mediaItem = media[0]
     const isVideo = mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
-    const mediaUrl = getBestMediaUrl(mediaItem, isVideo)
+    const mediaUrl = getBestMediaUrl(mediaItem, false)
     const videoUrl = getCachedVideoUrl(mediaItem)
     
     return (
@@ -159,7 +160,7 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
         <div className="grid grid-cols-2 gap-2">
           {media.map((mediaItem, index) => {
             const isVideo = mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
-            const mediaUrl = getBestMediaUrl(mediaItem, isVideo)
+            const mediaUrl = getBestMediaUrl(mediaItem, false)
             const videoUrl = getCachedVideoUrl(mediaItem)
             
             return (
@@ -200,7 +201,7 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
         <div className="grid grid-cols-3 gap-2">
           {media.map((mediaItem, index) => {
             const isVideo = mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
-            const mediaUrl = getBestMediaUrl(mediaItem, isVideo)
+            const mediaUrl = getBestMediaUrl(mediaItem, false)
             const videoUrl = getCachedVideoUrl(mediaItem)
             
             return (
@@ -238,7 +239,7 @@ export function MediaDisplay({ media, onMediaClick, maxWidth = 'max-w-md', class
   // 4+ media items: Main image + thumbnails layout
   const [main, ...thumbs] = media
   const isMainVideo = main.mediaType === 'VIDEO' || main.mimeType?.startsWith('video/')
-  const mainMediaUrl = getBestMediaUrl(main, isMainVideo)
+  const mainMediaUrl = getBestMediaUrl(main, false)
   const mainVideoUrl = getCachedVideoUrl(main)
   
   return (

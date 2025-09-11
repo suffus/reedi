@@ -107,14 +107,6 @@ router.get('/media/tags', optionalAuthMiddleware, asyncHandler(async (req: Authe
         createdAt: true,
         updatedAt: true,
         authorId: true,
-        author: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            avatar: true
-          }
-        }
       }
     }),
     prisma.media.count({ where })

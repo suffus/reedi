@@ -316,7 +316,7 @@ router.get('/:id/media', optionalAuthMiddleware, asyncHandler(async (req: Authen
         bitrate: true,
         framerate: true,
         videoUrl: true,
-        videoS3Key: true
+        videoS3Key: true,
       }
     }),
     prisma.media.count({

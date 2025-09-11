@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { API_BASE_URL, getAuthHeaders } from '@/lib/api'
+import { API_BASE_URL, getAuthHeaders, fetchFreshMediaData } from '@/lib/api'
 import { User, Group, GroupMember, GroupPost, GroupActivity } from '@/lib/types'
 import { 
   Users, 
@@ -28,6 +28,7 @@ import { useToast } from '@/components/common/toast'
 import { PostMediaDisplay } from '@/components/common/post-media-display'
 import { GroupPostForm } from '@/components/common/group-post-form'
 import { useMediaDetail } from '@/components/common/media-detail-context'
+import { mapMediaData } from '@/lib/media-utils'
 import { GroupSettingsModal } from './group-settings-modal'
 import { useGroupActivity } from '@/lib/api-hooks'
 import { useQueryClient } from '@tanstack/react-query'

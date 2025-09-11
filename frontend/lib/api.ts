@@ -170,6 +170,30 @@ export const getMediaUrl = (mediaPath: string): string => {
   return getImageUrl(mediaPath)
 }
 
+// Helper function to fetch fresh media data from /media/:id endpoint
+export const fetchFreshMediaData = async (mediaId: string): Promise<any> => {
+  const token = localStorage.getItem('token')
+  if (!token) throw new Error('No token found')
+  
+  const response = await fetch(`${API_BASE_URL}/media/${mediaId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch media details')
+  }
+  
+  const data = await response.json()
+  if (!data.success) {
+    throw new Error(data.error || 'Failed to fetch media details')
+  }
+  
+  return data.data.media
+}
+
 // Helper function to get video URL with preferred quality
 export const getVideoUrlWithQuality = async (mediaId: string, preferredQuality: string = '540p'): Promise<string> => {
   try {
