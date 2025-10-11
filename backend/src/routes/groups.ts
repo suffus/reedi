@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { prisma } from '@/index'
+import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
@@ -56,6 +56,12 @@ const applicationReviewSchema = z.object({
 const postToGroupSchema = z.object({
   postId: z.string().min(1, 'Post ID is required'),
   isPriority: z.boolean().default(false)
+})
+
+const changeRoleSchema = z.object({
+  newRole: z.enum(['OWNER', 'ADMIN', 'MODERATOR', 'MEMBER'], {
+    errorMap: () => ({ message: 'Invalid role. Must be one of: OWNER, ADMIN, MODERATOR, MEMBER' })
+  })
 })
 
 // Helper function to check if user has permission
@@ -1377,11 +1383,14 @@ router.post('/:groupIdentifier/invite', authMiddleware, asyncHandler(async (req:
 router.put('/:groupIdentifier/members/:memberId/role', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { groupIdentifier, memberId } = req.params
-  const { newRole } = req.body
   
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
   }
+
+  // Validate request body
+  const validatedData = changeRoleSchema.parse(req.body)
+  const { newRole } = validatedData
 
   // Find group by ID or username
   const group = await prisma.group.findFirst({

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { prisma } from '@/index'
+import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
@@ -650,12 +650,42 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  if (post.visibility !== 'PUBLIC' && post.authorId !== userId) {
+  // Check visibility and access rights
+  if (post.visibility === 'PRIVATE' && post.authorId !== userId) {
     res.status(403).json({
       success: false,
       error: 'Access denied'
     })
     return
+  }
+
+  // Check FRIENDS_ONLY visibility
+  if (post.visibility === 'FRIENDS_ONLY' && post.authorId !== userId) {
+    if (!userId) {
+      res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      })
+      return
+    }
+
+    // Check if user is a friend
+    const friendship = await prisma.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId: userId, receiverId: post.authorId, status: 'ACCEPTED' },
+          { senderId: post.authorId, receiverId: userId, status: 'ACCEPTED' }
+        ]
+      }
+    })
+
+    if (!friendship) {
+      res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      })
+      return
+    }
   }
 
   // Map media to array of media objects in order

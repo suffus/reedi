@@ -9,7 +9,7 @@ import jwt from 'jsonwebtoken'
 export interface TestUser {
   id: string
   email: string
-  username: string
+  username: string | null
   name: string
   password?: string
 }

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
-import { prisma } from '@/index'
+import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
@@ -889,7 +889,7 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
 // Bulk update media
 router.put('/bulk/update', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
-  const { mediaIds, updates } = req.body
+  const { mediaIds, updates, tagMode = 'replace' } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -913,7 +913,7 @@ router.put('/bulk/update', authMiddleware, asyncHandler(async (req: Authenticate
       id: { in: mediaIds },
       authorId: userId
     },
-    select: { id: true }
+    select: { id: true, tags: true }
   })
 
   if (media.length !== mediaIds.length) {
@@ -925,12 +925,24 @@ router.put('/bulk/update', authMiddleware, asyncHandler(async (req: Authenticate
   }
 
   // Update all media
-  const updatePromises = mediaIds.map(id =>
-    prisma.media.update({
+  const updatePromises = mediaIds.map(id => {
+    let updateData = { ...updates }
+    
+    // Handle tag merge mode
+    if (tagMode === 'merge' && updates.tags && Array.isArray(updates.tags)) {
+      const existingMedia = media.find(m => m.id === id)
+      if (existingMedia && existingMedia.tags) {
+        // Merge existing tags with new tags and remove duplicates
+        const mergedTags = [...new Set([...existingMedia.tags, ...updates.tags])]
+        updateData = { ...updates, tags: mergedTags }
+      }
+    }
+    
+    return prisma.media.update({
       where: { id },
-      data: updates
+      data: updateData
     })
-  )
+  })
 
   const updatedMedia = await Promise.all(updatePromises)
 

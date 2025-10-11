@@ -1040,54 +1040,50 @@ export const useBulkUpdateMedia = () => {
       title, 
       description, 
       tags, 
-      mergeTags = false
+      mergeTags = false,
+      visibility
     }: { 
       mediaIds: string[]; 
       title?: string; 
       description?: string;
       tags?: string[];
       mergeTags?: boolean;
+      visibility?: string;
     }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
-      // Update each media individually since there's no bulk endpoint
-      const results = await Promise.all(
-        mediaIds.map(async (mediaId) => {
-          // Build the update payload - only include fields that are provided
-          const updatePayload: MediaUpdatePayload = {}
-          
-          if (title !== undefined) {
-            updatePayload.title = title
-          }
-          if (description !== undefined) {
-            updatePayload.description = description
-          }
-          if (tags !== undefined) {
-            if (mergeTags) {
-              // For merging tags, we need to get the current media data first
-              // This will be handled by the backend, but we send a flag
-              updatePayload.tags = tags
-              updatePayload.mergeTags = true
-            } else {
-              updatePayload.tags = tags
-            }
-          }
-          
-          const response = await fetch(`${API_ENDPOINTS.MEDIA.UPDATE(mediaId)}`, {
-            method: 'PUT',
-            headers: getAuthHeaders(token),
-            body: JSON.stringify(updatePayload)
-          })
-          
-          const data = await response.json()
-          if (!response.ok) throw new Error(data.error || `Failed to update media ${mediaId}`)
-          
-          return { mediaId, data }
-        })
-      )
+      // Build the update payload - only include fields that are provided
+      const updates: any = {}
       
-      return results
+      if (title !== undefined) {
+        updates.altText = title // Backend uses altText for title
+      }
+      if (description !== undefined) {
+        updates.caption = description // Backend uses caption for description
+      }
+      if (tags !== undefined) {
+        updates.tags = tags
+      }
+      if (visibility !== undefined) {
+        updates.visibility = visibility
+      }
+      
+      // Use the bulk update endpoint
+      const response = await fetch(API_ENDPOINTS.MEDIA.BULK_UPDATE, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({
+          mediaIds,
+          updates,
+          tagMode: mergeTags ? 'merge' : 'replace'
+        })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to bulk update media')
+      
+      return data
     },
     onMutate: async ({ mediaIds, title, description, tags, mergeTags }) => {
       // Cancel any outgoing refetches
@@ -1117,7 +1113,9 @@ export const useBulkUpdateMedia = () => {
                     ...item,
                     altText: title !== undefined ? title : item.altText,
                     caption: description !== undefined ? description : item.caption,
-                    tags: tags !== undefined ? tags : item.tags
+                    tags: tags !== undefined 
+                      ? (mergeTags ? Array.from(new Set([...(item.tags || []), ...tags])) : tags)
+                      : item.tags
                   } : item
                 )
               }
@@ -1129,7 +1127,9 @@ export const useBulkUpdateMedia = () => {
                 ...item,
                 altText: title !== undefined ? title : item.altText,
                 caption: description !== undefined ? description : item.caption,
-                tags: tags !== undefined ? tags : item.tags
+                tags: tags !== undefined 
+                  ? (mergeTags ? Array.from(new Set([...(item.tags || []), ...tags])) : tags)
+                  : item.tags
               } : item
             )
         } else if ('id' in oldData && oldData.id === mediaId) {
@@ -1139,7 +1139,9 @@ export const useBulkUpdateMedia = () => {
             ...mediaItem,
             altText: title !== undefined ? title : mediaItem.altText,
             caption: description !== undefined ? description : mediaItem.caption,
-            tags: tags !== undefined ? tags : mediaItem.tags
+            tags: tags !== undefined 
+              ? (mergeTags ? Array.from(new Set([...(mediaItem.tags || []), ...tags])) : tags)
+              : mediaItem.tags
           }
         }
           
@@ -1166,7 +1168,9 @@ export const useBulkUpdateMedia = () => {
                           ...mediaItem,
                           altText: title !== undefined ? title : mediaItem.altText,
                           caption: description !== undefined ? description : mediaItem.caption,
-                          tags: tags !== undefined ? tags : mediaItem.tags
+                          tags: tags !== undefined 
+                            ? (mergeTags ? Array.from(new Set([...(mediaItem.tags || []), ...tags])) : tags)
+                            : mediaItem.tags
                         }
                       }
                     }
@@ -1196,7 +1200,9 @@ export const useBulkUpdateMedia = () => {
                       ...item,
                       altText: title !== undefined ? title : item.altText,
                       caption: description !== undefined ? description : item.caption,
-                      tags: tags !== undefined ? tags : item.tags
+                      tags: tags !== undefined 
+                        ? (mergeTags ? Array.from(new Set([...(item.tags || []), ...tags])) : tags)
+                        : item.tags
                     } : item
                   )
                 }
