@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
-import { prisma } from '@/index'
+import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'

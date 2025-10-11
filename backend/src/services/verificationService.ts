@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { prisma } from '@/index'
+import { prisma } from '@/db'
 import { logger } from '@/utils/logger'
 
 class VerificationService {

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { prisma } from '@/index'
+import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'

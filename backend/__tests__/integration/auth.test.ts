@@ -51,11 +51,12 @@ describe('Authentication & Authorization (P0)', () => {
         
         expect(response.status).toBe(200)
         expect(response.body).toHaveProperty('success', true)
-        expect(response.body).toHaveProperty('token')
-        expect(response.body).toHaveProperty('user')
-        expect(response.body.user).toHaveProperty('email', 'alice@test.com')
-        expect(response.body.user).toHaveProperty('username', 'alice_test')
-        expect(response.body.user).not.toHaveProperty('password') // Password should not be returned
+        expect(response.body).toHaveProperty('data')
+        expect(response.body.data).toHaveProperty('token')
+        expect(response.body.data).toHaveProperty('user')
+        expect(response.body.data.user).toHaveProperty('email', 'alice@test.com')
+        expect(response.body.data.user).toHaveProperty('username', 'alice_test')
+        expect(response.body.data.user).not.toHaveProperty('password') // Password should not be returned
       })
       
       it('should reject login with invalid email', async () => {
@@ -129,7 +130,7 @@ describe('Authentication & Authorization (P0)', () => {
       
       it('should reject access to protected routes without token', async () => {
         const response = await request(app)
-          .get('/api/posts')
+          .get('/api/posts/feed') // Use endpoint that requires auth
         
         expect(response.status).toBe(401)
         expect(response.body).toHaveProperty('error')
@@ -139,7 +140,7 @@ describe('Authentication & Authorization (P0)', () => {
         const expiredToken = generateExpiredToken(alice!)
         
         const response = await request(app)
-          .get('/api/posts')
+          .get('/api/posts/feed') // Use endpoint that requires auth
           .set('Authorization', `Bearer ${expiredToken}`)
         
         expect(response.status).toBe(401)
@@ -150,7 +151,7 @@ describe('Authentication & Authorization (P0)', () => {
         const malformedToken = generateMalformedToken()
         
         const response = await request(app)
-          .get('/api/posts')
+          .get('/api/posts/feed') // Use endpoint that requires auth
           .set('Authorization', `Bearer ${malformedToken}`)
         
         expect(response.status).toBe(401)
@@ -161,7 +162,7 @@ describe('Authentication & Authorization (P0)', () => {
         const tokenWithWrongSignature = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ0ZXN0IiwiZW1haWwiOiJ0ZXN0QHRlc3QuY29tIn0.invalid_signature'
         
         const response = await request(app)
-          .get('/api/posts')
+          .get('/api/posts/feed') // Use endpoint that requires auth
           .set('Authorization', `Bearer ${tokenWithWrongSignature}`)
         
         expect(response.status).toBe(401)
@@ -169,7 +170,7 @@ describe('Authentication & Authorization (P0)', () => {
       
       it('should reject token without Bearer prefix', async () => {
         const response = await request(app)
-          .get('/api/posts')
+          .get('/api/posts/feed') // Use endpoint that requires auth
           .set('Authorization', validToken) // Missing "Bearer "
         
         expect(response.status).toBe(401)
@@ -211,7 +212,8 @@ describe('Authentication & Authorization (P0)', () => {
             .set('Authorization', `Bearer ${aliceToken}`)
           
           expect(response.status).toBe(200)
-          expect(response.body).toHaveProperty('post')
+          expect(response.body).toHaveProperty('data')
+          expect(response.body.data).toHaveProperty('post')
         }
       })
       
@@ -264,31 +266,15 @@ describe('Authentication & Authorization (P0)', () => {
         })
         
         if (friendsPost) {
-          // Get a user who is not Alice's friend
-          const nonFriend = await testPrisma.user.findFirst({
-            where: {
-              AND: [
-                { id: { not: alice!.id } },
-                {
-                  AND: [
-                    {
-                      OR: [
-                        { friendRequestsSent: { none: { receiverId: alice!.id, status: 'ACCEPTED' } } },
-                        { friendRequestsReceived: { none: { senderId: alice!.id, status: 'ACCEPTED' } } }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          })
+          // Use David who is NOT Alice's friend (Bob is David's friend, not Alice)
+          const david = await getTestUserByEmail('david@test.com')
           
-          if (nonFriend) {
-            const nonFriendToken = generateTestToken(nonFriend)
+          if (david) {
+            const davidToken = generateTestToken(david)
             
             const response = await request(app)
               .get(`/api/posts/${friendsPost.id}`)
-              .set('Authorization', `Bearer ${nonFriendToken}`)
+              .set('Authorization', `Bearer ${davidToken}`)
             
             expect(response.status).toBe(403)
           }

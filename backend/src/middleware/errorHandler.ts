@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import { Prisma } from '@prisma/client'
+import { ZodError } from 'zod'
 
 export interface AppError extends Error {
   statusCode?: number
@@ -14,6 +15,12 @@ export const errorHandler = (
 ) => {
   let statusCode = error.statusCode || 500
   let message = error.message || 'Internal Server Error'
+
+  // Handle Zod validation errors
+  if (error instanceof ZodError) {
+    statusCode = 400
+    message = error.errors.map(e => e.message).join(', ')
+  }
 
   // Handle Prisma errors
   if (error instanceof Prisma.PrismaClientKnownRequestError) {

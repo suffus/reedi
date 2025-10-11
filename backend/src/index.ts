@@ -4,9 +4,9 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
-import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import { createServer } from 'http'
+import { prisma } from '@/db'
 
 // Import routes
 import authRoutes from '@/routes/auth'
@@ -38,17 +38,6 @@ import { authMiddleware } from '@/middleware/auth'
 
 // Load environment variables
 dotenv.config()
-
-// Initialize Prisma client with optimized connection pool
-export const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL
-    }
-  },
-  // Optimize connection pool for high concurrency
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-})
 
 // Create Express app and HTTP server
 const app = express()
