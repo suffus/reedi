@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { useState, useEffect, useCallback } from 'react'
-import { API_BASE_URL, getAuthHeaders, getImageUrl, API_ENDPOINTS } from './api'
-import { Comment } from './types'
+import { API_BASE_URL, getAuthHeaders, API_ENDPOINTS } from './api'
 
 // Helper functions to safely access localStorage
 const getToken = () => {
@@ -26,6 +25,51 @@ const useIsClient = () => {
 }
 
 // Types
+interface PaginationResponse {
+  data: {
+    media: Media[]
+    pagination: {
+      page: number
+      limit: number
+      total: number
+      hasNext: boolean
+    }
+  }
+}
+
+interface MediaUpdatePayload {
+  title?: string
+  description?: string
+  tags?: string[]
+  visibility?: string
+  mergeTags?: boolean
+}
+
+interface QueryData {
+  data: {
+    media: Media[]
+  }
+}
+
+interface PostData {
+  data: {
+    posts: Array<{
+      id: string
+      media: Array<{
+        media: Media
+      }>
+    }>
+  }
+}
+
+interface GalleryData {
+  data: {
+    gallery: {
+      media: Media[]
+    }
+  }
+}
+
 interface User {
   id: string
   name: string
@@ -38,32 +82,6 @@ interface User {
   isVerified: boolean
 }
 
-interface Post {
-  id: string
-  title: string | null
-  content: string
-  publicationStatus: 'PUBLIC' | 'PAUSED' | 'CONTROLLED' | 'DELETED'
-  visibility: 'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'
-  authorId: string
-  isLocked?: boolean
-  unlockPrice?: number
-  unlockedBy?: {
-    id: string
-    unlockedAt: string
-    paidAmount: number
-  }[]
-  createdAt: string
-  updatedAt: string
-  author: User
-  comments: PostComment[]
-  reactions: Reaction[]
-  media: Media[]
-  hashtags: Hashtag[]
-  _count: {
-    comments: number
-    reactions: number
-  }
-}
 
 interface PostComment {
   id: string
@@ -164,9 +182,12 @@ export const useLogin = () => {
       if (!response.ok) {
         // Handle unverified users specially
         if (response.status === 403 && data.needsVerification) {
-          const error = new Error(data.error || 'Login failed')
-          ;(error as any).needsVerification = true
-          ;(error as any).userData = data.user
+          const error = new Error(data.error || 'Login failed') as Error & {
+            needsVerification: boolean
+            userData: User
+          }
+          error.needsVerification = true
+          error.userData = data.user
           throw error
         }
         throw new Error(data.error || 'Login failed')
@@ -197,7 +218,7 @@ export const useRegister = () => {
       
       return data
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       // Don't automatically log in - user needs to verify email first
       // localStorage.setItem('token', data.data.token)
       queryClient.invalidateQueries({ queryKey: ['auth'] })
@@ -658,7 +679,7 @@ export const useInfiniteFilteredUserMedia = (
       
       return data
     },
-    getNextPageParam: (lastPage: any) => {
+    getNextPageParam: (lastPage: PaginationResponse) => {
       const pagination = lastPage.data?.pagination
       return pagination?.hasNext ? pagination.page + 1 : undefined
     },
@@ -676,7 +697,7 @@ export const useUserMedia = (userId: string) => {
   const [nextPageSize, setNextPageSize] = useState(20) // Default page size
   
   // Function to update a specific media in the local state
-  const updateMedia = useCallback((mediaId: string, updates: Partial<any>) => {
+  const updateMedia = useCallback((mediaId: string, updates: Partial<Media>) => {
     setAllMedia(prev => 
       prev.map(media => 
         media.id === mediaId ? { ...media, ...updates } : media
@@ -714,8 +735,8 @@ export const useUserMedia = (userId: string) => {
       } else {
         // Subsequent pages - append new media, avoiding duplicates
         setAllMedia(prev => {
-          const existingIds = new Set(prev.map((media: any) => media.id))
-          const uniqueNewMedia = newMedia.filter((media: any) => !existingIds.has(media.id))
+          const existingIds = new Set(prev.map((media: Media) => media.id))
+          const uniqueNewMedia = newMedia.filter((media: Media) => !existingIds.has(media.id))
           return [...prev, ...uniqueNewMedia]
         })
       }
@@ -857,17 +878,17 @@ export const useUpdateMedia = () => {
       const previousGalleryQueries = queryClient.getQueriesData({ queryKey: ['gallery'] })
       
       // Optimistically update media queries
-      queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: any) => {
+      queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: QueryData | Media[] | undefined) => {
         if (!oldData) return oldData
         
         // Handle different data structures
-        if (oldData.data?.media) {
+        if ('data' in oldData && oldData.data?.media) {
           // For queries that return { data: { media: [...] } }
           return {
             ...oldData,
             data: {
               ...oldData.data,
-              media: oldData.data.media.map((item: any) => 
+              media: oldData.data.media.map((item: Media) => 
                 item.id === mediaId ? {
                   ...item,
                   altText: title !== undefined ? title : item.altText,
@@ -879,7 +900,7 @@ export const useUpdateMedia = () => {
           }
         } else if (Array.isArray(oldData)) {
           // For queries that return array of media
-          return oldData.map((item: any) => 
+          return oldData.map((item: Media) => 
             item.id === mediaId ? {
               ...item,
               altText: title !== undefined ? title : item.altText,
@@ -887,13 +908,14 @@ export const useUpdateMedia = () => {
               tags: tags !== undefined ? tags : item.tags
             } : item
           )
-        } else if (oldData.id === mediaId) {
+        } else if ('id' in oldData && oldData.id === mediaId) {
           // For single media item queries
+          const mediaItem = oldData as unknown as Media
           return {
-            ...oldData,
-            altText: title !== undefined ? title : oldData.altText,
-            caption: description !== undefined ? description : oldData.caption,
-            tags: tags !== undefined ? tags : oldData.tags
+            ...mediaItem,
+            altText: title !== undefined ? title : mediaItem.altText,
+            caption: description !== undefined ? description : mediaItem.caption,
+            tags: tags !== undefined ? tags : mediaItem.tags
           }
         }
         
@@ -901,7 +923,7 @@ export const useUpdateMedia = () => {
       })
       
       // Optimistically update post queries that contain this media
-      queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: any) => {
+      queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: PostData | undefined) => {
         if (!oldData) return oldData
         
         if (oldData.data?.posts) {
@@ -909,9 +931,9 @@ export const useUpdateMedia = () => {
             ...oldData,
             data: {
               ...oldData.data,
-              posts: oldData.data.posts.map((post: any) => ({
+              posts: oldData.data.posts.map((post: { id: string; media: Array<{ media: Media }> }) => ({
                 ...post,
-                media: post.media?.map((pm: any) => {
+                media: post.media?.map((pm: { media: Media }) => {
                   const mediaItem = pm.media || pm
                   if (mediaItem.id === mediaId) {
                     return {
@@ -935,7 +957,7 @@ export const useUpdateMedia = () => {
       })
       
       // Optimistically update gallery queries that contain this media
-      queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: any) => {
+      queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: GalleryData | undefined) => {
         if (!oldData) return oldData
         
         if (oldData.data?.gallery?.media) {
@@ -945,7 +967,7 @@ export const useUpdateMedia = () => {
               ...oldData.data,
               gallery: {
                 ...oldData.data.gallery,
-                media: oldData.data.gallery.media.map((item: any) => 
+                media: oldData.data.gallery.media.map((item: Media) => 
                   item.id === mediaId ? {
                     ...item,
                     altText: title !== undefined ? title : item.altText,
@@ -1033,7 +1055,7 @@ export const useBulkUpdateMedia = () => {
       const results = await Promise.all(
         mediaIds.map(async (mediaId) => {
           // Build the update payload - only include fields that are provided
-          const updatePayload: any = {}
+          const updatePayload: MediaUpdatePayload = {}
           
           if (title !== undefined) {
             updatePayload.title = title
@@ -1080,17 +1102,17 @@ export const useBulkUpdateMedia = () => {
       
       // Optimistically update media queries for all affected media
       mediaIds.forEach(mediaId => {
-        queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: any) => {
+        queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: QueryData | Media[] | undefined) => {
           if (!oldData) return oldData
           
           // Handle different data structures
-          if (oldData.data?.media) {
+          if ('data' in oldData && oldData.data?.media) {
             // For queries that return { data: { media: [...] } }
             return {
               ...oldData,
               data: {
                 ...oldData.data,
-                media: oldData.data.media.map((item: any) => 
+                media: oldData.data.media.map((item: Media) => 
                   item.id === mediaId ? {
                     ...item,
                     altText: title !== undefined ? title : item.altText,
@@ -1102,7 +1124,7 @@ export const useBulkUpdateMedia = () => {
             }
           } else if (Array.isArray(oldData)) {
             // For queries that return array of media
-            return oldData.map((item: any) => 
+            return oldData.map((item: Media) => 
               item.id === mediaId ? {
                 ...item,
                 altText: title !== undefined ? title : item.altText,
@@ -1110,21 +1132,22 @@ export const useBulkUpdateMedia = () => {
                 tags: tags !== undefined ? tags : item.tags
               } : item
             )
-          } else if (oldData.id === mediaId) {
-            // For single media item queries
-            return {
-              ...oldData,
-              altText: title !== undefined ? title : oldData.altText,
-              caption: description !== undefined ? description : oldData.caption,
-              tags: tags !== undefined ? tags : oldData.tags
-            }
+        } else if ('id' in oldData && oldData.id === mediaId) {
+          // For single media item queries
+          const mediaItem = oldData as unknown as Media
+          return {
+            ...mediaItem,
+            altText: title !== undefined ? title : mediaItem.altText,
+            caption: description !== undefined ? description : mediaItem.caption,
+            tags: tags !== undefined ? tags : mediaItem.tags
           }
+        }
           
           return oldData
         })
         
         // Optimistically update post queries that contain this media
-        queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: any) => {
+        queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: PostData | undefined) => {
           if (!oldData) return oldData
           
           if (oldData.data?.posts) {
@@ -1132,9 +1155,9 @@ export const useBulkUpdateMedia = () => {
               ...oldData,
               data: {
                 ...oldData.data,
-                posts: oldData.data.posts.map((post: any) => ({
+                posts: oldData.data.posts.map((post: { id: string; media: Array<{ media: Media }> }) => ({
                   ...post,
-                  media: post.media?.map((pm: any) => {
+                  media: post.media?.map((pm: { media: Media }) => {
                     const mediaItem = pm.media || pm
                     if (mediaItem.id === mediaId) {
                       return {
@@ -1158,7 +1181,7 @@ export const useBulkUpdateMedia = () => {
         })
         
         // Optimistically update gallery queries that contain this media
-        queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: any) => {
+        queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: GalleryData | undefined) => {
           if (!oldData) return oldData
           
           if (oldData.data?.gallery?.media) {
@@ -1168,7 +1191,7 @@ export const useBulkUpdateMedia = () => {
                 ...oldData.data,
                 gallery: {
                   ...oldData.data.gallery,
-                  media: oldData.data.gallery.media.map((item: any) => 
+                  media: oldData.data.gallery.media.map((item: Media) => 
                     item.id === mediaId ? {
                       ...item,
                       altText: title !== undefined ? title : item.altText,
@@ -1458,7 +1481,7 @@ export const useInfiniteMyGalleries = () => {
       return data.data
     },
     initialPageParam: 1,
-    getNextPageParam: (lastPage: any) => {
+    getNextPageParam: (lastPage: { galleries?: any[]; pagination?: { hasNext: boolean; page: number; total: number } }) => {
       return lastPage.pagination?.hasNext ? lastPage.pagination.page + 1 : undefined
     },
     enabled: isClient && hasToken(),
@@ -1781,17 +1804,17 @@ export const useReprocessMedia = () => {
       const previousGalleryQueries = queryClient.getQueriesData({ queryKey: ['gallery'] })
       
       // Optimistically update media queries to show PENDING status
-      queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: any) => {
+      queryClient.setQueriesData({ queryKey: ['media'] }, (oldData: QueryData | Media[] | undefined) => {
         if (!oldData) return oldData
         
         // Handle different data structures
-        if (oldData.data?.media) {
+        if ('data' in oldData && oldData.data?.media) {
           // For queries that return { data: { media: [...] } }
           return {
             ...oldData,
             data: {
               ...oldData.data,
-              media: oldData.data.media.map((item: any) => 
+              media: oldData.data.media.map((item: Media) => 
                 item.id === mediaId ? {
                   ...item,
                   processingStatus: 'PENDING'
@@ -1801,13 +1824,13 @@ export const useReprocessMedia = () => {
           }
         } else if (Array.isArray(oldData)) {
           // For queries that return array of media
-          return oldData.map((item: any) => 
+          return oldData.map((item: Media) => 
             item.id === mediaId ? {
               ...item,
               processingStatus: 'PENDING'
             } : item
           )
-        } else if (oldData.id === mediaId) {
+        } else if ('id' in oldData && oldData.id === mediaId) {
           // For single media item queries
           return {
             ...oldData,
@@ -1819,7 +1842,7 @@ export const useReprocessMedia = () => {
       })
       
       // Optimistically update post queries that contain this media
-      queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: any) => {
+      queryClient.setQueriesData({ queryKey: ['posts'] }, (oldData: PostData | undefined) => {
         if (!oldData) return oldData
         
         if (oldData.data?.posts) {
@@ -1827,9 +1850,9 @@ export const useReprocessMedia = () => {
             ...oldData,
             data: {
               ...oldData.data,
-              posts: oldData.data.posts.map((post: any) => ({
+              posts: oldData.data.posts.map((post: { id: string; media: Array<{ media: Media }> }) => ({
                 ...post,
-                media: post.media?.map((pm: any) => {
+                media: post.media?.map((pm: { media: Media }) => {
                   const mediaItem = pm.media || pm
                   if (mediaItem.id === mediaId) {
                     return {
@@ -1851,7 +1874,7 @@ export const useReprocessMedia = () => {
       })
       
       // Optimistically update gallery queries that contain this media
-      queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: any) => {
+      queryClient.setQueriesData({ queryKey: ['gallery'] }, (oldData: GalleryData | undefined) => {
         if (!oldData) return oldData
         
         if (oldData.data?.gallery?.media) {
@@ -1861,7 +1884,7 @@ export const useReprocessMedia = () => {
               ...oldData.data,
               gallery: {
                 ...oldData.data.gallery,
-                media: oldData.data.gallery.media.map((item: any) => 
+                media: oldData.data.gallery.media.map((item: Media) => 
                   item.id === mediaId ? {
                     ...item,
                     processingStatus: 'PENDING'

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { Image as ImageIcon, Video, Tag, Users, Lock, Unlock, Globe, UserCheck, Shield, X, GripVertical } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Image as ImageIcon, Tag, Users, Lock, Unlock, Globe, UserCheck, Shield, X, GripVertical } from 'lucide-react'
 import { useCreatePost } from '../../lib/api-hooks'
 import { MediaPicker } from './media-picker'
 import { useAuth } from '../../lib/api-hooks'
 import { API_BASE_URL, getAuthHeaders } from '../../lib/api'
+import { Media } from '../../lib/types'
 
 interface FeedTarget {
   id: string
@@ -15,7 +16,6 @@ interface FeedTarget {
 }
 
 interface PostAuthorFormProps {
-  userId?: string
   onPostCreated?: () => void
   defaultFeedTarget?: FeedTarget
   allowLockedPosts?: boolean
@@ -24,7 +24,6 @@ interface PostAuthorFormProps {
 }
 
 export function PostAuthorForm({ 
-  userId, 
   onPostCreated, 
   defaultFeedTarget,
   allowLockedPosts = true,
@@ -34,7 +33,7 @@ export function PostAuthorForm({
   const { data: authData } = useAuth()
   const [newPost, setNewPost] = useState('')
   const [showMediaPicker, setShowMediaPicker] = useState(false)
-  const [selectedMedia, setSelectedMedia] = useState<any[]>([])
+  const [selectedMedia, setSelectedMedia] = useState<Media[]>([])
   const [postVisibility, setPostVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const [selectedFeeds, setSelectedFeeds] = useState<FeedTarget[]>([])
   const [includePersonalFeed, setIncludePersonalFeed] = useState(false)
@@ -56,7 +55,7 @@ export function PostAuthorForm({
   )
 
   // Handle media selection
-  const handleMediaSelect = (media: any[]) => {
+  const handleMediaSelect = (media: Media[]) => {
     console.log("Selected media:", media)
     // Ensure all media items have valid IDs
     const validatedMedia = media.map(item => {
@@ -159,7 +158,7 @@ export function PostAuthorForm({
   }
   
   // Handle drag end
-  const handleDragEnd = (e: React.DragEvent) => {
+  const handleDragEnd = () => {
     setDraggedItem(null)
     setDraggedIndex(null)
     setDropTargetIndex(null)

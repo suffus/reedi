@@ -18,7 +18,15 @@
     "convert:progressive": "node scripts/convert-to-progressive.js",
     "convert:progressive:cleanup": "node scripts/convert-to-progressive.js --cleanup",
     "test:progressive": "node scripts/test-progressive.js",
-    "docker:start": "npm run db:deploy && npm run start:dev"
+    "docker:start": "npm run db:deploy && npm run start:dev",
+    "test": "NODE_ENV=test jest",
+    "test:watch": "NODE_ENV=test jest --watch",
+    "test:coverage": "NODE_ENV=test jest --coverage",
+    "test:auth": "NODE_ENV=test jest auth.test",
+    "test:seed": "tsx __tests__/seed/seed.ts",
+    "test:seed:reset": "tsx __tests__/seed/seed.ts --reset",
+    "test:seed:extended": "tsx __tests__/seed/seed.ts --extended",
+    "test:teardown": "tsx __tests__/seed/teardown.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.842.0",
@@ -48,16 +56,23 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/morgan": "^1.9.9",
     "@types/multer": "^1.4.13",
     "@types/node": "^20.8.0",
     "@types/nodemailer": "^6.4.19",
+    "@types/supertest": "^6.0.3",
+    "bcrypt": "^6.0.0",
+    "jest": "^30.2.0",
     "nodemon": "^3.0.1",
     "prisma": "^5.6.0",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.5",
     "tsx": "^4.6.0",
     "typescript": "^5.2.0"
   },

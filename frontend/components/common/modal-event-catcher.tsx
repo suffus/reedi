@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import React from 'react'
 
 interface ModalEventCatcherProps {
   children: React.ReactNode
@@ -16,10 +16,8 @@ interface ModalEventCatcherProps {
 export function ModalEventCatcher({
   children,
   onEscape,
-  onBackdropClick,
   allowScroll = false,
   allowKeys = [],
-  onCustomKeyDown,
   className = '',
   style = {}
 }: ModalEventCatcherProps) {
@@ -65,7 +63,7 @@ export function ModalEventCatcher({
       event.stopPropagation()
     }
 
-    const handleBackdropClick = (event: React.MouseEvent) => {
+    const handleBackdropClick = () => {
       // Only trigger if clicking the backdrop itself, not its children
     }
 

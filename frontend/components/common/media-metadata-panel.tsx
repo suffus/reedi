@@ -1,5 +1,7 @@
+
+
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { Calendar, User, FileText, Video, Loader2, Edit2, Save, X as XIcon, Clock, RefreshCw, MessageCircle, Send } from 'lucide-react'
+import { Calendar, User, FileText, Video, Loader2, Edit2, X as XIcon, Clock, RefreshCw, MessageCircle, Send } from 'lucide-react'
 import { TagInput } from '../tag-input'
 import { Media, Comment } from '@/lib/types'
 import { useUpdateMedia, useReprocessMedia, useMediaComments, useCreateComment, useAuth } from '@/lib/api-hooks'
@@ -11,7 +13,7 @@ interface MediaMetadataPanelProps {
   media: Media
   isOwner: boolean
   onMediaUpdate?: () => void
-  updateMedia?: (mediaId: string, updates: Partial<any>) => void
+  updateMedia?: (mediaId: string, updates: Partial<Media>) => void
   // Slideshow props (optional - only for modals that support slideshow)
   slideshow?: {
     isSlideshowActive: boolean
@@ -99,11 +101,11 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
   }, [metadataMedia?.altText, metadataMedia?.caption, metadataMedia?.tags])
   
   // Safely get the updateMediaInContext function if available
-  let updateMediaInContext: ((mediaId: string, updates: Partial<any>) => void) | null = null
+  let updateMediaInContext: ((mediaId: string, updates: Partial<Media>) => void) | null = null
   try {
     const mediaDetailContext = useMediaDetail()
     updateMediaInContext = mediaDetailContext.updateMediaInContext
-  } catch (error) {
+  } catch {
     // Component is not within MediaDetailProvider, which is fine
     updateMediaInContext = null
   }
@@ -602,3 +604,5 @@ export const MediaMetadataPanel = forwardRef<MediaMetadataPanelRef, MediaMetadat
     </div>
   )
 })
+
+MediaMetadataPanel.displayName = 'MediaMetadataPanel'

@@ -99,7 +99,7 @@ export interface GroupAction {
   userId: string
   actionType: string
   description: string
-  metadata?: any
+  metadata?: Record<string, unknown>
   createdAt: string
   group?: Group
   user?: User
@@ -112,7 +112,7 @@ export interface GroupActivity {
   actionType?: string
   description?: string
   user?: User
-  metadata?: any
+  metadata?: Record<string, unknown>
   status?: string
   post?: {
     id: string
@@ -188,13 +188,13 @@ export interface Media {
   videoS3Key?: string
   createdAt: string
   updatedAt: string
-  videoMetadata?: any
+  videoMetadata?: Record<string, unknown>
   videoProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-  videoThumbnails?: any
-  videoVersions?: any
-  imageMetadata?: any
+  videoThumbnails?: Array<{ url: string; width: number; height: number }>
+  videoVersions?: Array<{ quality: string; url: string; width: number; height: number }>
+  imageMetadata?: Record<string, unknown>
   imageProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-  imageVersions?: any
+  imageVersions?: Array<{ quality: string; url: string; width: number; height: number }>
   author: User
 }
 
@@ -372,7 +372,7 @@ export interface UserSession {
   id: string
   userId: string
   sessionId: string
-  deviceInfo?: any
+  deviceInfo?: Record<string, unknown>
   lastSeen: string
   isActive: boolean
   createdAt: string
@@ -414,10 +414,10 @@ export interface MediaProcessingJob {
   progress: number
   currentStep?: string
   errorMessage?: string
-  thumbnails?: any
-  videoVersions?: any
-  imageVersions?: any
-  metadata?: any
+  thumbnails?: Array<{ url: string; width: number; height: number }>
+  videoVersions?: Array<{ quality: string; url: string; width: number; height: number }>
+  imageVersions?: Array<{ quality: string; url: string; width: number; height: number }>
+  metadata?: Record<string, unknown>
   createdAt: string
   updatedAt: string
   completedAt?: string

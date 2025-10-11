@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Camera, Settings, LogOut, Plus, Grid, List, Users, UserPlus, MessageCircle, Building2 } from 'lucide-react'
+import { User, Settings, LogOut, Plus, Grid, List, Users, UserPlus, MessageCircle, Building2 } from 'lucide-react'
 import { PersonalFeed } from './personal-feed'
 import { UserGallery } from './user-gallery'
 import { ProfileEditor } from './profile-editor'
@@ -36,7 +36,7 @@ export function DashboardWrapper() {
   const [isClient, setIsClient] = useState(false)
 
   const { data: authData, isLoading, error } = useAuth()
-  const { conversations, isConnected, unreadCount } = useMessaging()
+  const { isConnected, unreadCount } = useMessaging()
   const queryClient = useQueryClient()
   const { showToast } = useToast()
 
@@ -80,7 +80,7 @@ export function DashboardWrapper() {
     router.push('/')
   }
 
-  const handleProfileUpdate = (updatedUser: UserData) => {
+  const handleProfileUpdate = () => {
     // The auth query will automatically refetch when the profile is updated
   }
 

@@ -122,7 +122,7 @@ export const getImageUrl = (imagePath: string): string => {
 }
 
 // Helper function to get image URL from image object or path
-export const getImageUrlFromImage = (image: any, useThumbnail: boolean = false): string => {
+export const getImageUrlFromImage = (image: { id?: string; thumbnail?: string | null; url?: string }, useThumbnail: boolean = false): string => {
   if (!image) return ''
   
   // If image has an ID, use the new backend serving endpoint
@@ -133,11 +133,11 @@ export const getImageUrlFromImage = (image: any, useThumbnail: boolean = false):
   
   // Fallback to the old getImageUrl function for backward compatibility
   const path = useThumbnail ? (image.thumbnail || image.url) : image.url
-  return getImageUrl(path)
+  return path ? getImageUrl(path) : ''
 }
 
 // Helper function to get media URL from media object or path
-export const getMediaUrlFromMedia = (media: any, useThumbnail: boolean = false): string => {
+export const getMediaUrlFromMedia = (media: { id?: string; thumbnail?: string; url?: string; type?: string; isLocked?: boolean }, useThumbnail: boolean = false): string => {
   //console.log('getMediaUrlFromMedia called with:', { media, useThumbnail })
   
   if (!media) {
@@ -160,7 +160,7 @@ export const getMediaUrlFromMedia = (media: any, useThumbnail: boolean = false):
   
   // Fallback to the old getImageUrl function for backward compatibility
   const path = useThumbnail ? (media.thumbnail || media.url) : media.url
-  const fallbackUrl = getImageUrl(path)
+  const fallbackUrl = path ? getImageUrl(path) : ''
   console.log('Generated fallback URL:', fallbackUrl)
   return fallbackUrl
 }
@@ -218,16 +218,16 @@ export const getVideoUrlWithQuality = async (mediaId: string, preferredQuality: 
     const data = await response.json()
     if (data.success && data.qualities && Array.isArray(data.qualities)) {
       // Find the preferred quality
-      const preferredVersion = data.qualities.find((q: any) => q.quality === preferredQuality)
+      const preferredVersion = data.qualities.find((q: { quality: string }) => q.quality === preferredQuality)
       if (preferredVersion) {
         return preferredVersion.url
       }
       
       // If preferred quality not found, find the closest one
-      const qualities = data.qualities.filter((q: any) => q.quality !== 'original')
+      const qualities = data.qualities.filter((q: { quality: string }) => q.quality !== 'original')
       if (qualities.length > 0) {
         // Sort by resolution and find the closest to preferred
-        qualities.sort((a: any, b: any) => {
+        qualities.sort((a: { width: number; height: number }, b: { width: number; height: number }) => {
           const aRes = a.width * a.height
           const bRes = b.width * b.height
           const preferredRes = preferredQuality === '540p' ? 960 * 540 : 1280 * 720

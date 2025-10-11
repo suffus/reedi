@@ -31,7 +31,6 @@ export function PostAuthorForm({
 }: PostAuthorFormProps) {
   return (
     <CommonPostAuthorForm
-      userId={userId}
       onPostCreated={onPostCreated}
       allowLockedPosts={allowLockedPosts}
       defaultFeedTarget={defaultFeedTarget}

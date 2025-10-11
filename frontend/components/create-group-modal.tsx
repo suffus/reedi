@@ -4,12 +4,10 @@ import React, { useState } from 'react'
 import { API_BASE_URL, getAuthHeaders } from '@/lib/api'
 import { 
   X, 
-  Users, 
   Globe, 
   Eye, 
   EyeOff, 
   Lock, 
-  Shield,
   Upload,
   CheckCircle,
   AlertCircle
