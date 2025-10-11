@@ -528,9 +528,15 @@ describe('Media Gallery Management (P0)', () => {
         mediaIds = aliceMedia.map(m => m.id)
       })
       
-      it.skip('should bulk update tags (merge mode)', async () => {
-        // Skipped: API doesn't support tagMode parameter
-        // API updates each mediaId individually with the same updates object
+      it('should bulk update tags (merge mode)', async () => {
+        // First, add some existing tags to the media items
+        await Promise.all(mediaIds.map(id =>
+          testPrisma.media.update({
+            where: { id },
+            data: { tags: ['existingtag1', 'existingtag2'] }
+          })
+        ))
+        
         const response = await request(app)
           .put('/api/media/bulk/update')
           .set('Authorization', `Bearer ${aliceToken}`)
@@ -538,18 +544,21 @@ describe('Media Gallery Management (P0)', () => {
             mediaIds,
             updates: {
               tags: ['bulktag1', 'bulktag2']
-            }
+            },
+            tagMode: 'merge'
           })
         
         expect(response.status).toBe(200)
         
-        // Verify tags were added to all media
+        // Verify new tags were added while keeping existing tags
         for (const id of mediaIds) {
           const media = await testPrisma.media.findUnique({
             where: { id }
           })
           expect(media?.tags).toContain('bulktag1')
           expect(media?.tags).toContain('bulktag2')
+          expect(media?.tags).toContain('existingtag1')
+          expect(media?.tags).toContain('existingtag2')
         }
       })
       
