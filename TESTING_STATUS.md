@@ -300,7 +300,41 @@ Currently ready to implement next batch of P0 tests.
 
 **Test File:** `backend/__tests__/integration/search.test.ts` (25 passing, 25 total)
 
-## 📝 TODO - P1 High Priority Tests
+### User Profiles Tests (P1.5) ✓
+- ✅ Get user profile by ID
+- ✅ Get user profile by username
+- ✅ Get public profile (no auth required)
+- ✅ Include user statistics (posts, followers, following)
+- ✅ Return 404 for non-existent user
+- ✅ Get list of all users (authenticated)
+- ✅ Require authentication to get users list
+- ✅ Update profile name
+- ✅ Update profile bio
+- ✅ Update username
+- ✅ Reject duplicate username
+- ✅ Update location and website
+- ✅ Update multiple fields at once
+- ✅ Require authentication for edits
+- ✅ Set profile to private
+- ✅ Set profile to public
+- ✅ Follow a user
+- ✅ Reject duplicate follow
+- ✅ Reject self-follow
+- ✅ Unfollow a user
+- ✅ Return 404 when unfollowing non-followed user
+- ✅ Require authentication to follow
+- ✅ Require authentication to unfollow
+- ✅ Get user's followers list
+- ✅ Get user's following list
+- ✅ Include user info in followers list
+- ✅ Include user info in following list
+- ✅ Return empty list for user with no followers
+- ✅ Work without authentication (public lists)
+- ⏸️ Avatar upload (requires file upload - 3 tests skipped)
+
+**Test File:** `backend/__tests__/integration/users.test.ts` (29 passing, 3 skipped, 32 total)
+
+## 📝 TODO - P0 Critical Tests
 
 ### Messaging
 - [ ] Start direct conversation
@@ -447,7 +481,7 @@ None currently - infrastructure complete and first test suite passing!
 
 ## 📈 Progress
 
-**Overall Progress:** 10/12 areas complete (83%)
+**Overall Progress:** 11/12 areas complete (92%)
 - ✅ Test Infrastructure Setup
 - ✅ Authentication & Authorization (P0) - 27 tests
 - ✅ Posts Creation & Management (P0) - 45 tests
@@ -458,23 +492,24 @@ None currently - infrastructure complete and first test suite passing!
 - ✅ Groups (P1) - 31 tests
 - ✅ Messaging (P1) - 23 tests
 - ✅ Search (P1) - 25 tests
-- ⏳ 2 test areas remaining (1 P1, 1 P0)
+- ✅ User Profiles (P1) - 29 tests
+- ⏳ 1 test area remaining (P0)
 
-**Test Coverage:** 226 test cases passing (47 skipped, 273 total)
+**Test Coverage:** 255 test cases passing (50 skipped, 305 total)
 
 **P0 Critical Tests:** 5/7 complete (71%)
 - ✅ Auth, Posts, Friends, Media Gallery, Galleries
 - ⏳ Media Upload, E2E Workflows remaining
 
-**P1 High Priority Tests:** 4/5 complete (80%)
+**P1 High Priority Tests:** 5/5 complete (100%) ✅
 - ✅ Comments/Reactions - 27 tests
 - ✅ Groups - 31 tests
 - ✅ Messaging - 23 tests
 - ✅ Search - 25 tests
-- ⏳ User Profiles remaining
+- ✅ User Profiles - 29 tests
 
 **Estimated Remaining:** 
-- P0 Remaining: 2 test suites (~1 day)
-- P1 Tests: 4 test suites (~2 days)
-- Total: ~3 days for full coverage
+- P0 Remaining: 2 test suites (Media Upload & E2E Workflows)
+- Note: Media Upload tests require file upload infrastructure
+- Note: E2E tests require full application workflows
 

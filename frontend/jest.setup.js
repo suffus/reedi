@@ -53,9 +53,6 @@ const localStorageMock = {
 }
 global.localStorage = localStorageMock
 
-// Mock fetch
-global.fetch = jest.fn()
-
 // Mock IntersectionObserver
 global.IntersectionObserver = jest.fn().mockImplementation(() => ({
   observe: jest.fn(),
