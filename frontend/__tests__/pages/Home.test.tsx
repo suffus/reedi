@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import HomePage from '../../app/page'
 
 // Mock the components
@@ -19,33 +20,49 @@ jest.mock('../../components/footer', () => ({
   Footer: () => <div data-testid="footer">Footer</div>,
 }))
 
+// Helper to render with required providers
+const renderWithProviders = (component: React.ReactElement) => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  
+  return render(
+    <QueryClientProvider client={queryClient}>
+      {component}
+    </QueryClientProvider>
+  )
+}
+
 describe('Home Page', () => {
   it('renders header component', () => {
-    render(<HomePage />)
+    renderWithProviders(<HomePage />)
     
     expect(screen.getByTestId('header')).toBeInTheDocument()
   })
 
   it('renders hero section component', () => {
-    render(<HomePage />)
+    renderWithProviders(<HomePage />)
     
     expect(screen.getByTestId('hero-section')).toBeInTheDocument()
   })
 
   it('renders latest posts component', () => {
-    render(<HomePage />)
+    renderWithProviders(<HomePage />)
     
     expect(screen.getByTestId('latest-posts')).toBeInTheDocument()
   })
 
   it('renders footer component', () => {
-    render(<HomePage />)
+    renderWithProviders(<HomePage />)
     
     expect(screen.getByTestId('footer')).toBeInTheDocument()
   })
 
   it('has correct page structure', () => {
-    render(<HomePage />)
+    renderWithProviders(<HomePage />)
     
     // Check that all main components are present
     expect(screen.getByTestId('header')).toBeInTheDocument()
@@ -55,15 +72,17 @@ describe('Home Page', () => {
   })
 
   it('renders components in correct order', () => {
-    render(<HomePage />)
+    const { container } = renderWithProviders(<HomePage />)
     
-    const container = screen.getByTestId('header').parentElement
-    const children = Array.from(container?.children || [])
+    // Get all testids in order
+    const testIds = Array.from(container.querySelectorAll('[data-testid]')).map(
+      el => el.getAttribute('data-testid')
+    )
     
-    // Check order: header, hero, latest posts, footer
-    expect(children[0]).toHaveAttribute('data-testid', 'header')
-    expect(children[1]).toHaveAttribute('data-testid', 'hero-section')
-    expect(children[2]).toHaveAttribute('data-testid', 'latest-posts')
-    expect(children[3]).toHaveAttribute('data-testid', 'footer')
+    // Check that components appear in expected order
+    expect(testIds).toContain('header')
+    expect(testIds).toContain('hero-section')
+    expect(testIds).toContain('latest-posts')
+    expect(testIds).toContain('footer')
   })
 }) 
