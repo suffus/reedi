@@ -59,7 +59,10 @@ describe('Comments & Reactions (P1)', () => {
     })
 
     testMedia = await testPrisma.media.findFirst({
-      where: { authorId: alice!.id }
+      where: { 
+        authorId: alice!.id,
+        visibility: 'PUBLIC'
+      }
     })
   })
 

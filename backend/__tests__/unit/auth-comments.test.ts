@@ -17,25 +17,25 @@ describe('Comment Permissions', () => {
 
   beforeAll(async () => {
     // Create users with unique emails for this test suite
-    owner = await prisma.users.create({
+    owner = await prisma.user.create({
       data: { email: 'comments-owner@test.com', name: 'Comments Owner', password: 'hash' }
     });
-    friend = await prisma.users.create({
+    friend = await prisma.user.create({
       data: { email: 'comments-friend@test.com', name: 'Comments Friend', password: 'hash' }
     });
-    stranger = await prisma.users.create({
+    stranger = await prisma.user.create({
       data: { email: 'comments-stranger@test.com', name: 'Comments Stranger', password: 'hash' }
     });
-    admin = await prisma.users.create({
+    admin = await prisma.user.create({
       data: { email: 'comments-admin@test.com', name: 'Comments Admin', password: 'hash' }
     });
-    moderator = await prisma.users.create({
+    moderator = await prisma.user.create({
       data: { email: 'comments-moderator@test.com', name: 'Comments Moderator', password: 'hash' }
     });
-    manager = await prisma.users.create({
+    manager = await prisma.user.create({
       data: { email: 'comments-manager@test.com', name: 'Comments Manager', password: 'hash' }
     });
-    employee = await prisma.users.create({
+    employee = await prisma.user.create({
       data: { 
         email: 'comments-employee@test.com', 
         name: 'Comments Employee', 
@@ -45,13 +45,13 @@ describe('Comment Permissions', () => {
     });
 
     // Create friend relationship
-    await prisma.friend_requests.create({
+    await prisma.friendRequest.create({
       data: { senderId: owner.id, receiverId: friend.id, status: 'ACCEPTED' }
     });
 
     // Create posts
-    publicPost = await prisma.posts.create({
-      data: {$
+    publicPost = await prisma.post.create({
+      data: {
         content: 'Public post',
         authorId: employee.id,
         visibility: 'PUBLIC',
@@ -59,8 +59,8 @@ describe('Comment Permissions', () => {
       }
     });
 
-    privatePost = await prisma.posts.create({
-      data: {$
+    privatePost = await prisma.post.create({
+      data: {
         content: 'Private post',
         authorId: employee.id,
         visibility: 'PRIVATE',
@@ -68,8 +68,8 @@ describe('Comment Permissions', () => {
       }
     });
 
-    friendsOnlyPost = await prisma.posts.create({
-      data: {$
+    friendsOnlyPost = await prisma.post.create({
+      data: {
         content: 'Friends only post',
         authorId: owner.id,
         visibility: 'FRIENDS_ONLY',
@@ -78,8 +78,8 @@ describe('Comment Permissions', () => {
     });
 
     // Create media
-    publicMedia = await prisma.media.create({$
-      data: {$
+    publicMedia = await prisma.media.create({
+      data: {
         url: 'https://example.com/public.jpg',
         originalFilename: 'public.jpg',
         s3Key: 'public-key',
@@ -90,7 +90,7 @@ describe('Comment Permissions', () => {
     });
 
     privateMedia = await prisma.media.create({
-      data: {$
+      data: {
         url: 'https://example.com/private.jpg',
         originalFilename: 'private.jpg',
         s3Key: 'private-key',
@@ -101,7 +101,7 @@ describe('Comment Permissions', () => {
     });
 
     friendsOnlyMedia = await prisma.media.create({
-      data: {$
+      data: {
         url: 'https://example.com/friends.jpg',
         originalFilename: 'friends.jpg',
         s3Key: 'friends-key',
@@ -112,16 +112,16 @@ describe('Comment Permissions', () => {
     });
 
     // Create comments
-    ownComment = await prisma.comments.create({
-      data: {$
+    ownComment = await prisma.comment.create({
+      data: {
         content: 'My comment',
         postId: publicPost.id,
         authorId: owner.id
       }
     });
 
-    othersComment = await prisma.comments.create({
-      data: {$
+    othersComment = await prisma.comment.create({
+      data: {
         content: 'Someone elses comment',
         postId: publicPost.id,
         authorId: stranger.id
@@ -129,18 +129,34 @@ describe('Comment Permissions', () => {
     });
 
     // Assign facets
-    const globalAdminFacet = await prisma.facets.create({
-      data: { scope: 'reedi-admin', name: 'global', value: '' }
+    const globalAdminFacet = await prisma.facet.upsert({
+      where: { 
+        scope_name_value: { scope: 'reedi-admin', name: 'global', value: '' }
+      },
+      update: {},
+      create: { scope: 'reedi-admin', name: 'global', value: '' }
     });
-    const moderatorFacet = await prisma.facets.create({
-      data: { scope: 'user-role', name: 'moderator', value: '' }
+    const moderatorFacet = await prisma.facet.upsert({
+      where: { 
+        scope_name_value: { scope: 'user-role', name: 'moderator', value: '' }
+      },
+      update: {},
+      create: { scope: 'user-role', name: 'moderator', value: '' }
     });
 
-    await prisma.facet_assignments.create({
-      data: { facetId: globalAdminFacet.id, entityType: 'user', entityId: admin.id }
+    await prisma.facetAssignment.upsert({
+      where: {
+        facetId_entityType_entityId: { facetId: globalAdminFacet.id, entityType: 'USER', entityId: admin.id }
+      },
+      update: {},
+      create: { facetId: globalAdminFacet.id, entityType: 'USER', entityId: admin.id }
     });
-    await prisma.facet_assignments.create({
-      data: { facetId: moderatorFacet.id, entityType: 'user', entityId: moderator.id }
+    await prisma.facetAssignment.upsert({
+      where: {
+        facetId_entityType_entityId: { facetId: moderatorFacet.id, entityType: 'USER', entityId: moderator.id }
+      },
+      update: {},
+      create: { facetId: moderatorFacet.id, entityType: 'USER', entityId: moderator.id }
     });
   });
 
@@ -148,10 +164,10 @@ describe('Comment Permissions', () => {
     // Clean up only data created in this test suite
     const userIds = [owner.id, friend.id, stranger.id, admin.id, moderator.id, manager.id, employee.id];
     
-    await prisma.comments.deleteMany({ where: { authorId: { in: userIds } } });
-    await prisma.posts.deleteMany({ where: { authorId: { in: userIds } } });
+    await prisma.comment.deleteMany({ where: { authorId: { in: userIds } } });
+    await prisma.post.deleteMany({ where: { authorId: { in: userIds } } });
     await prisma.media.deleteMany({ where: { authorId: { in: userIds } } });
-    await prisma.friend_requests.deleteMany({
+    await prisma.friendRequest.deleteMany({
       where: {
         OR: [
           { senderId: { in: userIds } },
@@ -159,8 +175,8 @@ describe('Comment Permissions', () => {
         ]
       }
     });
-    await prisma.facet_assignments.deleteMany({ where: { entityId: { in: userIds } } });
-    await prisma.users.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.facetAssignment.deleteMany({ where: { entityId: { in: userIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   });
 
   describe('canViewCommentsOnPost', () => {
@@ -294,7 +310,7 @@ describe('Comment Permissions', () => {
 
     it('should deny non-owner from deleting others comment', async () => {
       const auth: Authentication = { userId: stranger.id, user: null };
-      const result = await canDeleteComment(auth, othersComment);
+      const result = await canDeleteComment(auth, ownComment); // stranger tries to delete owner's comment
       expect(result.granted).toBe(false);
     });
 

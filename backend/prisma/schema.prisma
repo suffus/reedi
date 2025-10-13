@@ -7,329 +7,282 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model comments {
-  id             String          @id
-  content        String
-  postId         String?
-  authorId       String
-  parentId       String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime
-  mediaId        String?
-  users          users           @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  media          media?          @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  comments       comments?       @relation("commentsTocomments", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  other_comments comments[]      @relation("commentsTocomments")
-  posts          posts?          @relation(fields: [postId], references: [id], onDelete: Cascade)
-  notifications  notifications[]
-  reactions      reactions[]
-}
-
-model conversation_participants {
-  id             String          @id
-  conversationId String
-  userId         String
-  role           ParticipantRole @default(MEMBER)
-  joinedAt       DateTime        @default(now())
-  leftAt         DateTime?
-  isActive       Boolean         @default(true)
-  conversations  conversations   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  users          users           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, userId])
-}
-
-model conversations {
-  id                        String                      @id
-  type                      ConversationType            @default(DIRECT)
-  name                      String?
-  avatarUrl                 String?
-  createdById               String
-  createdAt                 DateTime                    @default(now())
-  updatedAt                 DateTime
-  lastMessageAt             DateTime?
-  isActive                  Boolean                     @default(true)
-  conversation_participants conversation_participants[]
-  users                     users                       @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  messages                  messages[]
-}
-
-model email_verifications {
-  id        String   @id
-  email     String
-  code      String
-  expiresAt DateTime
-  attempts  Int      @default(0)
-  createdAt DateTime @default(now())
-
-  @@unique([email, code])
-}
-
-model facet_assignment_history {
-  id                String      @id
-  facetId           String
-  entityType        String
-  entityId          String
-  action            FacetAction
-  performedById     String?
-  performedAt       DateTime    @default(now())
-  reason            String?
-  expiresAt         DateTime?
-  previousExpiresAt DateTime?
-  metadata          Json?
-  facets            facets      @relation(fields: [facetId], references: [id], onDelete: Cascade)
-  users             users?      @relation(fields: [performedById], references: [id])
-
-  @@index([entityType, entityId, performedAt])
-  @@index([facetId])
-  @@index([performedAt])
-}
-
-model facet_assignments {
-  id           String    @id
-  facetId      String
-  entityType   String
-  entityId     String
-  assignedById String?
-  assignedAt   DateTime  @default(now())
-  expiresAt    DateTime?
-  reviewAt     DateTime?
-  reason       String?
-  metadata     Json?
-  isActive     Boolean   @default(true)
-  users        users?    @relation(fields: [assignedById], references: [id])
-  facets       facets    @relation(fields: [facetId], references: [id], onDelete: Cascade)
-
-  @@unique([facetId, entityType, entityId])
-  @@index([entityType, entityId, isActive])
-  @@index([expiresAt])
-  @@index([reviewAt])
-}
-
-model facets {
-  id                       String                     @id
-  scope                    String
+model User {
+  id                       String                    @id @default(cuid())
+  email                    String                    @unique
   name                     String
-  value                    String                     @default("")
-  description              String?
-  requiresAudit            Boolean                    @default(true)
-  expiryDays               Int?
-  requiresReview           Boolean                    @default(false)
-  reviewDays               Int?
-  parentFacetId            String?
-  hierarchyLevel           Int                        @default(0)
-  isActive                 Boolean                    @default(true)
-  createdAt                DateTime                   @default(now())
-  updatedAt                DateTime
-  facet_assignment_history facet_assignment_history[]
-  facet_assignments        facet_assignments[]
-  facets                   facets?                    @relation("facetsTofacets", fields: [parentFacetId], references: [id])
-  other_facets             facets[]                   @relation("facetsTofacets")
+  username                 String?                   @unique
+  password                 String
+  avatar                   String?
+  bio                      String?
+  location                 String?
+  website                  String?
+  isPrivate                Boolean                   @default(false)
+  isVerified               Boolean                   @default(false)
+  emailVerified            Boolean                   @default(false)
+  emailVerifiedAt          DateTime?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  canPublishLockedMedia    Boolean                   @default(false)
+  posts                    Post[]
+  comments                 Comment[]
+  reactions                Reaction[]
+  media                    Media[]
+  galleries                Gallery[]
+  followers                Follows[]                 @relation("UserFollowers")
+  following                Follows[]                 @relation("UserFollowing")
+  friendRequestsSent       FriendRequest[]           @relation("UserFriendRequestsSent")
+  friendRequestsReceived   FriendRequest[]           @relation("UserFriendRequestsReceived")
+  notifications            Notification[]
+  searchHistory            SearchHistory[]
+  mentions                 Mention[]
+  mediaProcessingJobs      MediaProcessingJob[]
+  conversationsCreated     Conversation[]            @relation("ConversationCreator")
+  conversationParticipants ConversationParticipant[] @relation("ConversationParticipants")
+  messagesSent             Message[]                 @relation("MessageSender")
+  messageDeliveryStatus    MessageDeliveryStatus[]   @relation("MessageDeliveryStatus")
+  messageReactions         MessageReaction[]         @relation("MessageReactions")
+  userSessions             UserSession[]             @relation("UserSessions")
+  unlockedPosts            UnlockedPost[]            @relation("UnlockedPosts")
+  unlockedMessages         UnlockedMessage[]         @relation("UnlockedMessages")
 
-  @@unique([scope, name, value])
-  @@index([parentFacetId, hierarchyLevel])
-  @@index([scope, name])
+  // New group-related relations
+  groupMemberships         GroupMember[]
+  groupInvitationsSent     GroupInvitation[]  @relation("GroupInvitationsSent")
+  groupInvitationsReceived GroupInvitation[]  @relation("GroupInvitationsReceived")
+  groupApplications        GroupApplication[] @relation("GroupApplications")
+  groupApplicationReviews  GroupApplication[] @relation("GroupApplicationReviews")
+  groupPostApprovals       GroupPost[]        @relation("GroupPostApprovals")
+  groupPostRejections      GroupPost[]        @relation("GroupPostRejections")
+  groupActions             GroupAction[]      @relation("GroupActions")
+
+  // Facets and permissions
+  lineManagerId    String?
+  lineManager      User?                    @relation("LineManagement", fields: [lineManagerId], references: [id])
+  directReports    User[]                   @relation("LineManagement")
+  facetAssignments FacetAssignment[]
+  facetHistory     FacetAssignmentHistory[]
+  permissionAudits PermissionAuditLog[]
+
+  @@index([lineManagerId])
+  @@map("users")
 }
 
-model follows {
-  id                               String   @id
-  followerId                       String
-  followingId                      String
-  createdAt                        DateTime @default(now())
-  users_follows_followerIdTousers  users    @relation("follows_followerIdTousers", fields: [followerId], references: [id], onDelete: Cascade)
-  users_follows_followingIdTousers users    @relation("follows_followingIdTousers", fields: [followingId], references: [id], onDelete: Cascade)
+model Post {
+  id                String            @id @default(cuid())
+  title             String?
+  content           String
+  publicationStatus PublicationStatus @default(PUBLIC)
+  visibility        Visibility        @default(PUBLIC)
+  authorId          String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  isLocked          Boolean           @default(false)
+  unlockPrice       Int?
+  author            User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments          Comment[]
+  reactions         Reaction[]
+  media             PostMedia[]
+  hashtags          Hashtag[]
+  mentions          Mention[]
+  notifications     Notification[]
+  unlockedBy        UnlockedPost[]    @relation("UnlockedPosts")
+  groupPosts        GroupPost[] // New relation for group posts
 
-  @@unique([followerId, followingId])
+  @@map("posts")
 }
 
-model friend_requests {
-  id                                      String              @id
-  senderId                                String
-  receiverId                              String
-  status                                  FriendRequestStatus @default(PENDING)
-  createdAt                               DateTime            @default(now())
-  updatedAt                               DateTime
-  users_friend_requests_receiverIdTousers users               @relation("friend_requests_receiverIdTousers", fields: [receiverId], references: [id], onDelete: Cascade)
-  users_friend_requests_senderIdTousers   users               @relation("friend_requests_senderIdTousers", fields: [senderId], references: [id], onDelete: Cascade)
+model Comment {
+  id            String         @id @default(cuid())
+  content       String
+  postId        String?
+  authorId      String
+  parentId      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  mediaId       String?
+  post          Post?          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media         Media?         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent        Comment?       @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replies       Comment[]      @relation("CommentReplies")
+  reactions     Reaction[]
+  notifications Notification[]
 
-  @@unique([senderId, receiverId])
+  @@map("comments")
 }
 
-model galleries {
-  id                                  String     @id
-  name                                String
-  description                         String?
-  visibility                          Visibility @default(PUBLIC)
-  authorId                            String
-  createdAt                           DateTime   @default(now())
-  updatedAt                           DateTime
-  coverMediaId                        String?    @unique
-  users                               users      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  media_galleries_coverMediaIdTomedia media?     @relation("galleries_coverMediaIdTomedia", fields: [coverMediaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  media_media_galleryIdTogalleries    media[]    @relation("media_galleryIdTogalleries")
+model Reaction {
+  id        String       @id @default(cuid())
+  type      ReactionType
+  postId    String?
+  commentId String?
+  authorId  String
+  createdAt DateTime     @default(now())
+  post      Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment   Comment?     @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, authorId])
+  @@unique([commentId, authorId])
+  @@map("reactions")
 }
 
-model group_actions {
-  id          String          @id
-  groupId     String
-  userId      String
-  actionType  GroupActionType
-  description String
-  metadata    Json?
-  createdAt   DateTime        @default(now())
-  groups      groups          @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  users       users           @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Media {
+  id                    String               @id @default(cuid())
+  url                   String
+  thumbnail             String?
+  s3Key                 String?
+  thumbnailS3Key        String?
+  originalFilename      String?
+  altText               String?
+  caption               String?
+  width                 Int?
+  height                Int?
+  size                  Int?
+  mimeType              String?
+  tags                  String[]             @default([])
+  visibility            Visibility           @default(PUBLIC)
+  postId                String?
+  authorId              String
+  galleryId             String?
+  order                 Int                  @default(0)
+  mediaType             MediaType            @default(IMAGE)
+  processingStatus      ProcessingStatus     @default(COMPLETED)
+  duration              Float?
+  codec                 String?
+  bitrate               Int?
+  framerate             Float?
+  videoUrl              String?
+  videoS3Key            String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  videoMetadata         Json?
+  videoProcessingStatus ProcessingStatus?
+  videoThumbnails       Json?
+  videoVersions         Json?
+  imageMetadata         Json?
+  imageProcessingStatus ProcessingStatus?
+  imageVersions         Json?
+  posts                 PostMedia[]
+  author                User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  gallery               Gallery?             @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+  coverForGallery       Gallery?             @relation("GalleryCover")
+  groupAvatar           Group?               @relation("GroupAvatar")
+  groupCoverPhoto       Group?               @relation("GroupCoverPhoto")
+  comments              Comment[]
+  mediaProcessingJobs   MediaProcessingJob[]
+  messages              Message[]            @relation("MessageMedia")
+  messageMediaItems     MessageMedia[]       @relation("MessageMediaItems")
+
+  @@map("media")
 }
 
-model group_applications {
-  id                                          String              @id
-  groupId                                     String
-  applicantId                                 String
-  message                                     String?
-  status                                      FriendRequestStatus @default(PENDING)
-  reviewedAt                                  DateTime?
-  reviewedBy                                  String?
-  createdAt                                   DateTime            @default(now())
-  updatedAt                                   DateTime
-  users_group_applications_applicantIdTousers users               @relation("group_applications_applicantIdTousers", fields: [applicantId], references: [id], onDelete: Cascade)
-  groups                                      groups              @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  users_group_applications_reviewedByTousers  users?              @relation("group_applications_reviewedByTousers", fields: [reviewedBy], references: [id])
+model Gallery {
+  id           String     @id @default(cuid())
+  name         String
+  description  String?
+  visibility   Visibility @default(PUBLIC)
+  authorId     String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  coverMediaId String?    @unique
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  media        Media[]
+  coverMedia   Media?     @relation("GalleryCover", fields: [coverMediaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
-  @@unique([groupId, applicantId])
+  @@map("galleries")
 }
 
-model group_invitations {
-  id                                           String    @id
-  groupId                                      String
-  inviterId                                    String
-  inviteeEmail                                 String?
-  inviteeUserId                                String?
-  inviteCode                                   String    @unique
-  expiresAt                                    DateTime
-  acceptedAt                                   DateTime?
-  createdAt                                    DateTime  @default(now())
-  groups                                       groups    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  users_group_invitations_inviteeUserIdTousers users?    @relation("group_invitations_inviteeUserIdTousers", fields: [inviteeUserId], references: [id])
-  users_group_invitations_inviterIdTousers     users     @relation("group_invitations_inviterIdTousers", fields: [inviterId], references: [id], onDelete: Cascade)
-}
-
-model group_members {
-  id          String            @id
-  groupId     String
-  userId      String
-  role        GroupMemberRole   @default(MEMBER)
-  status      GroupMemberStatus @default(ACTIVE)
-  joinedAt    DateTime          @default(now())
-  leftAt      DateTime?
-  suspendedAt DateTime?
-  bannedAt    DateTime?
-  groups      groups            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  users       users             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([groupId, userId])
-}
-
-model group_posts {
-  id                                  String          @id
-  groupId                             String
-  postId                              String
-  status                              GroupPostStatus @default(PENDING_APPROVAL)
-  isPriority                          Boolean         @default(false)
-  approvedAt                          DateTime?
-  approvedBy                          String?
-  rejectedAt                          DateTime?
-  rejectedBy                          String?
-  rejectionReason                     String?
-  createdAt                           DateTime        @default(now())
-  updatedAt                           DateTime
-  users_group_posts_approvedByTousers users?          @relation("group_posts_approvedByTousers", fields: [approvedBy], references: [id])
-  groups                              groups          @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  posts                               posts           @relation(fields: [postId], references: [id], onDelete: Cascade)
-  users_group_posts_rejectedByTousers users?          @relation("group_posts_rejectedByTousers", fields: [rejectedBy], references: [id])
-
-  @@unique([groupId, postId])
-}
-
-model groups {
-  id                               String                @id
-  name                             String
-  username                         String                @unique
-  description                      String?
-  rules                            String?
-  visibility                       GroupVisibility       @default(PRIVATE_VISIBLE)
-  type                             GroupType             @default(GENERAL)
-  moderationPolicy                 GroupModerationPolicy @default(NO_MODERATION)
-  isActive                         Boolean               @default(true)
-  createdAt                        DateTime              @default(now())
-  updatedAt                        DateTime
-  avatarId                         String?               @unique
-  coverPhotoId                     String?               @unique
-  group_actions                    group_actions[]
-  group_applications               group_applications[]
-  group_invitations                group_invitations[]
-  group_members                    group_members[]
-  group_posts                      group_posts[]
-  media_groups_avatarIdTomedia     media?                @relation("groups_avatarIdTomedia", fields: [avatarId], references: [id])
-  media_groups_coverPhotoIdTomedia media?                @relation("groups_coverPhotoIdTomedia", fields: [coverPhotoId], references: [id])
-}
-
-model hashtags {
-  id        String   @id
+model Hashtag {
+  id        String   @id @default(cuid())
   name      String   @unique
   createdAt DateTime @default(now())
-  posts     posts[]  @relation("HashtagToPost")
+  posts     Post[]
+
+  @@map("hashtags")
 }
 
-model media {
-  id                                      String                  @id
-  url                                     String
-  thumbnail                               String?
-  s3Key                                   String?
-  thumbnailS3Key                          String?
-  originalFilename                        String?
-  altText                                 String?
-  caption                                 String?
-  width                                   Int?
-  height                                  Int?
-  size                                    Int?
-  mimeType                                String?
-  tags                                    String[]                @default([])
-  visibility                              Visibility              @default(PUBLIC)
-  postId                                  String?
-  authorId                                String
-  galleryId                               String?
-  order                                   Int                     @default(0)
-  mediaType                               MediaType               @default(IMAGE)
-  processingStatus                        ProcessingStatus        @default(COMPLETED)
-  duration                                Float?
-  codec                                   String?
-  bitrate                                 Int?
-  framerate                               Float?
-  videoUrl                                String?
-  videoS3Key                              String?
-  createdAt                               DateTime                @default(now())
-  updatedAt                               DateTime
-  videoMetadata                           Json?
-  videoProcessingStatus                   ProcessingStatus?
-  videoThumbnails                         Json?
-  videoVersions                           Json?
-  imageMetadata                           Json?
-  imageProcessingStatus                   ProcessingStatus?
-  imageVersions                           Json?
-  comments                                comments[]
-  galleries_galleries_coverMediaIdTomedia galleries?              @relation("galleries_coverMediaIdTomedia")
-  groups_groups_avatarIdTomedia           groups?                 @relation("groups_avatarIdTomedia")
-  groups_groups_coverPhotoIdTomedia       groups?                 @relation("groups_coverPhotoIdTomedia")
-  users                                   users                   @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  galleries_media_galleryIdTogalleries    galleries?              @relation("media_galleryIdTogalleries", fields: [galleryId], references: [id])
-  media_processing_jobs                   media_processing_jobs[]
-  message_media                           message_media[]
-  messages                                messages[]
-  post_media                              post_media[]
+model Mention {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("mentions")
 }
 
-model media_processing_jobs {
-  id               String           @id
+model Follows {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model FriendRequest {
+  id         String              @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     FriendRequestStatus @default(PENDING)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  sender     User                @relation("UserFriendRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User                @relation("UserFriendRequestsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@map("friend_requests")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  userId    String
+  postId    String?
+  commentId String?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment   Comment?         @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("notifications")
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  query     String
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("search_history")
+}
+
+model PostMedia {
+  id       String  @id @default(cuid())
+  postId   String
+  mediaId  String
+  order    Int     @default(0)
+  isLocked Boolean @default(false)
+  post     Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media    Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, mediaId])
+  @@map("post_media")
+}
+
+model MediaProcessingJob {
+  id               String           @id @default(cuid())
   mediaId          String
   userId           String
   mediaType        MediaType
@@ -344,273 +297,355 @@ model media_processing_jobs {
   imageVersions    Json?
   metadata         Json?
   createdAt        DateTime         @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime         @updatedAt
   completedAt      DateTime?
-  media            media            @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  users            users            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media            Media            @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("media_processing_jobs")
 }
 
-model mentions {
-  id        String   @id
-  postId    String
-  userId    String
-  createdAt DateTime @default(now())
-  posts     posts    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Conversation {
+  id            String                    @id @default(cuid())
+  type          ConversationType          @default(DIRECT)
+  name          String?
+  avatarUrl     String?
+  createdById   String
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  lastMessageAt DateTime?
+  isActive      Boolean                   @default(true)
+  createdBy     User                      @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  participants  ConversationParticipant[]
+  messages      Message[]
 
-  @@unique([postId, userId])
+  @@map("conversations")
 }
 
-model message_delivery_status {
-  id          String         @id
+model ConversationParticipant {
+  id             String          @id @default(cuid())
+  conversationId String
+  userId         String
+  role           ParticipantRole @default(MEMBER)
+  joinedAt       DateTime        @default(now())
+  leftAt         DateTime?
+  isActive       Boolean         @default(true)
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User            @relation("ConversationParticipants", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id                String                  @id @default(cuid())
+  conversationId    String
+  senderId          String
+  content           String?
+  messageType       MessageType             @default(TEXT)
+  mediaId           String?
+  replyToId         String?
+  encryptedContent  String?
+  encryptionVersion Int                     @default(1)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  isDeleted         Boolean                 @default(false)
+  isLocked          Boolean                 @default(false)
+  unlockPrice       Int?
+  conversation      Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender            User                    @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  media             Media?                  @relation("MessageMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  mediaItems        MessageMedia[]          @relation("MessageMediaItems")
+  deliveryStatus    MessageDeliveryStatus[]
+  reactions         MessageReaction[]
+  unlockedBy        UnlockedMessage[]       @relation("UnlockedMessages")
+
+  @@map("messages")
+}
+
+model MessageMedia {
+  id        String  @id @default(cuid())
+  messageId String
+  mediaId   String
+  order     Int     @default(0)
+  isLocked  Boolean @default(false)
+  message   Message @relation("MessageMediaItems", fields: [messageId], references: [id], onDelete: Cascade)
+  media     Media   @relation("MessageMediaItems", fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, mediaId])
+  @@map("message_media")
+}
+
+model MessageDeliveryStatus {
+  id          String         @id @default(cuid())
   messageId   String
   userId      String
   status      DeliveryStatus @default(SENT)
   deliveredAt DateTime?
   readAt      DateTime?
-  messages    messages       @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  users       users          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message     Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User           @relation("MessageDeliveryStatus", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
+  @@map("message_delivery_status")
 }
 
-model message_media {
-  id        String   @id
-  messageId String
-  mediaId   String
-  order     Int      @default(0)
-  isLocked  Boolean  @default(false)
-  media     media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  messages  messages @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, mediaId])
-}
-
-model message_reactions {
-  id        String   @id
+model MessageReaction {
+  id        String   @id @default(cuid())
   messageId String
   userId    String
   reaction  String
   createdAt DateTime @default(now())
-  messages  messages @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation("MessageReactions", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId, reaction])
+  @@map("message_reactions")
 }
 
-model messages {
-  id                      String                    @id
-  conversationId          String
-  senderId                String
-  content                 String?
-  messageType             MessageType               @default(TEXT)
-  mediaId                 String?
-  replyToId               String?
-  encryptedContent        String?
-  encryptionVersion       Int                       @default(1)
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime
-  isDeleted               Boolean                   @default(false)
-  isLocked                Boolean                   @default(false)
-  unlockPrice             Int?
-  message_delivery_status message_delivery_status[]
-  message_media           message_media[]
-  message_reactions       message_reactions[]
-  conversations           conversations             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  media                   media?                    @relation(fields: [mediaId], references: [id])
-  users                   users                     @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  unlocked_messages       unlocked_messages[]
-}
-
-model notifications {
-  id        String           @id
-  type      NotificationType
-  title     String
-  message   String
-  isRead    Boolean          @default(false)
-  userId    String
-  postId    String?
-  commentId String?
-  createdAt DateTime         @default(now())
-  comments  comments?        @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  posts     posts?           @relation(fields: [postId], references: [id], onDelete: Cascade)
-  users     users            @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model permission_audit_logs {
-  id              String   @id
-  userId          String?
-  resourceType    String
-  resourceId      String
-  operation       String
-  granted         Boolean
-  reason          String
-  reasonCode      String?
-  ipAddress       String?
-  userAgent       String?
-  requestId       String?
-  executionTimeMs Int?
-  facetsChecked   Json?
-  createdAt       DateTime @default(now())
-  users           users?   @relation(fields: [userId], references: [id])
-
-  @@index([createdAt])
-  @@index([operation, granted])
-  @@index([resourceType, resourceId])
-  @@index([userId, createdAt])
-}
-
-model post_media {
-  id       String  @id
-  postId   String
-  mediaId  String
-  order    Int     @default(0)
-  isLocked Boolean @default(false)
-  media    media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  posts    posts   @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@unique([postId, mediaId])
-}
-
-model posts {
-  id                String            @id
-  title             String?
-  content           String
-  publicationStatus PublicationStatus @default(PUBLIC)
-  visibility        Visibility        @default(PUBLIC)
-  authorId          String
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime
-  isLocked          Boolean           @default(false)
-  unlockPrice       Int?
-  comments          comments[]
-  group_posts       group_posts[]
-  mentions          mentions[]
-  notifications     notifications[]
-  post_media        post_media[]
-  users             users             @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  reactions         reactions[]
-  unlocked_posts    unlocked_posts[]
-  hashtags          hashtags[]        @relation("HashtagToPost")
-}
-
-model reactions {
-  id        String       @id
-  type      ReactionType
-  postId    String?
-  commentId String?
-  authorId  String
-  createdAt DateTime     @default(now())
-  users     users        @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comments  comments?    @relation(fields: [commentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  posts     posts?       @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@unique([commentId, authorId])
-  @@unique([postId, authorId])
-}
-
-model search_history {
-  id        String   @id
-  query     String
-  userId    String
-  createdAt DateTime @default(now())
-  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model unlocked_messages {
-  id         String   @id
-  userId     String
-  messageId  String
-  paidAmount Int
-  unlockedAt DateTime @default(now())
-  messages   messages @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  users      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, messageId])
-}
-
-model unlocked_posts {
-  id         String   @id
+model UnlockedPost {
+  id         String   @id @default(cuid())
   userId     String
   postId     String
   paidAmount Int
   unlockedAt DateTime @default(now())
-  posts      posts    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  users      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User     @relation("UnlockedPosts", fields: [userId], references: [id], onDelete: Cascade)
+  post       Post     @relation("UnlockedPosts", fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([userId, postId])
+  @@map("unlocked_posts")
 }
 
-model user_sessions {
-  id         String   @id
+model UnlockedMessage {
+  id         String   @id @default(cuid())
+  userId     String
+  messageId  String
+  paidAmount Int
+  unlockedAt DateTime @default(now())
+  user       User     @relation("UnlockedMessages", fields: [userId], references: [id], onDelete: Cascade)
+  message    Message  @relation("UnlockedMessages", fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@map("unlocked_messages")
+}
+
+model UserSession {
+  id         String   @id @default(cuid())
   userId     String
   sessionId  String   @unique
   deviceInfo Json?
   lastSeen   DateTime @default(now())
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
-  users      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User     @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
 }
 
-model users {
-  id                                                       String                      @id
-  email                                                    String                      @unique
-  name                                                     String
-  username                                                 String?                     @unique
-  password                                                 String
-  avatar                                                   String?
-  bio                                                      String?
-  location                                                 String?
-  website                                                  String?
-  isPrivate                                                Boolean                     @default(false)
-  isVerified                                               Boolean                     @default(false)
-  createdAt                                                DateTime                    @default(now())
-  updatedAt                                                DateTime
-  canPublishLockedMedia                                    Boolean                     @default(false)
-  emailVerified                                            Boolean                     @default(false)
-  emailVerifiedAt                                          DateTime?
-  lineManagerId                                            String?
-  comments                                                 comments[]
-  conversation_participants                                conversation_participants[]
-  conversations                                            conversations[]
-  facet_assignment_history                                 facet_assignment_history[]
-  facet_assignments                                        facet_assignments[]
-  follows_follows_followerIdTousers                        follows[]                   @relation("follows_followerIdTousers")
-  follows_follows_followingIdTousers                       follows[]                   @relation("follows_followingIdTousers")
-  friend_requests_friend_requests_receiverIdTousers        friend_requests[]           @relation("friend_requests_receiverIdTousers")
-  friend_requests_friend_requests_senderIdTousers          friend_requests[]           @relation("friend_requests_senderIdTousers")
-  galleries                                                galleries[]
-  group_actions                                            group_actions[]
-  group_applications_group_applications_applicantIdTousers group_applications[]        @relation("group_applications_applicantIdTousers")
-  group_applications_group_applications_reviewedByTousers  group_applications[]        @relation("group_applications_reviewedByTousers")
-  group_invitations_group_invitations_inviteeUserIdTousers group_invitations[]         @relation("group_invitations_inviteeUserIdTousers")
-  group_invitations_group_invitations_inviterIdTousers     group_invitations[]         @relation("group_invitations_inviterIdTousers")
-  group_members                                            group_members[]
-  group_posts_group_posts_approvedByTousers                group_posts[]               @relation("group_posts_approvedByTousers")
-  group_posts_group_posts_rejectedByTousers                group_posts[]               @relation("group_posts_rejectedByTousers")
-  media                                                    media[]
-  media_processing_jobs                                    media_processing_jobs[]
-  mentions                                                 mentions[]
-  message_delivery_status                                  message_delivery_status[]
-  message_reactions                                        message_reactions[]
-  messages                                                 messages[]
-  notifications                                            notifications[]
-  permission_audit_logs                                    permission_audit_logs[]
-  posts                                                    posts[]
-  reactions                                                reactions[]
-  search_history                                           search_history[]
-  unlocked_messages                                        unlocked_messages[]
-  unlocked_posts                                           unlocked_posts[]
-  user_sessions                                            user_sessions[]
-  users                                                    users?                      @relation("usersTousers", fields: [lineManagerId], references: [id])
-  other_users                                              users[]                     @relation("usersTousers")
+// Group Models
+model Group {
+  id               String                @id @default(cuid())
+  name             String
+  username         String                @unique
+  description      String?
+  rules            String?
+  coverPhotoId     String?               @unique
+  avatarId         String?               @unique
+  visibility       GroupVisibility       @default(PRIVATE_VISIBLE)
+  type             GroupType             @default(GENERAL)
+  moderationPolicy GroupModerationPolicy @default(NO_MODERATION)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
-  @@index([lineManagerId])
+  // Relations
+  members         GroupMember[]
+  posts           GroupPost[]
+  invitations     GroupInvitation[]
+  applications    GroupApplication[]
+  actions         GroupAction[]
+  avatarMedia     Media?             @relation("GroupAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  coverPhotoMedia Media?             @relation("GroupCoverPhoto", fields: [coverPhotoId], references: [id], onDelete: SetNull)
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id          String            @id @default(cuid())
+  groupId     String
+  userId      String
+  role        GroupMemberRole   @default(MEMBER)
+  status      GroupMemberStatus @default(ACTIVE)
+  joinedAt    DateTime          @default(now())
+  leftAt      DateTime?
+  suspendedAt DateTime?
+  bannedAt    DateTime?
+
+  // Relations
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+model GroupPost {
+  id              String          @id @default(cuid())
+  groupId         String
+  postId          String
+  status          GroupPostStatus @default(PENDING_APPROVAL)
+  isPriority      Boolean         @default(false)
+  approvedAt      DateTime?
+  approvedBy      String?
+  rejectedAt      DateTime?
+  rejectedBy      String?
+  rejectionReason String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  group          Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  post           Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  approvedByUser User? @relation("GroupPostApprovals", fields: [approvedBy], references: [id])
+  rejectedByUser User? @relation("GroupPostRejections", fields: [rejectedBy], references: [id])
+
+  @@unique([groupId, postId])
+  @@map("group_posts")
+}
+
+model GroupInvitation {
+  id            String    @id @default(cuid())
+  groupId       String
+  inviterId     String
+  inviteeEmail  String?
+  inviteeUserId String?
+  inviteCode    String    @unique
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  group   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviter User  @relation("GroupInvitationsSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User? @relation("GroupInvitationsReceived", fields: [inviteeUserId], references: [id])
+
+  @@map("group_invitations")
+}
+
+model GroupApplication {
+  id          String              @id @default(cuid())
+  groupId     String
+  applicantId String
+  message     String?
+  status      FriendRequestStatus @default(PENDING)
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  // Relations
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  applicant User  @relation("GroupApplications", fields: [applicantId], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("GroupApplicationReviews", fields: [reviewedBy], references: [id])
+
+  @@unique([groupId, applicantId])
+  @@map("group_applications")
+}
+
+model GroupAction {
+  id          String          @id @default(cuid())
+  groupId     String
+  userId      String
+  actionType  GroupActionType
+  description String
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+
+  // Relations
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation("GroupActions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("group_actions")
+}
+
+model HashtagToPost {
+  A String
+  B String
+
+  @@unique([A, B], map: "_HashtagToPost_AB_unique")
+  @@index([B], map: "_HashtagToPost_B_index")
+  @@map("_HashtagToPost")
+}
+
+enum ReactionType {
+  LIKE
+  LOVE
+  HAHA
+  WOW
+  SAD
+  ANGRY
+}
+
+enum PublicationStatus {
+  PUBLIC
+  PAUSED
+  CONTROLLED
+  DELETED
+}
+
+enum Visibility {
+  PUBLIC
+  FRIENDS_ONLY
+  PRIVATE
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+  MENTION
+  FRIEND_REQUEST
+  FRIEND_REQUEST_ACCEPTED
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
 }
 
 enum ConversationType {
   DIRECT
   GROUP
+}
+
+enum ParticipantRole {
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  SYSTEM
+  POST
 }
 
 enum DeliveryStatus {
@@ -619,20 +654,49 @@ enum DeliveryStatus {
   READ
 }
 
-enum FacetAction {
-  ASSIGNED
-  REVOKED
-  EXPIRED
-  REVIEWED
-  EXTENDED
-  MODIFIED
+// Group-related enums
+enum GroupVisibility {
+  PUBLIC
+  PRIVATE_VISIBLE
+  PRIVATE_HIDDEN
 }
 
-enum FriendRequestStatus {
-  PENDING
-  ACCEPTED
+enum GroupType {
+  GENERAL
+  SOCIAL_LEARNING
+  GAMING
+  JOBS
+  BUY_SELL
+  PARENTING
+  WORK
+}
+
+enum GroupMemberRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum GroupMemberStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  PENDING_APPROVAL
+}
+
+enum GroupPostStatus {
+  PENDING_APPROVAL
+  APPROVED
   REJECTED
-  CANCELLED
+  DELETED
+}
+
+enum GroupModerationPolicy {
+  NO_MODERATION
+  ADMIN_APPROVAL_REQUIRED
+  AI_FILTER
+  SELECTIVE_MODERATION
 }
 
 enum GroupActionType {
@@ -654,105 +718,117 @@ enum GroupActionType {
   SETTINGS_CHANGED
 }
 
-enum GroupMemberRole {
-  OWNER
-  ADMIN
-  MODERATOR
-  MEMBER
+model EmailVerification {
+  id        String   @id @default(cuid())
+  email     String
+  code      String // 6-digit verification code
+  expiresAt DateTime // Code expiration timestamp
+  attempts  Int      @default(0) // Failed verification attempts
+  createdAt DateTime @default(now())
+
+  @@unique([email, code])
+  @@map("email_verifications")
 }
 
-enum GroupMemberStatus {
-  ACTIVE
-  SUSPENDED
-  BANNED
-  PENDING_APPROVAL
+// Facets and Permissions System
+model Facet {
+  id             String                   @id @default(cuid())
+  scope          String // e.g., "reedi-admin", "org-division", "user-role"
+  name           String // e.g., "global", "moderator", "division"
+  value          String                   @default("") // e.g., "engineering", "sales"
+  description    String?
+  requiresAudit  Boolean                  @default(true)
+  expiryDays     Int? // Auto-expiry after N days
+  requiresReview Boolean                  @default(false)
+  reviewDays     Int? // Review required every N days
+  parentFacetId  String?
+  hierarchyLevel Int                      @default(0)
+  isActive       Boolean                  @default(true)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  parentFacet    Facet?                   @relation("FacetHierarchy", fields: [parentFacetId], references: [id])
+  childFacets    Facet[]                  @relation("FacetHierarchy")
+  assignments    FacetAssignment[]
+  history        FacetAssignmentHistory[]
+
+  @@unique([scope, name, value])
+  @@index([scope, name])
+  @@index([parentFacetId, hierarchyLevel])
+  @@map("facets")
 }
 
-enum GroupModerationPolicy {
-  NO_MODERATION
-  ADMIN_APPROVAL_REQUIRED
-  AI_FILTER
-  SELECTIVE_MODERATION
+model FacetAssignment {
+  id           String    @id @default(cuid())
+  facetId      String
+  entityType   String // "user", "media", "group", "post"
+  entityId     String
+  assignedById String?
+  assignedAt   DateTime  @default(now())
+  expiresAt    DateTime?
+  reviewAt     DateTime?
+  reason       String?
+  metadata     Json? // Additional context
+  isActive     Boolean   @default(true)
+  facet        Facet     @relation(fields: [facetId], references: [id], onDelete: Cascade)
+  assignedBy   User?     @relation(fields: [assignedById], references: [id])
+
+  @@unique([facetId, entityType, entityId])
+  @@index([entityType, entityId, isActive])
+  @@index([expiresAt])
+  @@index([reviewAt])
+  @@map("facet_assignments")
 }
 
-enum GroupPostStatus {
-  PENDING_APPROVAL
-  APPROVED
-  REJECTED
-  DELETED
+model FacetAssignmentHistory {
+  id                String      @id @default(cuid())
+  facetId           String
+  entityType        String
+  entityId          String
+  action            FacetAction // ASSIGNED, REVOKED, EXPIRED, REVIEWED, EXTENDED
+  performedById     String?
+  performedAt       DateTime    @default(now())
+  reason            String?
+  expiresAt         DateTime?
+  previousExpiresAt DateTime?
+  metadata          Json?
+  facet             Facet       @relation(fields: [facetId], references: [id], onDelete: Cascade)
+  performedBy       User?       @relation(fields: [performedById], references: [id])
+
+  @@index([entityType, entityId, performedAt])
+  @@index([facetId])
+  @@index([performedAt])
+  @@map("facet_assignment_history")
 }
 
-enum GroupType {
-  GENERAL
-  SOCIAL_LEARNING
-  GAMING
-  JOBS
-  BUY_SELL
-  PARENTING
-  WORK
+model PermissionAuditLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  resourceType    String // "media", "post", "user", etc.
+  resourceId      String
+  operation       String // "read", "create", "update", "delete"
+  granted         Boolean
+  reason          String
+  reasonCode      String? // Machine-readable code
+  ipAddress       String?
+  userAgent       String?
+  requestId       String?
+  executionTimeMs Int?
+  facetsChecked   Json? // Which facets were evaluated
+  createdAt       DateTime @default(now())
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([operation, granted])
+  @@index([createdAt])
+  @@map("permission_audit_logs")
 }
 
-enum GroupVisibility {
-  PUBLIC
-  PRIVATE_VISIBLE
-  PRIVATE_HIDDEN
-}
-
-enum MediaType {
-  IMAGE
-  VIDEO
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  VIDEO
-  AUDIO
-  FILE
-  SYSTEM
-  POST
-}
-
-enum NotificationType {
-  LIKE
-  COMMENT
-  FOLLOW
-  MENTION
-  FRIEND_REQUEST
-  FRIEND_REQUEST_ACCEPTED
-}
-
-enum ParticipantRole {
-  ADMIN
-  MEMBER
-}
-
-enum ProcessingStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  REJECTED
-  FAILED
-}
-
-enum PublicationStatus {
-  PUBLIC
-  PAUSED
-  CONTROLLED
-  DELETED
-}
-
-enum ReactionType {
-  LIKE
-  LOVE
-  HAHA
-  WOW
-  SAD
-  ANGRY
-}
-
-enum Visibility {
-  PUBLIC
-  FRIENDS_ONLY
-  PRIVATE
+enum FacetAction {
+  ASSIGNED
+  REVOKED
+  EXPIRED
+  REVIEWED
+  EXTENDED
+  MODIFIED
 }

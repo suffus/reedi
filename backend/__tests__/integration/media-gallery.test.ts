@@ -54,6 +54,7 @@ describe('Media Gallery Management (P0)', () => {
     it('should return user\'s media gallery', async () => {
       const response = await request(app)
         .get(`/api/media/user/${alice!.id}`)
+        .set('Authorization', `Bearer ${aliceToken}`)
       
       expect(response.status).toBe(200)
       expect(response.body).toHaveProperty('data')
@@ -262,6 +263,7 @@ describe('Media Gallery Management (P0)', () => {
       it('should filter by PRIVATE visibility', async () => {
         const response = await request(app)
           .get(`/api/media/user/${alice!.id}?visibility=PRIVATE`)
+          .set('Authorization', `Bearer ${aliceToken}`)
         
         expect(response.status).toBe(200)
         

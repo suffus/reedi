@@ -7,7 +7,8 @@ import {
   canRejectFriendRequest,
   canCancelFriendRequest,
   canViewFriendshipStatus,
-  canViewFriendsList
+  canViewFriendsList,
+  canRemoveFriend
 } from '@/auth/friends';
 import { Authentication } from '@/types/permissions';
 
@@ -18,7 +19,7 @@ describe('Friend Permissions', () => {
 
   beforeAll(async () => {
     // Create users with unique emails for this test suite
-    user1 = await prisma.users.create({
+    user1 = await prisma.user.create({
       data: { 
         email: 'friends-user1@test.com', 
         name: 'Friends User1', 
@@ -26,7 +27,7 @@ describe('Friend Permissions', () => {
         isPrivate: false
       }
     });
-    user2 = await prisma.users.create({
+    user2 = await prisma.user.create({
       data: { 
         email: 'friends-user2@test.com', 
         name: 'Friends User2', 
@@ -34,7 +35,7 @@ describe('Friend Permissions', () => {
         isPrivate: false
       }
     });
-    user3 = await prisma.users.create({
+    user3 = await prisma.user.create({
       data: { 
         email: 'friends-user3@test.com', 
         name: 'Friends User3', 
@@ -42,7 +43,7 @@ describe('Friend Permissions', () => {
         isPrivate: false
       }
     });
-    user1PrivateProfile = await prisma.users.create({
+    user1PrivateProfile = await prisma.user.create({
       data: { 
         email: 'friends-private@test.com', 
         name: 'Friends Private', 
@@ -50,7 +51,7 @@ describe('Friend Permissions', () => {
         isPrivate: true
       }
     });
-    admin = await prisma.users.create({
+    admin = await prisma.user.create({
       data: { 
         email: 'friends-admin@test.com', 
         name: 'Friends Admin', 
@@ -59,7 +60,7 @@ describe('Friend Permissions', () => {
     });
 
     // Create friend requests
-    pendingRequest = await prisma.friend_requests.create({
+    pendingRequest = await prisma.friendRequest.create({
       data: { 
         senderId: user1.id, 
         receiverId: user2.id, 
@@ -67,7 +68,7 @@ describe('Friend Permissions', () => {
       }
     });
 
-    acceptedRequest = await prisma.friend_requests.create({
+    acceptedRequest = await prisma.friendRequest.create({
       data: { 
         senderId: user2.id, 
         receiverId: user3.id, 
@@ -76,12 +77,20 @@ describe('Friend Permissions', () => {
     });
 
     // Assign admin facet
-    const globalAdminFacet = await prisma.facets.create({
-      data: { scope: 'reedi-admin', name: 'global', value: '' }
+    const globalAdminFacet = await prisma.facet.upsert({
+      where: { 
+        scope_name_value: { scope: 'reedi-admin', name: 'global', value: '' }
+      },
+      update: {},
+      create: { scope: 'reedi-admin', name: 'global', value: '' }
     });
 
-    await prisma.facet_assignments.create({
-      data: { facetId: globalAdminFacet.id, entityType: 'user', entityId: admin.id }
+    await prisma.facetAssignment.upsert({
+      where: {
+        facetId_entityType_entityId: { facetId: globalAdminFacet.id, entityType: 'USER', entityId: admin.id }
+      },
+      update: {},
+      create: { facetId: globalAdminFacet.id, entityType: 'USER', entityId: admin.id }
     });
   });
 
@@ -89,7 +98,7 @@ describe('Friend Permissions', () => {
     // Clean up only data created in this test suite
     const userIds = [user1.id, user2.id, user3.id, user1PrivateProfile.id, admin.id];
     
-    await prisma.friend_requests.deleteMany({
+    await prisma.friendRequest.deleteMany({
       where: {
         OR: [
           { senderId: { in: userIds } },
@@ -97,8 +106,8 @@ describe('Friend Permissions', () => {
         ]
       }
     });
-    await prisma.facet_assignments.deleteMany({ where: { entityId: { in: userIds } } });
-    await prisma.users.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.facetAssignment.deleteMany({ where: { entityId: { in: userIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   });
 
   describe('canSendFriendRequest', () => {

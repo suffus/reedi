@@ -117,7 +117,7 @@ describe('Friends & Following (P0)', () => {
           .post(`/api/friends/request/${alice!.id}`)
           .set('Authorization', `Bearer ${aliceToken}`)
         
-        expect(response.status).toBe(400)
+        expect(response.status).toBe(403)
         expect(response.body.error).toMatch(/yourself|self/i)
       })
       

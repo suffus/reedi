@@ -180,14 +180,14 @@ export async function canDoMediaCreate(
 /**
  * Filter media list to only those user can read
  */
-export async function filterReadableMedia(
+export async function filterReadableMedia<T extends Media & { author?: User | { id: string } }>(
   auth: Authentication,
-  mediaList: (Media & { author?: User })[]
-): Promise<(Media & { author?: User })[]> {
+  mediaList: T[]
+): Promise<T[]> {
   const results = await Promise.all(
     mediaList.map(async (media) => ({
       media,
-      canRead: await canDoMediaRead(auth, media)
+      canRead: await canDoMediaRead(auth, media as any)
     }))
   );
   

@@ -150,14 +150,14 @@ export async function canDoPostDelete(
 /**
  * Filter posts list to only those user can read
  */
-export async function filterReadablePosts(
+export async function filterReadablePosts<T extends Post & { author?: User | { id: string } }>(
   auth: Authentication,
-  posts: (Post & { author?: User })[]
-): Promise<(Post & { author?: User })[]> {
+  posts: T[]
+): Promise<T[]> {
   const results = await Promise.all(
     posts.map(async (post) => ({
       post,
-      canRead: await canDoPostRead(auth, post)
+      canRead: await canDoPostRead(auth, post as any)
     }))
   );
   
