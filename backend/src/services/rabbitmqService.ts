@@ -263,3 +263,104 @@ export class RabbitMQService {
     return !!(this.connection && this.channel)
   }
 }
+
+// Simple helper functions for permission audit logging
+let auditChannel: amqp.Channel | null = null;
+let auditConnection: amqp.Connection | null = null;
+
+/**
+ * Initialize dedicated channel for permission audit logging
+ */
+export async function initAuditChannel(): Promise<void> {
+  try {
+    const url = process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`;
+    
+    auditConnection = await amqp.connect(url);
+    auditChannel = await auditConnection.createChannel();
+    
+    // Declare audit queues
+    await auditChannel.assertQueue('permission-audit', { durable: true });
+    await auditChannel.assertQueue('facet-changes', { durable: true });
+    
+    logger.info('RabbitMQ audit channel initialized');
+  } catch (error) {
+    logger.error('Failed to initialize RabbitMQ audit channel:', error);
+    // Don't throw - we'll fallback to direct DB writes if needed
+  }
+}
+
+/**
+ * Publish message to a queue
+ */
+export async function publishToQueue(
+  queueName: string,
+  data: any
+): Promise<void> {
+  // Initialize if not already done
+  if (!auditChannel && !auditConnection) {
+    await initAuditChannel();
+  }
+  
+  if (!auditChannel) {
+    throw new Error('RabbitMQ audit channel not initialized');
+  }
+  
+  await auditChannel.sendToQueue(
+    queueName,
+    Buffer.from(JSON.stringify(data)),
+    { persistent: true }
+  );
+  
+  logger.debug(`Published message to queue ${queueName}`);
+}
+
+/**
+ * Consume messages from a queue
+ */
+export async function consumeQueue(
+  queueName: string,
+  handler: (data: any) => Promise<void>
+): Promise<void> {
+  if (!auditChannel) {
+    await initAuditChannel();
+  }
+  
+  if (!auditChannel) {
+    throw new Error('RabbitMQ audit channel not initialized');
+  }
+  
+  await auditChannel.consume(queueName, async (msg) => {
+    if (!msg) return;
+    
+    try {
+      const data = JSON.parse(msg.content.toString());
+      await handler(data);
+      auditChannel!.ack(msg);
+    } catch (error) {
+      logger.error('Error processing message:', error);
+      // Reject and requeue
+      auditChannel!.nack(msg, false, true);
+    }
+  });
+  
+  logger.info(`Started consuming from queue: ${queueName}`);
+}
+
+/**
+ * Close audit channel
+ */
+export async function closeAuditChannel(): Promise<void> {
+  try {
+    if (auditChannel) {
+      await auditChannel.close();
+      auditChannel = null;
+    }
+    if (auditConnection) {
+      await auditConnection.close();
+      auditConnection = null;
+    }
+    logger.info('RabbitMQ audit channel closed');
+  } catch (error) {
+    logger.error('Error closing RabbitMQ audit channel:', error);
+  }
+}

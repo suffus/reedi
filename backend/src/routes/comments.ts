@@ -1,16 +1,54 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
-import { authMiddleware } from '@/middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
+import { getAuthContext } from '@/middleware/authContext'
+import {
+  canViewCommentsOnPost,
+  canViewCommentsOnMedia,
+  canCommentOnPost,
+  canCommentOnMedia,
+  canUpdateComment,
+  canDeleteComment
+} from '@/auth/comments'
+import { safePermissionCheck, auditPermission } from '@/lib/permissions'
 
 const router = Router()
 
 // Get comments for a post
-router.get('/post/:postId', asyncHandler(async (req: Request, res: Response) => {
+router.get('/post/:postId', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { postId } = req.params
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
+
+  // Check if user can view this post (and thus its comments)
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    include: { author: true }
+  })
+
+  if (!post) {
+    res.status(404).json({
+      success: false,
+      error: 'Post not found'
+    })
+    return
+  }
+
+  const canView = await safePermissionCheck(
+    () => canViewCommentsOnPost(auth, post as any),
+    'comment-view-post'
+  )
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
+    })
+    return
+  }
 
   const [comments, total] = await Promise.all([
     prisma.comment.findMany({
@@ -75,10 +113,38 @@ router.get('/post/:postId', asyncHandler(async (req: Request, res: Response) => 
 }))
 
 // Get comments for media
-router.get('/media/:mediaId', asyncHandler(async (req: Request, res: Response) => {
+router.get('/media/:mediaId', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { mediaId } = req.params
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
+
+  // Check if user can view this media (and thus its comments)
+  const media = await prisma.media.findUnique({
+    where: { id: mediaId },
+    include: { author: true }
+  })
+
+  if (!media) {
+    res.status(404).json({
+      success: false,
+      error: 'Media not found'
+    })
+    return
+  }
+
+  const canView = await safePermissionCheck(
+    () => canViewCommentsOnMedia(auth, media as any),
+    'comment-view-media'
+  )
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
+    })
+    return
+  }
 
   const [comments, total] = await Promise.all([
     prisma.comment.findMany({
@@ -144,6 +210,7 @@ router.get('/media/:mediaId', asyncHandler(async (req: Request, res: Response) =
 
 // Create a comment
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { content, postId, mediaId, parentId } = req.body
 
@@ -172,13 +239,11 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     return
   }
 
-  // Check if user can comment on the post/image
+  // Check permission to comment on post or media
   if (postId) {
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      include: {
-        author: true
-      }
+      include: { author: true }
     })
 
     if (!post) {
@@ -189,25 +254,15 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
       return
     }
 
-    // Allow commenting if:
-    // 1. User is the post author
-    // 2. User is a friend of the post author
-    // 3. Post is public and not private
-    const isAuthor = post.authorId === userId
-    const isFriend = await prisma.friendRequest.findFirst({
-      where: {
-        OR: [
-          { senderId: userId, receiverId: post.authorId, status: 'ACCEPTED' },
-          { senderId: post.authorId, receiverId: userId, status: 'ACCEPTED' }
-        ]
-      }
-    })
-    const isPublicPost = post.visibility === 'PUBLIC'
+    const canComment = await safePermissionCheck(
+      () => canCommentOnPost(auth, post as any),
+      'comment-create-post'
+    )
 
-    if (!isAuthor && !isFriend && !isPublicPost) {
+    if (!canComment.granted) {
       res.status(403).json({
         success: false,
-        error: 'You can only comment on your own posts, friends\' posts, or public posts'
+        error: canComment.reason
       })
       return
     }
@@ -216,9 +271,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
   if (mediaId) {
     const media = await prisma.media.findUnique({
       where: { id: mediaId },
-      include: {
-        author: true
-      }
+      include: { author: true }
     })
 
     if (!media) {
@@ -229,24 +282,15 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
       return
     }
 
-    // Allow commenting if:
-    // 1. User is the media author
-    // 2. User is a friend of the media author
-    // 3. Media is public (no privacy check for media currently)
-    const isAuthor = media.authorId === userId
-    const isFriend = await prisma.friendRequest.findFirst({
-      where: {
-        OR: [
-          { senderId: userId, receiverId: media.authorId, status: 'ACCEPTED' },
-          { senderId: media.authorId, receiverId: userId, status: 'ACCEPTED' }
-        ]
-      }
-    })
+    const canComment = await safePermissionCheck(
+      () => canCommentOnMedia(auth, media as any),
+      'comment-create-media'
+    )
 
-    if (!isAuthor && !isFriend) {
+    if (!canComment.granted) {
       res.status(403).json({
         success: false,
-        error: 'You can only comment on your own media or friends\' media'
+        error: canComment.reason
       })
       return
     }
@@ -281,6 +325,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
 
 // Update a comment
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { id } = req.params
   const { content } = req.body
@@ -305,10 +350,16 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     return
   }
 
-  if (comment.authorId !== userId) {
+  // Check permission to update
+  const canUpdate = await safePermissionCheck(
+    () => canUpdateComment(auth, comment as any),
+    'comment-update'
+  )
+
+  if (!canUpdate.granted) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to update this comment'
+      error: canUpdate.reason
     })
     return
   }
@@ -337,6 +388,7 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 
 // Delete a comment
 router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { id } = req.params
 
@@ -349,7 +401,15 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   }
 
   const comment = await prisma.comment.findUnique({
-    where: { id }
+    where: { id },
+    include: {
+      post: {
+        select: { authorId: true }
+      },
+      media: {
+        select: { authorId: true }
+      }
+    }
   })
 
   if (!comment) {
@@ -360,10 +420,25 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     return
   }
 
-  if (comment.authorId !== userId) {
+  // Determine parent author ID (post or media author)
+  const parentAuthorId = comment.post?.authorId || comment.media?.authorId
+
+  // Check permission to delete
+  const canDelete = await safePermissionCheck(
+    () => canDeleteComment(auth, comment as any, parentAuthorId),
+    'comment-delete'
+  )
+
+  await auditPermission(canDelete, auth, 'COMMENT', {
+    shouldAudit: true,
+    auditSensitive: false,
+    asyncAudit: true
+  })
+
+  if (!canDelete.granted) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to delete this comment'
+      error: canDelete.reason
     })
     return
   }

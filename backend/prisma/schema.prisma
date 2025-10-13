@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider     = "postgresql"
-  url          = env("DATABASE_URL")
-  relationMode = "prisma"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -49,14 +48,23 @@ model User {
 
   // New group-related relations
   groupMemberships         GroupMember[]
-  groupInvitationsSent     GroupInvitation[]          @relation("GroupInvitationsSent")
-  groupInvitationsReceived GroupInvitation[]          @relation("GroupInvitationsReceived")
-  groupApplications        GroupApplication[]          @relation("GroupApplications")
-  groupApplicationReviews  GroupApplication[]          @relation("GroupApplicationReviews")
-  groupPostApprovals       GroupPost[]                @relation("GroupPostApprovals")
-  groupPostRejections      GroupPost[]                @relation("GroupPostRejections")
-  groupActions             GroupAction[]              @relation("GroupActions")
+  groupInvitationsSent     GroupInvitation[]  @relation("GroupInvitationsSent")
+  groupInvitationsReceived GroupInvitation[]  @relation("GroupInvitationsReceived")
+  groupApplications        GroupApplication[] @relation("GroupApplications")
+  groupApplicationReviews  GroupApplication[] @relation("GroupApplicationReviews")
+  groupPostApprovals       GroupPost[]        @relation("GroupPostApprovals")
+  groupPostRejections      GroupPost[]        @relation("GroupPostRejections")
+  groupActions             GroupAction[]      @relation("GroupActions")
 
+  // Facets and permissions
+  lineManagerId    String?
+  lineManager      User?                    @relation("LineManagement", fields: [lineManagerId], references: [id])
+  directReports    User[]                   @relation("LineManagement")
+  facetAssignments FacetAssignment[]
+  facetHistory     FacetAssignmentHistory[]
+  permissionAudits PermissionAuditLog[]
+
+  @@index([lineManagerId])
   @@map("users")
 }
 
@@ -79,7 +87,7 @@ model Post {
   mentions          Mention[]
   notifications     Notification[]
   unlockedBy        UnlockedPost[]    @relation("UnlockedPosts")
-  groupPosts        GroupPost[]       // New relation for group posts
+  groupPosts        GroupPost[] // New relation for group posts
 
   @@map("posts")
 }
@@ -436,127 +444,127 @@ model UserSession {
 
 // Group Models
 model Group {
-  id                String              @id @default(cuid())
-  name              String
-  username          String              @unique
-  description       String?
-  rules             String?
-  coverPhotoId      String?    @unique
-  avatarId          String?    @unique
-  visibility        GroupVisibility     @default(PRIVATE_VISIBLE)
-  type              GroupType           @default(GENERAL)
-  moderationPolicy  GroupModerationPolicy @default(NO_MODERATION)
-  isActive          Boolean             @default(true)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
+  id               String                @id @default(cuid())
+  name             String
+  username         String                @unique
+  description      String?
+  rules            String?
+  coverPhotoId     String?               @unique
+  avatarId         String?               @unique
+  visibility       GroupVisibility       @default(PRIVATE_VISIBLE)
+  type             GroupType             @default(GENERAL)
+  moderationPolicy GroupModerationPolicy @default(NO_MODERATION)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
   // Relations
-  members           GroupMember[]
-  posts             GroupPost[]
-  invitations       GroupInvitation[]
-  applications      GroupApplication[]
-  actions           GroupAction[]
-  avatarMedia       Media?               @relation("GroupAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
-  coverPhotoMedia   Media?               @relation("GroupCoverPhoto", fields: [coverPhotoId], references: [id], onDelete: SetNull)
-  
+  members         GroupMember[]
+  posts           GroupPost[]
+  invitations     GroupInvitation[]
+  applications    GroupApplication[]
+  actions         GroupAction[]
+  avatarMedia     Media?             @relation("GroupAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  coverPhotoMedia Media?             @relation("GroupCoverPhoto", fields: [coverPhotoId], references: [id], onDelete: SetNull)
+
   @@map("groups")
 }
 
 model GroupMember {
-  id        String            @id @default(cuid())
-  groupId   String
-  userId    String
-  role      GroupMemberRole   @default(MEMBER)
-  status    GroupMemberStatus @default(ACTIVE)
-  joinedAt  DateTime          @default(now())
-  leftAt    DateTime?
+  id          String            @id @default(cuid())
+  groupId     String
+  userId      String
+  role        GroupMemberRole   @default(MEMBER)
+  status      GroupMemberStatus @default(ACTIVE)
+  joinedAt    DateTime          @default(now())
+  leftAt      DateTime?
   suspendedAt DateTime?
-  bannedAt  DateTime?
-  
+  bannedAt    DateTime?
+
   // Relations
-  group     Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([groupId, userId])
   @@map("group_members")
 }
 
 model GroupPost {
-  id            String          @id @default(cuid())
-  groupId       String
-  postId        String
-  status        GroupPostStatus @default(PENDING_APPROVAL)
-  isPriority    Boolean         @default(false)
-  approvedAt    DateTime?
-  approvedBy    String?
-  rejectedAt    DateTime?
-  rejectedBy    String?
+  id              String          @id @default(cuid())
+  groupId         String
+  postId          String
+  status          GroupPostStatus @default(PENDING_APPROVAL)
+  isPriority      Boolean         @default(false)
+  approvedAt      DateTime?
+  approvedBy      String?
+  rejectedAt      DateTime?
+  rejectedBy      String?
   rejectionReason String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
   // Relations
-  group         Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  post          Post            @relation(fields: [postId], references: [id], onDelete: Cascade)
-  approvedByUser User?          @relation("GroupPostApprovals", fields: [approvedBy], references: [id])
-  rejectedByUser User?          @relation("GroupPostRejections", fields: [rejectedBy], references: [id])
-  
+  group          Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  post           Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  approvedByUser User? @relation("GroupPostApprovals", fields: [approvedBy], references: [id])
+  rejectedByUser User? @relation("GroupPostRejections", fields: [rejectedBy], references: [id])
+
   @@unique([groupId, postId])
   @@map("group_posts")
 }
 
 model GroupInvitation {
-  id          String    @id @default(cuid())
-  groupId     String
-  inviterId   String
-  inviteeEmail String?
+  id            String    @id @default(cuid())
+  groupId       String
+  inviterId     String
+  inviteeEmail  String?
   inviteeUserId String?
-  inviteCode  String    @unique
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  
+  inviteCode    String    @unique
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
   // Relations
-  group       Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  inviter     User      @relation("GroupInvitationsSent", fields: [inviterId], references: [id], onDelete: Cascade)
-  invitee     User?     @relation("GroupInvitationsReceived", fields: [inviteeUserId], references: [id])
-  
+  group   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviter User  @relation("GroupInvitationsSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User? @relation("GroupInvitationsReceived", fields: [inviteeUserId], references: [id])
+
   @@map("group_invitations")
 }
 
 model GroupApplication {
-  id          String    @id @default(cuid())
+  id          String              @id @default(cuid())
   groupId     String
   applicantId String
   message     String?
   status      FriendRequestStatus @default(PENDING)
   reviewedAt  DateTime?
   reviewedBy  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
   // Relations
-  group       Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  applicant   User      @relation("GroupApplications", fields: [applicantId], references: [id], onDelete: Cascade)
-  reviewer    User?     @relation("GroupApplicationReviews", fields: [reviewedBy], references: [id])
-  
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  applicant User  @relation("GroupApplications", fields: [applicantId], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("GroupApplicationReviews", fields: [reviewedBy], references: [id])
+
   @@unique([groupId, applicantId])
   @@map("group_applications")
 }
 
 model GroupAction {
-  id          String        @id @default(cuid())
+  id          String          @id @default(cuid())
   groupId     String
   userId      String
   actionType  GroupActionType
   description String
   metadata    Json?
-  createdAt   DateTime      @default(now())
-  
+  createdAt   DateTime        @default(now())
+
   // Relations
-  group       Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user        User          @relation("GroupActions", fields: [userId], references: [id], onDelete: Cascade)
-  
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation("GroupActions", fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("group_actions")
 }
 
@@ -713,11 +721,114 @@ enum GroupActionType {
 model EmailVerification {
   id        String   @id @default(cuid())
   email     String
-  code      String   // 6-digit verification code
+  code      String // 6-digit verification code
   expiresAt DateTime // Code expiration timestamp
   attempts  Int      @default(0) // Failed verification attempts
   createdAt DateTime @default(now())
-  
+
   @@unique([email, code])
   @@map("email_verifications")
+}
+
+// Facets and Permissions System
+model Facet {
+  id             String                   @id @default(cuid())
+  scope          String // e.g., "reedi-admin", "org-division", "user-role"
+  name           String // e.g., "global", "moderator", "division"
+  value          String                   @default("") // e.g., "engineering", "sales"
+  description    String?
+  requiresAudit  Boolean                  @default(true)
+  expiryDays     Int? // Auto-expiry after N days
+  requiresReview Boolean                  @default(false)
+  reviewDays     Int? // Review required every N days
+  parentFacetId  String?
+  hierarchyLevel Int                      @default(0)
+  isActive       Boolean                  @default(true)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  parentFacet    Facet?                   @relation("FacetHierarchy", fields: [parentFacetId], references: [id])
+  childFacets    Facet[]                  @relation("FacetHierarchy")
+  assignments    FacetAssignment[]
+  history        FacetAssignmentHistory[]
+
+  @@unique([scope, name, value])
+  @@index([scope, name])
+  @@index([parentFacetId, hierarchyLevel])
+  @@map("facets")
+}
+
+model FacetAssignment {
+  id           String    @id @default(cuid())
+  facetId      String
+  entityType   String // "user", "media", "group", "post"
+  entityId     String
+  assignedById String?
+  assignedAt   DateTime  @default(now())
+  expiresAt    DateTime?
+  reviewAt     DateTime?
+  reason       String?
+  metadata     Json? // Additional context
+  isActive     Boolean   @default(true)
+  facet        Facet     @relation(fields: [facetId], references: [id], onDelete: Cascade)
+  assignedBy   User?     @relation(fields: [assignedById], references: [id])
+
+  @@unique([facetId, entityType, entityId])
+  @@index([entityType, entityId, isActive])
+  @@index([expiresAt])
+  @@index([reviewAt])
+  @@map("facet_assignments")
+}
+
+model FacetAssignmentHistory {
+  id                String      @id @default(cuid())
+  facetId           String
+  entityType        String
+  entityId          String
+  action            FacetAction // ASSIGNED, REVOKED, EXPIRED, REVIEWED, EXTENDED
+  performedById     String?
+  performedAt       DateTime    @default(now())
+  reason            String?
+  expiresAt         DateTime?
+  previousExpiresAt DateTime?
+  metadata          Json?
+  facet             Facet       @relation(fields: [facetId], references: [id], onDelete: Cascade)
+  performedBy       User?       @relation(fields: [performedById], references: [id])
+
+  @@index([entityType, entityId, performedAt])
+  @@index([facetId])
+  @@index([performedAt])
+  @@map("facet_assignment_history")
+}
+
+model PermissionAuditLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  resourceType    String // "media", "post", "user", etc.
+  resourceId      String
+  operation       String // "read", "create", "update", "delete"
+  granted         Boolean
+  reason          String
+  reasonCode      String? // Machine-readable code
+  ipAddress       String?
+  userAgent       String?
+  requestId       String?
+  executionTimeMs Int?
+  facetsChecked   Json? // Which facets were evaluated
+  createdAt       DateTime @default(now())
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([operation, granted])
+  @@index([createdAt])
+  @@map("permission_audit_logs")
+}
+
+enum FacetAction {
+  ASSIGNED
+  REVOKED
+  EXPIRED
+  REVIEWED
+  EXTENDED
+  MODIFIED
 }

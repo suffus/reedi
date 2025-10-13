@@ -3,6 +3,16 @@ import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
 import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
+import { getAuthContext } from '@/middleware/authContext'
+import {
+  canDoPostRead,
+  canDoPostCreate,
+  canCreateLockedPost,
+  canDoPostUpdate,
+  canDoPostDelete,
+  filterReadablePosts
+} from '@/auth/posts'
+import { safePermissionCheck, auditPermission } from '@/lib/permissions'
 
 
 const router = Router()
@@ -46,14 +56,16 @@ function createLockedMediaPlaceholder(mediaItem: any) {
 
 // Get all posts (public feed)
 router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { page = 1, limit = 20 } = req.query
   const offset = (Number(page) - 1) * Number(limit)
 
-  const [posts, total] = await Promise.all([
+  // Fetch posts with broader filter, will apply permission filtering
+  const [allPosts, totalPublic] = await Promise.all([
     prisma.post.findMany({
       where: {
         publicationStatus: 'PUBLIC',
-        visibility: 'PUBLIC'
+        // Remove visibility filter - will apply permission-based filtering
       },
       include: {
         author: {
@@ -126,8 +138,15 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
     })
   ])
 
+  // Apply permission filtering
+  const posts = await filterReadablePosts(auth, allPosts)
+  const total = posts.length
+
+  // Apply pagination to filtered results
+  const paginatedPosts = posts.slice(offset, offset + Number(limit))
+
   // Map media to array of media objects in order, filtering locked media data
-  const postsWithOrderedMedia = posts.map(post => {
+  const postsWithOrderedMedia = paginatedPosts.map(post => {
     const userId = req.user?.id
     const isUnlocked = post.unlockedBy && post.unlockedBy.length > 0
     const isOwner = userId ? post.authorId === userId : false
@@ -409,6 +428,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
 
 // Create a new post
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { title, content, visibility, hashtags, mentions, mediaIds, isLocked, unlockPrice, lockedMediaIds } = req.body
 
@@ -420,17 +440,31 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     return
   }
 
+  // Check permission to create post
+  const canCreate = await safePermissionCheck(
+    () => canDoPostCreate(auth),
+    'post-create'
+  )
+
+  if (!canCreate.granted) {
+    res.status(403).json({
+      success: false,
+      error: canCreate.reason
+    })
+    return
+  }
+
   // Check if user can publish locked media
   if (isLocked) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { canPublishLockedMedia: true }
-    })
+    const canCreateLocked = await safePermissionCheck(
+      () => canCreateLockedPost(auth),
+      'post-create-locked'
+    )
 
-    if (!user?.canPublishLockedMedia) {
+    if (!canCreateLocked.granted) {
       res.status(403).json({
         success: false,
-        error: 'You do not have permission to create locked posts'
+        error: canCreateLocked.reason
       })
       return
     }
@@ -553,6 +587,7 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
 
 // Get a single post by ID
 router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { id } = req.params
   const userId = req.user?.id
 
@@ -633,59 +668,27 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  // Check if user can view the post based on publication status and privacy
-  if (post.publicationStatus === 'DELETED') {
-    res.status(404).json({
-      success: false,
-      error: 'Post not found'
+  // Check permission to read this post
+  const canRead = await safePermissionCheck(
+    () => canDoPostRead(auth, post as any),
+    'post-read'
+  )
+
+  // Audit non-public post access
+  if (post.visibility !== 'PUBLIC' || post.publicationStatus !== 'PUBLIC') {
+    await auditPermission(canRead, auth, 'POST', {
+      shouldAudit: true,
+      auditSensitive: true,
+      asyncAudit: true
     })
-    return
   }
 
-  if (post.publicationStatus === 'PAUSED' && post.authorId !== userId) {
-    res.status(404).json({
-      success: false,
-      error: 'Post not found'
-    })
-    return
-  }
-
-  // Check visibility and access rights
-  if (post.visibility === 'PRIVATE' && post.authorId !== userId) {
+  if (!canRead.granted) {
     res.status(403).json({
       success: false,
-      error: 'Access denied'
+      error: canRead.reason
     })
     return
-  }
-
-  // Check FRIENDS_ONLY visibility
-  if (post.visibility === 'FRIENDS_ONLY' && post.authorId !== userId) {
-    if (!userId) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      })
-      return
-    }
-
-    // Check if user is a friend
-    const friendship = await prisma.friendRequest.findFirst({
-      where: {
-        OR: [
-          { senderId: userId, receiverId: post.authorId, status: 'ACCEPTED' },
-          { senderId: post.authorId, receiverId: userId, status: 'ACCEPTED' }
-        ]
-      }
-    })
-
-    if (!friendship) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      })
-      return
-    }
   }
 
   // Map media to array of media objects in order
@@ -702,6 +705,7 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
 
 // Update a post
 router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { id } = req.params
   const { title, content, visibility, hashtags, mediaIds } = req.body
@@ -715,7 +719,8 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
   }
 
   const post = await prisma.post.findUnique({
-    where: { id }
+    where: { id },
+    include: { author: true }
   })
 
   if (!post) {
@@ -726,10 +731,22 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     return
   }
 
-  if (post.authorId !== userId) {
+  // Check permission to update
+  const canUpdate = await safePermissionCheck(
+    () => canDoPostUpdate(auth, post as any),
+    'post-update'
+  )
+
+  await auditPermission(canUpdate, auth, 'POST', {
+    shouldAudit: true,
+    auditSensitive: false,
+    asyncAudit: true
+  })
+
+  if (!canUpdate.granted) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to update this post'
+      error: canUpdate.reason
     })
     return
   }
@@ -834,6 +851,7 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 
 // Delete a post
 router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { id } = req.params
 
@@ -846,7 +864,8 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   }
 
   const post = await prisma.post.findUnique({
-    where: { id }
+    where: { id },
+    include: { author: true }
   })
 
   if (!post) {
@@ -857,10 +876,22 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     return
   }
 
-  if (post.authorId !== userId) {
+  // Check permission to delete
+  const canDelete = await safePermissionCheck(
+    () => canDoPostDelete(auth, post as any),
+    'post-delete'
+  )
+
+  await auditPermission(canDelete, auth, 'POST', {
+    shouldAudit: true,
+    auditSensitive: false,
+    asyncAudit: true
+  })
+
+  if (!canDelete.granted) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to delete this post'
+      error: canDelete.reason
     })
     return
   }
