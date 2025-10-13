@@ -50,9 +50,9 @@ export interface FacetWithAssignment {
  * Options for permission auditing
  */
 export interface PermissionAuditOptions {
-  shouldAudit: boolean;
-  auditSensitive: boolean; // Only audit sensitive operations
-  asyncAudit: boolean; // Send to RabbitMQ vs direct DB write
+  shouldAudit?: boolean;
+  auditSensitive?: boolean; // Only audit sensitive operations
+  asyncAudit?: boolean; // Send to RabbitMQ vs direct DB write
 }
 
 /**

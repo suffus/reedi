@@ -146,10 +146,8 @@ router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: Aut
   // Fetch all matching media (before permission filtering)
   const allMedia = await prisma.media.findMany({
     where: whereClause,
-    orderBy: { createdAt: 'desc' },
-    include: {
-      author: true // Need author for permission checks
-    }
+    orderBy: { createdAt: 'desc' }
+    // Note: author object not needed - permission checks only use authorId
   })
 
   // Filter media based on permissions
@@ -159,11 +157,8 @@ router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: Aut
   const total = viewableMedia.length
   const paginatedMedia = viewableMedia.slice(offset, offset + Number(limit))
 
-  // Remove author from response (already checked permissions)
-  const mediaResponse = paginatedMedia.map(({ author, ...media }) => ({
-    ...media,
-    authorId: author?.id || media.authorId
-  }))
+  // Return the media (authorId is already in the media object)
+  const mediaResponse = paginatedMedia
 
   res.json({
     success: true,

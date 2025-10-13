@@ -216,24 +216,55 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
       // Get authentication token
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') || undefined : undefined
       
-      await fetch(`${API_BASE_URL}/groups/${groupId}/apply`, {
-        method: 'POST',
-        headers: getAuthHeaders(token),
-        body: JSON.stringify({ message: applyMessage })
-      })
-      setShowApplyModal(false)
-      setApplyMessage('')
-      // Invalidate activity cache to refresh the management timeline
-      invalidateActivityCache()
-      showToast({
-        type: 'success',
-        message: 'Your application has been submitted for review'
-      })
+      // Check if group is PUBLIC or PRIVATE
+      const isPublicGroup = groupData?.visibility === 'PUBLIC'
+      
+      if (isPublicGroup) {
+        // For PUBLIC groups, use the /join endpoint (no message needed)
+        const response = await fetch(`${API_BASE_URL}/groups/${groupId}/join`, {
+          method: 'POST',
+          headers: getAuthHeaders(token)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to join group')
+        }
+        
+        setShowApplyModal(false)
+        // Reload group data to update membership status
+        loadGroupData()
+        showToast({
+          type: 'success',
+          message: 'Successfully joined the group!'
+        })
+      } else {
+        // For PRIVATE groups, use the /apply endpoint (with message)
+        const response = await fetch(`${API_BASE_URL}/groups/${groupId}/apply`, {
+          method: 'POST',
+          headers: getAuthHeaders(token),
+          body: JSON.stringify({ message: applyMessage })
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to submit application')
+        }
+        
+        setShowApplyModal(false)
+        setApplyMessage('')
+        // Invalidate activity cache to refresh the management timeline
+        invalidateActivityCache()
+        showToast({
+          type: 'success',
+          message: 'Your application has been submitted for review'
+        })
+      }
     } catch (error) {
-      console.error('Error applying to group:', error)
+      console.error('Error joining/applying to group:', error)
       showToast({
         type: 'error',
-        message: 'Failed to submit application'
+        message: error instanceof Error ? error.message : 'Failed to join/apply to group'
       })
     }
   }
@@ -1568,33 +1599,59 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
       {showApplyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-sm shadow-xl p-8 w-full max-w-md mx-4 border border-gray-200">
-            <h3 className="text-xl font-bold mb-4 text-gray-900 tracking-wide">REQUEST TO JOIN {groupData.name}</h3>
-            <p className="text-gray-600 mb-6">
-              This is a private group. Please provide a message explaining why you'd like to join.
-            </p>
-            
-            <textarea
-              value={applyMessage}
-              onChange={(e) => setApplyMessage(e.target.value)}
-              placeholder="Tell us why you'd like to join this group..."
-              className="w-full p-4 border border-gray-300 rounded-sm resize-none h-24 mb-6 focus:ring-2 focus:ring-olive-500 focus:border-olive-500 transition-colors duration-200"
-            />
-            
-            <div className="flex space-x-3">
-              <button
-                onClick={handleApplyToJoin}
-                className="flex-1 bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-sm font-medium tracking-wide transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!applyMessage.trim()}
-              >
-                SUBMIT APPLICATION
-              </button>
-              <button
-                onClick={() => setShowApplyModal(false)}
-                className="flex-1 bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 px-6 py-3 rounded-sm font-medium tracking-wide transition-colors duration-200"
-              >
-                CANCEL
-              </button>
-            </div>
+            {groupData?.visibility === 'PUBLIC' ? (
+              <>
+                <h3 className="text-xl font-bold mb-4 text-gray-900 tracking-wide">JOIN {groupData.name}</h3>
+                <p className="text-gray-600 mb-6">
+                  This is a public group. You can join immediately and start participating!
+                </p>
+                
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleApplyToJoin}
+                    className="flex-1 bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-sm font-medium tracking-wide transition-colors duration-200"
+                  >
+                    JOIN GROUP
+                  </button>
+                  <button
+                    onClick={() => setShowApplyModal(false)}
+                    className="flex-1 bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 px-6 py-3 rounded-sm font-medium tracking-wide transition-colors duration-200"
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-bold mb-4 text-gray-900 tracking-wide">REQUEST TO JOIN {groupData.name}</h3>
+                <p className="text-gray-600 mb-6">
+                  This is a private group. Please provide a message explaining why you'd like to join.
+                </p>
+                
+                <textarea
+                  value={applyMessage}
+                  onChange={(e) => setApplyMessage(e.target.value)}
+                  placeholder="Tell us why you'd like to join this group..."
+                  className="w-full p-4 border border-gray-300 rounded-sm resize-none h-24 mb-6 focus:ring-2 focus:ring-olive-500 focus:border-olive-500 transition-colors duration-200"
+                />
+                
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleApplyToJoin}
+                    className="flex-1 bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-sm font-medium tracking-wide transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!applyMessage.trim()}
+                  >
+                    SUBMIT APPLICATION
+                  </button>
+                  <button
+                    onClick={() => setShowApplyModal(false)}
+                    className="flex-1 bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 px-6 py-3 rounded-sm font-medium tracking-wide transition-colors duration-200"
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
