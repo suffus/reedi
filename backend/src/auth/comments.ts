@@ -3,6 +3,7 @@ import { grant, deny } from '../lib/permissions';
 import { userHasFacet } from '../lib/facets';
 import { isAdministratorFor, isFriendsWith } from '../lib/userRelations';
 import { Post, Media } from '@prisma/client';
+import { prisma } from '../db';
 
 /**
  * Comment model type (simplified for permission checks)
@@ -78,6 +79,34 @@ export async function canCommentOnPost(
     return grant(userId, post.id, 'comment-create-post', 'Line manager', 'LINE_MANAGER');
   }
   
+  // Check if post belongs to a group - if so, only group members can comment
+  const groupPost = await prisma.groupPost.findFirst({
+    where: { 
+      postId: post.id,
+      status: 'APPROVED' // Only check for approved group posts
+    }
+  });
+  
+  if (groupPost) {
+    // This is a group post - check if user is a member
+    const membership = await prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId: groupPost.groupId,
+          userId: userId
+        }
+      }
+    });
+    
+    if (!membership || membership.status !== 'ACTIVE') {
+      return deny(userId, post.id, 'comment-create-post', 'Must be a group member to comment', 'NOT_GROUP_MEMBER');
+    }
+    
+    // User is a group member
+    return grant(userId, post.id, 'comment-create-post', 'Group member', 'GROUP_MEMBER');
+  }
+  
+  // Not a group post - apply standard visibility rules
   // PUBLIC posts - anyone can comment
   if (post.visibility === 'PUBLIC' && post.publicationStatus === 'PUBLIC') {
     return grant(userId, post.id, 'comment-create-post', 'Public post', 'PUBLIC_CONTENT');

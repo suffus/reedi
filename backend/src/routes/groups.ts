@@ -1,10 +1,25 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
-import { authMiddleware } from '@/middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
 import { z } from 'zod'
 import multer from 'multer'
+import { getAuthContext } from '@/middleware/authContext'
+import { safePermissionCheck, auditPermission } from '@/lib/permissions'
+import {
+  canViewGroup,
+  canCreateGroup,
+  canUpdateGroup,
+  canJoinGroup,
+  canInviteToGroup,
+  canReviewApplications,
+  canManageMemberRoles,
+  canPostToGroup,
+  canModerateGroupPosts,
+  canViewGroupActivity,
+  canRemoveMember
+} from '@/auth/groups'
 
 
 const router = Router()
@@ -97,6 +112,14 @@ router.post('/', authMiddleware, upload.fields([
   const userId = req.user?.id
   if (!userId) {
     return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Check if user can create groups
+  const auth = getAuthContext(req)
+  const canCreate = await safePermissionCheck(() => canCreateGroup(auth))
+  if (!canCreate.granted) {
+    await auditPermission(canCreate, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: canCreate.reason })
   }
 
   // Extract form data from req.body (text fields)
@@ -295,6 +318,9 @@ router.post('/', authMiddleware, upload.fields([
     return newGroup
   })
 
+  // Audit successful group creation
+  await auditPermission(canCreate, auth, 'group', { auditSensitive: false })
+
   res.status(201).json({
     success: true,
     data: { group },
@@ -311,7 +337,7 @@ router.get('/user/:userId', authMiddleware, asyncHandler(async (req: Authenticat
     return res.status(401).json({ success: false, error: 'User not authenticated' })
   }
 
-  // Users can only see their own groups
+  // Users can only see their own groups (for now - can be expanded with permissions later)
   if (requestingUserId !== userId) {
     return res.status(403).json({ success: false, error: 'Access denied' })
   }
@@ -573,20 +599,17 @@ router.get('/:identifier', authMiddleware, asyncHandler(async (req: Authenticate
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
-  // Check if user can see the group
+  // Check if user can view the group
+  const auth = getAuthContext(req)
+  const viewPermission = await safePermissionCheck(() => canViewGroup(auth, group))
+  if (!viewPermission.granted) {
+    await auditPermission(viewPermission, auth, 'group', { auditSensitive: false })
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
   const isMember = userId ? await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: group.id, userId } }
   }) : null
-
-  const canView = group.visibility === 'PUBLIC' || 
-                  group.visibility === 'PRIVATE_VISIBLE' || 
-                  (group.visibility === 'PRIVATE_HIDDEN' && isMember)
-
-
-
-  if (!canView) {
-    return res.status(404).json({ success: false, error: 'Group not found' })
-  }
 
   // Always include members but filter based on permissions
   const responseGroup = {
@@ -652,8 +675,11 @@ router.put('/:groupIdentifier', authMiddleware, upload.fields([
   }
 
   // Check permissions
-  if (!(await hasGroupPermission(userId, group.id, 'ADMIN'))) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  const auth = getAuthContext(req)
+  const updatePermission = await safePermissionCheck(() => canUpdateGroup(auth, group))
+  if (!updatePermission.granted) {
+    await auditPermission(updatePermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: updatePermission.reason })
   }
 
   const validatedData = updateGroupSchema.parse(req.body)
@@ -766,6 +792,9 @@ router.put('/:groupIdentifier', authMiddleware, upload.fields([
     return result
   })
 
+  // Audit successful update
+  await auditPermission(updatePermission, auth, 'group', { auditSensitive: false })
+
   res.json({
     success: true,
     data: { group: updatedGroup },
@@ -795,17 +824,17 @@ router.get('/:groupIdentifier/feed', authMiddleware, asyncHandler(async (req: Au
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
+  // Check if user can view the group
+  const auth = getAuthContext(req)
+  const viewPermission = await safePermissionCheck(() => canViewGroup(auth, group))
+  if (!viewPermission.granted) {
+    await auditPermission(viewPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: 'Access denied' })
+  }
+
   const isMember = userId ? await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: group.id, userId } }
   }) : null
-
-  const canView = group.visibility === 'PUBLIC' || 
-                  group.visibility === 'PRIVATE_VISIBLE' || 
-                  (group.visibility === 'PRIVATE_HIDDEN' && isMember)
-
-  if (!canView) {
-    return res.status(403).json({ success: false, error: 'Access denied' })
-  }
 
   // Get posts based on user permissions
   let whereClause: any = null
@@ -944,13 +973,12 @@ router.put('/:groupIdentifier/posts/:postId/approve', authMiddleware, asyncHandl
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
-  // Check if user is admin or owner
-  const membership = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: group.id, userId } }
-  })
-
-  if (!membership || membership.status !== 'ACTIVE' || (membership.role !== 'ADMIN' && membership.role !== 'OWNER')) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  // Check if user can moderate posts in this group
+  const auth = getAuthContext(req)
+  const moderatePermission = await safePermissionCheck(() => canModerateGroupPosts(auth, group))
+  if (!moderatePermission.granted) {
+    await auditPermission(moderatePermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: moderatePermission.reason })
   }
 
   // Find the group post
@@ -1064,14 +1092,17 @@ router.post('/:groupIdentifier/posts', authMiddleware, asyncHandler(async (req: 
 
   const validatedData = postToGroupSchema.parse(req.body)
 
-  // Check if user is a member
+  // Check if user can post to this group
+  const auth = getAuthContext(req)
+  const postPermission = await safePermissionCheck(() => canPostToGroup(auth, group))
+  if (!postPermission.granted) {
+    await auditPermission(postPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: postPermission.reason })
+  }
+
   const membership = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: group.id, userId } }
   })
-
-  if (!membership || membership.status !== 'ACTIVE') {
-    return res.status(403).json({ success: false, error: 'Must be an active member to post' })
-  }
 
   // Check if post exists and belongs to user
   const post = await prisma.post.findFirst({
@@ -1099,7 +1130,7 @@ router.post('/:groupIdentifier/posts', authMiddleware, asyncHandler(async (req: 
   
   if (group.moderationPolicy === 'ADMIN_APPROVAL_REQUIRED') {
     postStatus = 'PENDING_APPROVAL'
-  } else if (group.moderationPolicy === 'SELECTIVE_MODERATION' && membership.role === 'MEMBER') {
+  } else if (group.moderationPolicy === 'SELECTIVE_MODERATION' && membership && membership.role === 'MEMBER') {
     postStatus = 'PENDING_APPROVAL'
   }
 
@@ -1137,7 +1168,97 @@ router.post('/:groupIdentifier/posts', authMiddleware, asyncHandler(async (req: 
   })
 }))
 
-// Apply to join group
+// Join a PUBLIC group directly (no application needed)
+router.post('/:groupIdentifier/join', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id
+  const { groupIdentifier } = req.params
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'User not authenticated' })
+  }
+
+  // Find the group
+  const group = await prisma.group.findFirst({
+    where: { 
+      OR: [
+        { id: groupIdentifier },
+        { username: groupIdentifier }
+      ]
+    }
+  })
+
+  if (!group) {
+    return res.status(404).json({ success: false, error: 'Group not found' })
+  }
+
+  // Only PUBLIC groups can be joined directly
+  if (group.visibility !== 'PUBLIC') {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'This group requires an application. Please use the apply endpoint instead.' 
+    })
+  }
+
+  // Check if user can join this group
+  const auth = getAuthContext(req)
+  const joinPermission = await safePermissionCheck(() => canJoinGroup(auth, group))
+  if (!joinPermission.granted) {
+    await auditPermission(joinPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: joinPermission.reason })
+  }
+
+  // Check if user is already a member
+  const existingMember = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: group.id, userId } }
+  })
+
+  if (existingMember) {
+    return res.status(409).json({ success: false, error: 'Already a member of this group' })
+  }
+
+  // Join the group directly
+  const member = await prisma.$transaction(async (tx) => {
+    const newMember = await tx.groupMember.create({
+      data: {
+        groupId: group.id,
+        userId,
+        role: 'MEMBER',
+        status: 'ACTIVE'
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        }
+      }
+    })
+
+    // Log the action
+    await tx.groupAction.create({
+      data: {
+        groupId: group.id,
+        userId,
+        actionType: 'MEMBER_JOINED',
+        description: 'Joined public group',
+        metadata: { method: 'direct_join' }
+      }
+    })
+
+    return newMember
+  })
+
+  res.status(201).json({
+    success: true,
+    data: { member },
+    message: 'Successfully joined group'
+  })
+}))
+
+// Apply to join group (for PRIVATE groups)
 router.post('/:groupIdentifier/apply', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id
   const { groupIdentifier } = req.params
@@ -1162,8 +1283,20 @@ router.post('/:groupIdentifier/apply', authMiddleware, asyncHandler(async (req: 
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
+  // PUBLIC groups should use the join endpoint instead
   if (group.visibility === 'PUBLIC') {
-    return res.status(400).json({ success: false, error: 'Public groups do not require applications' })
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Public groups can be joined directly. Use the join endpoint instead.' 
+    })
+  }
+
+  // Check if user can join this group
+  const auth = getAuthContext(req)
+  const joinPermission = await safePermissionCheck(() => canJoinGroup(auth, group))
+  if (!joinPermission.granted) {
+    await auditPermission(joinPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: joinPermission.reason })
   }
 
   // Check if user is already a member
@@ -1233,13 +1366,12 @@ router.get('/:groupIdentifier/applications', authMiddleware, asyncHandler(async 
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
-  // Check if user is admin or owner
-  const member = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: group.id, userId } }
-  })
-
-  if (!member || (member.role !== 'ADMIN' && member.role !== 'OWNER')) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  // Check if user can review applications
+  const auth = getAuthContext(req)
+  const reviewPermission = await safePermissionCheck(() => canReviewApplications(auth, group))
+  if (!reviewPermission.granted) {
+    await auditPermission(reviewPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: reviewPermission.reason })
   }
 
   // Get pending applications with applicant history
@@ -1343,8 +1475,11 @@ router.post('/:groupIdentifier/invite', authMiddleware, asyncHandler(async (req:
   }
 
   // Check permissions
-  if (!(await hasGroupPermission(userId, group.id, 'ADMIN'))) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  const auth = getAuthContext(req)
+  const invitePermission = await safePermissionCheck(() => canInviteToGroup(auth, group))
+  if (!invitePermission.granted) {
+    await auditPermission(invitePermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: invitePermission.reason })
   }
 
   const validatedData = inviteMemberSchema.parse(req.body)
@@ -1406,16 +1541,7 @@ router.put('/:groupIdentifier/members/:memberId/role', authMiddleware, asyncHand
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
-  // Check if user is admin or owner
-  const currentMember = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: group.id, userId } }
-  })
-
-  if (!currentMember || (currentMember.role !== 'ADMIN' && currentMember.role !== 'OWNER')) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
-  }
-
-  // Get the member to update
+  // Get the member to update first
   const targetMember = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: group.id, userId: memberId } }
   })
@@ -1424,17 +1550,12 @@ router.put('/:groupIdentifier/members/:memberId/role', authMiddleware, asyncHand
     return res.status(404).json({ success: false, error: 'Member not found' })
   }
 
-  // Role hierarchy checks
-  if (currentMember.role === 'ADMIN') {
-    // Admins can only promote/demote regular members
-    if (targetMember.role !== 'MEMBER' && newRole !== 'MEMBER') {
-      return res.status(403).json({ success: false, error: 'Admins can only promote/demote regular members' })
-    }
-  } else if (currentMember.role === 'OWNER') {
-    // Owners can promote/demote anyone except themselves
-    if (userId === memberId) {
-      return res.status(400).json({ success: false, error: 'Owners cannot change their own role' })
-    }
+  // Check if user can manage member roles
+  const auth = getAuthContext(req)
+  const rolePermission = await safePermissionCheck(() => canManageMemberRoles(auth, group, targetMember))
+  if (!rolePermission.granted) {
+    await auditPermission(rolePermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: rolePermission.reason })
   }
 
   // Update the member's role
@@ -1492,13 +1613,12 @@ router.put('/:groupIdentifier/applications/:applicationId', authMiddleware, asyn
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
-  // Check if user is admin or owner
-  const member = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: group.id, userId } }
-  })
-
-  if (!member || (member.role !== 'ADMIN' && member.role !== 'OWNER')) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  // Check if user can review applications
+  const auth = getAuthContext(req)
+  const reviewPermission2 = await safePermissionCheck(() => canReviewApplications(auth, group))
+  if (!reviewPermission2.granted) {
+    await auditPermission(reviewPermission2, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: reviewPermission2.reason })
   }
 
   // Get the application
@@ -1658,22 +1778,17 @@ router.get('/:groupIdentifier/members', authMiddleware, asyncHandler(async (req:
     return res.status(404).json({ success: false, error: 'Group not found' })
   }
 
-  // Check if user can view members
+  // Check if user can view the group (and thus its members)
+  const auth = getAuthContext(req)
+  const viewPermission = await safePermissionCheck(() => canViewGroup(auth, group))
+  if (!viewPermission.granted) {
+    await auditPermission(viewPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: 'Access denied' })
+  }
+
   const isMember = userId ? await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: group.id, userId } }
   }) : null
-
-  // Users can view members if:
-  // 1. Group is public, OR
-  // 2. User is a member, OR  
-  // 3. User is authenticated (for private groups, show limited info)
-  const canView = group.visibility === 'PUBLIC' || isMember || userId
-
-
-
-  if (!canView) {
-    return res.status(403).json({ success: false, error: 'Access denied' })
-  }
 
   // Get basic member info
   const [members, total] = await Promise.all([
@@ -1873,8 +1988,11 @@ router.put('/:groupIdentifier/posts/:postId/moderate', authMiddleware, asyncHand
   }
 
   // Check permissions
-  if (!(await hasGroupPermission(userId, group.id, 'MODERATOR'))) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  const auth = getAuthContext(req)
+  const moderatePermission2 = await safePermissionCheck(() => canModerateGroupPosts(auth, group))
+  if (!moderatePermission2.granted) {
+    await auditPermission(moderatePermission2, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: moderatePermission2.reason })
   }
 
   // Find group post
@@ -1977,8 +2095,11 @@ router.get('/:groupIdentifier/activity', authMiddleware, asyncHandler(async (req
   }
 
   // Check permissions
-  if (!(await hasGroupPermission(userId, group.id, 'ADMIN'))) {
-    return res.status(403).json({ success: false, error: 'Insufficient permissions' })
+  const auth = getAuthContext(req)
+  const activityPermission = await safePermissionCheck(() => canViewGroupActivity(auth, group))
+  if (!activityPermission.granted) {
+    await auditPermission(activityPermission, auth, 'group', { auditSensitive: false })
+    return res.status(403).json({ success: false, error: activityPermission.reason })
   }
 
   // Get recent group actions
