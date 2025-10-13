@@ -2,8 +2,18 @@ import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
-import { authMiddleware } from '@/middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
+import { getAuthContext } from '@/middleware/authContext'
+import {
+  canViewUser,
+  canUpdateUser,
+  canSetLineManager,
+  canViewLineManager,
+  canViewDirectReports
+} from '@/auth/users'
+import { safePermissionCheck, auditPermission } from '@/lib/permissions'
+import { getDirectReports, getAllReports } from '@/lib/userRelations'
 
 const router = Router()
 
@@ -56,6 +66,7 @@ const upload = multer({
 
 // Update user profile
 router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { name, username, bio, location, website, isPrivate } = req.body
 
@@ -63,6 +74,33 @@ router.put('/profile', authMiddleware, asyncHandler(async (req: AuthenticatedReq
     res.status(401).json({
       success: false,
       error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Get current user for permission check
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId }
+  })
+
+  if (!currentUser) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  // Check permission to update profile
+  const canUpdate = await safePermissionCheck(
+    () => canUpdateUser(auth, currentUser),
+    'user-update-profile'
+  )
+
+  if (!canUpdate.granted) {
+    res.status(403).json({
+      success: false,
+      error: canUpdate.reason
     })
     return
   }
@@ -194,7 +232,8 @@ router.post('/avatar', authMiddleware, upload.single('avatar'), asyncHandler(asy
 }))
 
 // Get user profile by ID or username
-router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:identifier', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { identifier } = req.params
 
   const user = await prisma.user.findFirst({
@@ -231,6 +270,29 @@ router.get('/:identifier', asyncHandler(async (req: Request, res: Response) => {
     res.status(404).json({
       success: false,
       error: 'User not found'
+    })
+    return
+  }
+
+  // Check permission to view this user
+  const canView = await safePermissionCheck(
+    () => canViewUser(auth, user as any),
+    'user-view'
+  )
+
+  // Audit private profile access
+  if (user.isPrivate) {
+    await auditPermission(canView, auth, 'USER', {
+      shouldAudit: true,
+      auditSensitive: true,
+      asyncAudit: true
+    })
+  }
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
     })
     return
   }
@@ -455,6 +517,220 @@ router.get('/:userId/following', asyncHandler(async (req: Request, res: Response
         hasPrev: Number(page) > 1
       }
     }
+  })
+}))
+
+// ============================================================================
+// LINE MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// Get user's line manager
+router.get('/:userId/line-manager', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
+  const { userId } = req.params
+
+  // Check permission to view line manager
+  const canViewManager = await safePermissionCheck(
+    () => canViewLineManager(auth, userId),
+    'user-view-line-manager'
+  )
+
+  if (!canViewManager.granted) {
+    res.status(403).json({
+      success: false,
+      error: canViewManager.reason
+    })
+    return
+  }
+
+  // Get user with line manager
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      lineManagerId: true,
+      lineManager: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true,
+          email: true,
+          bio: true,
+          isPrivate: true
+        }
+      }
+    } as any
+  })
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  res.json({
+    success: true,
+    data: {
+      userId: user.id,
+      lineManager: (user as any).lineManager
+    }
+  })
+}))
+
+// Get user's direct reports
+router.get('/:userId/direct-reports', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
+  const { userId } = req.params
+
+  // Check permission to view direct reports
+  const canViewReports = await safePermissionCheck(
+    () => canViewDirectReports(auth, userId),
+    'user-view-direct-reports'
+  )
+
+  if (!canViewReports.granted) {
+    res.status(403).json({
+      success: false,
+      error: canViewReports.reason
+    })
+    return
+  }
+
+  // Get direct reports
+  const directReports = await getDirectReports(userId)
+
+  res.json({
+    success: true,
+    data: {
+      userId,
+      directReports,
+      count: directReports.length
+    }
+  })
+}))
+
+// Get user's full reporting tree (all reports recursively)
+router.get('/:userId/reporting-tree', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
+  const { userId } = req.params
+
+  // Check permission to view direct reports (same permission applies for tree)
+  const canViewReports = await safePermissionCheck(
+    () => canViewDirectReports(auth, userId),
+    'user-view-reporting-tree'
+  )
+
+  if (!canViewReports.granted) {
+    res.status(403).json({
+      success: false,
+      error: canViewReports.reason
+    })
+    return
+  }
+
+  // Get all reports recursively
+  const allReports = await getAllReports(userId)
+
+  res.json({
+    success: true,
+    data: {
+      userId,
+      allReports,
+      count: allReports.length
+    }
+  })
+}))
+
+// Set or update user's line manager
+router.put('/:userId/line-manager', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
+  const { userId } = req.params
+  const { lineManagerId } = req.body
+
+  if (!lineManagerId) {
+    res.status(400).json({
+      success: false,
+      error: 'lineManagerId is required'
+    })
+    return
+  }
+
+  // Check permission to set line manager
+  const canSetManager = await safePermissionCheck(
+    () => canSetLineManager(auth, userId, lineManagerId),
+    'user-set-line-manager'
+  )
+
+  await auditPermission(canSetManager, auth, 'USER', {
+    shouldAudit: true,
+    auditSensitive: false,
+    asyncAudit: true
+  })
+
+  if (!canSetManager.granted) {
+    res.status(403).json({
+      success: false,
+      error: canSetManager.reason
+    })
+    return
+  }
+
+  // Verify that the target user exists
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId }
+  })
+
+  if (!targetUser) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  // Verify that the new line manager exists
+  const newManager = await prisma.user.findUnique({
+    where: { id: lineManagerId }
+  })
+
+  if (!newManager) {
+    res.status(404).json({
+      success: false,
+      error: 'Line manager not found'
+    })
+    return
+  }
+
+  // Update the line manager
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      lineManagerId
+    } as any,
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      lineManagerId: true,
+      lineManager: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatar: true,
+          email: true
+        }
+      }
+    } as any
+  })
+
+  res.json({
+    success: true,
+    data: { user: updatedUser },
+    message: 'Line manager updated successfully'
   })
 }))
 

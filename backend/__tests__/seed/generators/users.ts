@@ -107,9 +107,21 @@ export async function seedUsers(extended: boolean = false): Promise<TestUser[]> 
   
   const createdUsers: TestUser[] = []
   
+  // First pass: Create or update all users without line managers
   for (const userData of usersToSeed) {
-    const user = await testPrisma.user.create({
-      data: {
+    const user = await testPrisma.user.upsert({
+      where: { email: userData.email },
+      update: {
+        username: userData.username,
+        name: userData.name,
+        password: hashedPassword,
+        bio: userData.bio,
+        canPublishLockedMedia: userData.canPublishLockedMedia || false,
+        isPrivate: userData.isPrivate || false,
+        isVerified: true,
+        lineManagerId: null // Reset line manager on update
+      },
+      create: {
         email: userData.email,
         username: userData.username,
         name: userData.name,
@@ -133,7 +145,42 @@ export async function seedUsers(extended: boolean = false): Promise<TestUser[]> 
     })
   }
   
-  console.log(`✅ Created ${createdUsers.length} test users`)
+  // Second pass: Set up line management relationships
+  // Alice is the manager, Bob and Charlie are her direct reports
+  const alice = createdUsers.find(u => u.email === 'alice@test.com')
+  const bob = createdUsers.find(u => u.email === 'bob@test.com')
+  const charlie = createdUsers.find(u => u.email === 'charlie@test.com')
+  const david = createdUsers.find(u => u.email === 'david@test.com')
+  
+  if (alice && bob) {
+    await testPrisma.user.update({
+      where: { id: bob.id },
+      data: { lineManagerId: alice.id }
+    })
+    console.log(`  ✓ Set Alice as Bob's line manager`)
+  }
+  
+  if (alice && charlie) {
+    await testPrisma.user.update({
+      where: { id: charlie.id },
+      data: { lineManagerId: alice.id }
+    })
+    console.log(`  ✓ Set Alice as Charlie's line manager`)
+  }
+  
+  // Bob manages David (indirect report to Alice)
+  if (bob && david) {
+    await testPrisma.user.update({
+      where: { id: david.id },
+      data: { lineManagerId: bob.id }
+    })
+    console.log(`  ✓ Set Bob as David's line manager`)
+  }
+  
+  console.log(`✅ Created ${createdUsers.length} test users with line management hierarchy`)
+  console.log(`   Alice (manager) → Bob → David`)
+  console.log(`   Alice (manager) → Charlie`)
+  
   return createdUsers
 }
 

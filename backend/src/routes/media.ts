@@ -7,6 +7,15 @@ import { AuthenticatedRequest } from '@/types'
 import { processImage, deleteImageFiles } from '@/utils/imageProcessor'
 import { generatePresignedUrl, getImageFromS3, uploadToS3 } from '@/utils/s3Service'
 import { multipartUploadService } from '@/utils/multipartUploadService'
+import { getAuthContext } from '@/middleware/authContext'
+import { 
+  canDoMediaRead, 
+  canDoMediaCreate, 
+  canDoMediaUpdate, 
+  canDoMediaDelete,
+  filterReadableMedia 
+} from '@/auth/media'
+import { safePermissionCheck, auditPermission } from '@/lib/permissions'
 
 
 const router = Router()
@@ -62,7 +71,8 @@ const chunkUpload = multer({
 })
 
 // Get user's media with optional filtering
-router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => {
+router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { userId } = req.params
   const { 
     page = 1, 
@@ -133,48 +143,32 @@ router.get('/user/:userId', asyncHandler(async (req: Request, res: Response) => 
     whereClause.galleryId = null
   }
 
-  const [media, total] = await Promise.all([
-    prisma.media.findMany({
-      where: whereClause,
-      skip: offset,
-      take: Number(limit),
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        s3Key: true,
-        thumbnailS3Key: true,
-        originalFilename: true,
-        altText: true,
-        caption: true,
-        width: true,
-        height: true,
-        size: true,
-        mimeType: true,
-        tags: true,
-        mediaType: true,
-        processingStatus: true,
-        duration: true,
-        codec: true,
-        bitrate: true,
-        framerate: true,
-        videoUrl: true,
-        videoS3Key: true,
-        createdAt: true,
-        updatedAt: true,
-        authorId: true,
-        galleryId: true,
-        visibility: true,
-      }
-    }),
-    prisma.media.count({
-      where: whereClause
-    })
-  ])
+  // Fetch all matching media (before permission filtering)
+  const allMedia = await prisma.media.findMany({
+    where: whereClause,
+    orderBy: { createdAt: 'desc' },
+    include: {
+      author: true // Need author for permission checks
+    }
+  })
+
+  // Filter media based on permissions
+  const viewableMedia = await filterReadableMedia(auth, allMedia)
+
+  // Apply pagination after filtering
+  const total = viewableMedia.length
+  const paginatedMedia = viewableMedia.slice(offset, offset + Number(limit))
+
+  // Remove author from response (already checked permissions)
+  const mediaResponse = paginatedMedia.map(({ author, ...media }) => ({
+    ...media,
+    authorId: author?.id || media.authorId
+  }))
 
   res.json({
     success: true,
     data: {
-      media,
+      media: mediaResponse,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -296,6 +290,26 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
     res.status(400).json({
       success: false,
       error: 'No media file provided'
+    })
+    return
+  }
+
+  // Check permission
+  const authContext = getAuthContext(req)
+  const permission = await safePermissionCheck(
+    () => canDoMediaCreate(authContext),
+    'media-create'
+  )
+
+  if (!permission.granted) {
+    await auditPermission(permission, authContext, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: false,
+      asyncAudit: true
+    })
+    res.status(403).json({
+      success: false,
+      error: permission.reason
     })
     return
   }
@@ -442,6 +456,26 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     return
   }
 
+  // Check permission
+  const authContext = getAuthContext(req)
+  const permission = await safePermissionCheck(
+    () => canDoMediaCreate(authContext),
+    'media-create'
+  )
+
+  if (!permission.granted) {
+    await auditPermission(permission, authContext, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: false,
+      asyncAudit: true
+    })
+    res.status(403).json({
+      success: false,
+      error: permission.reason
+    })
+    return
+  }
+
   const media = await prisma.media.create({
     data: {
       url,
@@ -474,6 +508,26 @@ router.post('/upload/initiate', authMiddleware, asyncHandler(async (req: Authent
   
   if (!filename || !contentType || !fileSize) {
     res.status(400).json({ success: false, error: 'Missing required fields: filename, contentType, fileSize' })
+    return
+  }
+
+  // Check permission
+  const authContext = getAuthContext(req)
+  const permission = await safePermissionCheck(
+    () => canDoMediaCreate(authContext),
+    'media-create'
+  )
+
+  if (!permission.granted) {
+    await auditPermission(permission, authContext, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: false,
+      asyncAudit: true
+    })
+    res.status(403).json({
+      success: false,
+      error: permission.reason
+    })
     return
   }
 
@@ -654,37 +708,12 @@ router.post('/upload/abort', authMiddleware, asyncHandler(async (req: Authentica
 
 // Get media by ID
 router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { id } = req.params
-  const viewerId = req.user?.id
 
   const media = await prisma.media.findUnique({
     where: { id },
-    select: {
-      id: true,
-      url: true,
-      thumbnail: true,
-      s3Key: true,
-      thumbnailS3Key: true,
-      originalFilename: true,
-      altText: true,
-      caption: true,
-      width: true,
-      height: true,
-      size: true,
-      mimeType: true,
-      tags: true,
-      visibility: true,
-      mediaType: true,
-      processingStatus: true,
-      duration: true,
-      codec: true,
-      bitrate: true,
-      framerate: true,
-      videoUrl: true,
-      videoS3Key: true,
-      createdAt: true,
-      updatedAt: true,
-      authorId: true,
+    include: {
       author: {
         select: {
           id: true,
@@ -704,40 +733,27 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  // Check visibility
-  if (media.visibility === 'PRIVATE' && viewerId !== media.authorId) {
-    res.status(403).json({
-      success: false,
-      error: 'Access denied'
+  // Check permission to read this media
+  const canRead = await safePermissionCheck(
+    () => canDoMediaRead(auth, media as any),
+    'media-read'
+  )
+
+  // Audit non-public media access
+  if (media.visibility !== 'PUBLIC') {
+    await auditPermission(canRead, auth, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: true,
+      asyncAudit: true
     })
-    return
   }
 
-  if (media.visibility === 'FRIENDS_ONLY' && viewerId !== media.authorId) {
-    if (!viewerId) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      })
-      return
-    }
-
-    const isFriend = await prisma.friendRequest.findFirst({
-      where: {
-        OR: [
-          { senderId: viewerId, receiverId: media.authorId, status: 'ACCEPTED' },
-          { senderId: media.authorId, receiverId: viewerId, status: 'ACCEPTED' }
-        ]
-      }
+  if (!canRead.granted) {
+    res.status(403).json({
+      success: false,
+      error: canRead.reason
     })
-
-    if (!isFriend) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      })
-      return
-    }
+    return
   }
 
   res.json({
@@ -762,7 +778,12 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
 
   const media = await prisma.media.findUnique({
     where: { id },
-    select: { authorId: true, tags: true }
+    select: { 
+      id: true,
+      authorId: true, 
+      tags: true,
+      visibility: true
+    }
   })
 
   if (!media) {
@@ -773,13 +794,31 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
     return
   }
 
-  if (media.authorId !== userId) {
+  // Check permission
+  const authContext = getAuthContext(req)
+  const permission = await safePermissionCheck(
+    () => canDoMediaUpdate(authContext, media as any),
+    'media-update'
+  )
+
+  if (!permission.granted) {
+    await auditPermission(permission, authContext, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: false,
+      asyncAudit: true
+    })
     res.status(403).json({
       success: false,
-      error: 'Not authorized to update this media'
+      error: permission.reason
     })
     return
   }
+
+  await auditPermission(permission, authContext, 'MEDIA', {
+    shouldAudit: true,
+    auditSensitive: false,
+    asyncAudit: true
+  })
 
   // Handle tag merging logic
   let finalTags = tags
@@ -830,11 +869,13 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   const media = await prisma.media.findUnique({
     where: { id },
     select: { 
+      id: true,
       authorId: true, 
       s3Key: true, 
       thumbnailS3Key: true,
       videoS3Key: true,
-      mediaType: true
+      mediaType: true,
+      visibility: true
     }
   })
 
@@ -846,13 +887,31 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     return
   }
 
-  if (media.authorId !== userId) {
+  // Check permission
+  const authContext = getAuthContext(req)
+  const permission = await safePermissionCheck(
+    () => canDoMediaDelete(authContext, media as any),
+    'media-delete'
+  )
+
+  if (!permission.granted) {
+    await auditPermission(permission, authContext, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: false,
+      asyncAudit: true
+    })
     res.status(403).json({
       success: false,
-      error: 'Not authorized to delete this media'
+      error: permission.reason
     })
     return
   }
+
+  await auditPermission(permission, authContext, 'MEDIA', {
+    shouldAudit: true,
+    auditSensitive: false,
+    asyncAudit: true
+  })
 
   // Delete files from S3
   try {
@@ -907,19 +966,46 @@ router.put('/bulk/update', authMiddleware, asyncHandler(async (req: Authenticate
     return
   }
 
-  // Verify ownership of all media
+  // Fetch all media with full details for permission checking
   const media = await prisma.media.findMany({
     where: {
-      id: { in: mediaIds },
-      authorId: userId
+      id: { in: mediaIds }
     },
-    select: { id: true, tags: true }
+    select: { 
+      id: true, 
+      tags: true,
+      authorId: true,
+      visibility: true
+    }
   })
 
   if (media.length !== mediaIds.length) {
+    res.status(404).json({
+      success: false,
+      error: 'Some media not found'
+    })
+    return
+  }
+
+  // Check permissions for each media item
+  const authContext = getAuthContext(req)
+  const unauthorizedIds: string[] = []
+  
+  for (const item of media) {
+    const permission = await safePermissionCheck(
+      () => canDoMediaUpdate(authContext, item as any),
+      'media-bulk-update'
+    )
+    
+    if (!permission.granted) {
+      unauthorizedIds.push(item.id)
+    }
+  }
+
+  if (unauthorizedIds.length > 0) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to update some media'
+      error: `Not authorized to update ${unauthorizedIds.length} media item(s)`
     })
     return
   }
@@ -1054,7 +1140,8 @@ router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: Auth
       s3Key: true,
       originalFilename: true,
       mimeType: true,
-      size: true
+      size: true,
+      visibility: true
     }
   })
 
@@ -1066,10 +1153,22 @@ router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: Auth
     return
   }
 
-  if (media.authorId !== userId) {
+  // Check permission (reprocess requires update permission)
+  const authContext = getAuthContext(req)
+  const permission = await safePermissionCheck(
+    () => canDoMediaUpdate(authContext, media as any),
+    'media-reprocess'
+  )
+
+  if (!permission.granted) {
+    await auditPermission(permission, authContext, 'MEDIA', {
+      shouldAudit: true,
+      auditSensitive: false,
+      asyncAudit: true
+    })
     res.status(403).json({
       success: false,
-      error: 'Not authorized to reprocess this media'
+      error: permission.reason
     })
     return
   }

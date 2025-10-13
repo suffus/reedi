@@ -19,6 +19,7 @@ import galleryRoutes from '@/routes/galleries'
 import searchRoutes from '@/routes/search'
 import friendRoutes from '@/routes/friends'
 import groupRoutes from '@/routes/groups'
+import facetsRoutes from '@/routes/facets'
 //import videoProcessingRoutes from '@/routes/videoProcessing'
 //import imageProcessingRoutes from '@/routes/imageProcessing'
 import messageRoutes from '@/routes/messages'
@@ -95,6 +96,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes)
 app.use('/api/users', authMiddleware, userRoutes)
+app.use('/api/facets', authMiddleware, facetsRoutes)
 app.use('/api/posts', postRoutes)
 app.use('/api/comments', commentRoutes)
 app.use('/api/groups', groupRoutes)

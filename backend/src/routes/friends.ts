@@ -1,13 +1,26 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '@/db'
 import { asyncHandler } from '@/middleware/errorHandler'
-import { authMiddleware } from '@/middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '@/middleware/auth'
 import { AuthenticatedRequest } from '@/types'
+import { getAuthContext } from '@/middleware/authContext'
+import {
+  canSendFriendRequest,
+  canViewReceivedRequests,
+  canViewSentRequests,
+  canAcceptFriendRequest,
+  canRejectFriendRequest,
+  canCancelFriendRequest,
+  canViewFriendshipStatus,
+  canViewFriendsList
+} from '@/auth/friends'
+import { safePermissionCheck, auditPermission } from '@/lib/permissions'
 
 const router = Router()
 
 // Send a friend request
 router.post('/request/:userId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const senderId = req.user?.id
   const { userId } = req.params
 
@@ -19,10 +32,16 @@ router.post('/request/:userId', authMiddleware, asyncHandler(async (req: Authent
     return
   }
 
-  if (senderId === userId) {
-    res.status(400).json({
+  // Check permission to send friend request
+  const canSend = await safePermissionCheck(
+    () => canSendFriendRequest(auth, userId),
+    'friend-request-send'
+  )
+
+  if (!canSend.granted) {
+    res.status(403).json({
       success: false,
-      error: 'Cannot send friend request to yourself'
+      error: canSend.reason
     })
     return
   }
@@ -121,6 +140,7 @@ router.post('/request/:userId', authMiddleware, asyncHandler(async (req: Authent
 
 // Get user's friend requests (received) - MUST come before /:userId/friends
 router.get('/requests/received', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { page = 1, limit = 20 } = req.query
 
@@ -128,6 +148,20 @@ router.get('/requests/received', authMiddleware, asyncHandler(async (req: Authen
     res.status(401).json({
       success: false,
       error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Check permission to view received requests
+  const canView = await safePermissionCheck(
+    () => canViewReceivedRequests(auth),
+    'friend-requests-received'
+  )
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
     })
     return
   }
@@ -181,6 +215,7 @@ router.get('/requests/received', authMiddleware, asyncHandler(async (req: Authen
 
 // Get user's friend requests (sent) - MUST come before /:userId/friends
 router.get('/requests/sent', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { page = 1, limit = 20 } = req.query
 
@@ -188,6 +223,20 @@ router.get('/requests/sent', authMiddleware, asyncHandler(async (req: Authentica
     res.status(401).json({
       success: false,
       error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Check permission to view sent requests
+  const canView = await safePermissionCheck(
+    () => canViewSentRequests(auth),
+    'friend-requests-sent'
+  )
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
     })
     return
   }
@@ -241,6 +290,7 @@ router.get('/requests/sent', authMiddleware, asyncHandler(async (req: Authentica
 
 // Accept a friend request - MUST come before /:userId/friends
 router.put('/accept/:requestId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { requestId } = req.params
 
@@ -283,10 +333,16 @@ router.put('/accept/:requestId', authMiddleware, asyncHandler(async (req: Authen
     return
   }
 
-  if (friendRequest.receiverId !== userId) {
+  // Check permission to accept
+  const canAccept = await safePermissionCheck(
+    () => canAcceptFriendRequest(auth, friendRequest as any),
+    'friend-request-accept'
+  )
+
+  if (!canAccept.granted) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to accept this request'
+      error: canAccept.reason
     })
     return
   }
@@ -342,6 +398,7 @@ router.put('/accept/:requestId', authMiddleware, asyncHandler(async (req: Authen
 
 // Reject a friend request - MUST come before /:userId/friends
 router.put('/reject/:requestId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { requestId } = req.params
 
@@ -366,10 +423,16 @@ router.put('/reject/:requestId', authMiddleware, asyncHandler(async (req: Authen
     return
   }
 
-  if (friendRequest.receiverId !== userId) {
+  // Check permission to reject
+  const canReject = await safePermissionCheck(
+    () => canRejectFriendRequest(auth, friendRequest as any),
+    'friend-request-reject'
+  )
+
+  if (!canReject.granted) {
     res.status(403).json({
       success: false,
-      error: 'Not authorized to reject this request'
+      error: canReject.reason
     })
     return
   }
@@ -396,6 +459,7 @@ router.put('/reject/:requestId', authMiddleware, asyncHandler(async (req: Authen
 
 // Cancel a friend request - MUST come before /:userId/friends
 router.delete('/cancel/:requestId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const userId = req.user?.id
   const { requestId } = req.params
 
@@ -420,7 +484,13 @@ router.delete('/cancel/:requestId', authMiddleware, asyncHandler(async (req: Aut
     return
   }
 
-  if (friendRequest.senderId !== userId) {
+  // Check permission to cancel
+  const canCancel = await safePermissionCheck(
+    () => canCancelFriendRequest(auth, friendRequest as any),
+    'friend-request-cancel'
+  )
+
+  if (!canCancel.granted) {
     res.status(403).json({
       success: false,
       error: 'Not authorized to cancel this request'
@@ -449,6 +519,7 @@ router.delete('/cancel/:requestId', authMiddleware, asyncHandler(async (req: Aut
 
 // Check friendship status between two users - MUST come before /:userId/friends
 router.get('/status/:userId', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const currentUserId = req.user?.id
   const { userId } = req.params
 
@@ -456,6 +527,20 @@ router.get('/status/:userId', authMiddleware, asyncHandler(async (req: Authentic
     res.status(401).json({
       success: false,
       error: 'User not authenticated'
+    })
+    return
+  }
+
+  // Check permission to view friendship status
+  const canView = await safePermissionCheck(
+    () => canViewFriendshipStatus(auth, userId),
+    'friendship-status'
+  )
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
     })
     return
   }
@@ -518,9 +603,38 @@ router.get('/status/:userId', authMiddleware, asyncHandler(async (req: Authentic
 }))
 
 // Get user's friends - MUST come LAST (most general route)
-router.get('/:userId/friends', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/friends', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const auth = getAuthContext(req)
   const { userId } = req.params
   const { page = 1, limit = 20 } = req.query
+
+  // Check if user exists and get their privacy settings
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isPrivate: true }
+  })
+
+  if (!targetUser) {
+    res.status(404).json({
+      success: false,
+      error: 'User not found'
+    })
+    return
+  }
+
+  // Check permission to view friends list
+  const canView = await safePermissionCheck(
+    () => canViewFriendsList(auth, userId, targetUser.isPrivate),
+    'friends-list-view'
+  )
+
+  if (!canView.granted) {
+    res.status(403).json({
+      success: false,
+      error: canView.reason
+    })
+    return
+  }
 
   const offset = (Number(page) - 1) * Number(limit)
 
