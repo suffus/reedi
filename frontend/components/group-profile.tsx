@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { API_BASE_URL, getAuthHeaders, fetchFreshMediaData } from '@/lib/api'
-import { User, Group, GroupMember, GroupPost, GroupActivity } from '@/lib/types'
+import { User, Group, GroupMember, GroupPost, GroupActivity, Comment } from '@/lib/types'
 import { 
   Users, 
   Calendar, 
@@ -30,7 +30,7 @@ import { GroupPostForm } from '@/components/common/group-post-form'
 import { useMediaDetail } from '@/components/common/media-detail-context'
 import { mapMediaData } from '@/lib/media-utils'
 import { GroupSettingsModal } from './group-settings-modal'
-import { useGroupActivity } from '@/lib/api-hooks'
+import { useGroupActivity, useCreateComment } from '@/lib/api-hooks'
 import { useQueryClient } from '@tanstack/react-query'
 
 
@@ -79,11 +79,16 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
   const [pendingApplications, setPendingApplications] = useState<any[]>([])
   const [membersWithStats, setMembersWithStats] = useState<any[]>([])
   const [isLoadingMembers, setIsLoadingMembers] = useState(false)
+  const [showComments, setShowComments] = useState<{ [postId: string]: boolean }>({})
+  const [commentText, setCommentText] = useState<{ [postId: string]: string }>({})
 
   const groupId = params?.identifier as string
   
   // Group activity hook
   const { data: groupActivity, isLoading: isLoadingActivity } = useGroupActivity(groupId, 10)
+  
+  // Comment mutation
+  const createCommentMutation = useCreateComment()
 
 
 
@@ -503,6 +508,69 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
     queryClient.invalidateQueries({ queryKey: ['group-activity', groupId] })
   }
 
+  // Handle comment toggle
+  const toggleComments = (postId: string) => {
+    setShowComments(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }))
+  }
+
+  // Handle comment creation
+  const handleAddComment = async (postId: string) => {
+    const content = commentText[postId]?.trim()
+    if (!content) return
+
+    try {
+      const result = await createCommentMutation.mutateAsync({
+        postId,
+        content,
+        context: 'GROUP', // NEW: Comment context
+        groupId: groupData?.id // NEW: Group ID for context isolation
+      })
+      
+      // Optimistically update the posts state to include the new comment
+      setPosts(prevPosts => {
+        return prevPosts.map(groupPost => {
+          if (groupPost.post.id === postId) {
+            return {
+              ...groupPost,
+              post: {
+                ...groupPost.post,
+                comments: [
+                  ...(groupPost.post.comments || []),
+                  result.data.comment
+                ],
+                _count: {
+                  comments: (groupPost.post._count?.comments || 0) + 1,
+                  reactions: groupPost.post._count?.reactions || 0
+                }
+              }
+            } as typeof groupPost
+          }
+          return groupPost
+        })
+      })
+      
+      // Clear the comment text for this post
+      setCommentText(prev => ({
+        ...prev,
+        [postId]: ''
+      }))
+      
+      showToast({
+        type: 'success',
+        message: 'Comment added successfully'
+      })
+    } catch (error: any) {
+      console.error('Failed to add comment:', error)
+      showToast({
+        type: 'error',
+        message: error?.message || 'Failed to add comment'
+      })
+    }
+  }
+
   const getVisibilityIcon = () => {
     switch (groupData?.visibility) {
       case 'PUBLIC':
@@ -863,15 +931,18 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                         <div className="flex items-center justify-between pt-4 border-t">
                           <div className="flex items-center space-x-4">
                             <button className="text-gray-600 hover:text-red-600">
-                              <Heart className="w-4 h-4 mr-2" />
+                              <Heart className="w-4 h-4 mr-2 inline" />
                               Like
                             </button>
-                            <button className="text-gray-600 hover:text-blue-600">
-                              <MessageSquare className="w-4 h-4 mr-2" />
+                            <button 
+                              onClick={() => toggleComments(groupPost.post.id)}
+                              className="text-gray-600 hover:text-blue-600"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2 inline" />
                               Comment
                             </button>
                             <button className="text-gray-600 hover:text-green-600">
-                              <Share2 className="w-4 h-4 mr-2" />
+                              <Share2 className="w-4 h-4 mr-2 inline" />
                               Share
                             </button>
                           </div>
@@ -882,6 +953,92 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
                             <span>{groupPost.post._count?.comments || 0} comments</span>
                           </div>
                         </div>
+
+                        {/* Comments Section */}
+                        {showComments[groupPost.post.id] && (
+                          <div className="mt-4 space-y-3 border-t pt-4">
+                            {/* Display existing comments */}
+                            {groupPost.post.comments && groupPost.post.comments.length > 0 ? (
+                              <div className="space-y-3">
+                                {groupPost.post.comments.map((comment: Comment) => (
+                                  <div key={comment.id} className="flex space-x-3">
+                                    <div className="flex-shrink-0">
+                                      {comment.author.avatar ? (
+                                        <img 
+                                          src={comment.author.avatar} 
+                                          alt={comment.author.name} 
+                                          className="w-8 h-8 rounded-full object-cover" 
+                                        />
+                                      ) : (
+                                        <div className="w-8 h-8 rounded-full bg-olive-600 flex items-center justify-center text-white font-bold">
+                                          {comment.author.name.charAt(0).toUpperCase()}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="bg-gray-100 rounded-lg p-3">
+                                        <div className="flex items-center space-x-2 mb-1">
+                                          <span className="font-semibold text-sm">{comment.author.name}</span>
+                                          <span className="text-xs text-gray-500">
+                                            {formatDistanceToNow(new Date(comment.createdAt))} ago
+                                          </span>
+                                        </div>
+                                        <p className="text-sm text-gray-700">{comment.content}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-500 italic">No comments yet. Be the first to comment!</p>
+                            )}
+
+                            {/* Add Comment Input - only show if user is a member */}
+                            {isMember && (
+                              <div className="flex space-x-3">
+                                <div className="flex-shrink-0">
+                                  {currentUser?.avatar ? (
+                                    <img 
+                                      src={currentUser.avatar} 
+                                      alt={currentUser.name} 
+                                      className="w-8 h-8 rounded-full object-cover" 
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-full bg-olive-600 flex items-center justify-center text-white font-bold">
+                                      {currentUser?.name?.charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex-1">
+                                  <textarea
+                                    value={commentText[groupPost.post.id] || ''}
+                                    onChange={(e) => setCommentText(prev => ({
+                                      ...prev,
+                                      [groupPost.post.id]: e.target.value
+                                    }))}
+                                    placeholder="Write a comment..."
+                                    className="w-full p-2 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-olive-500 focus:border-olive-500"
+                                    rows={2}
+                                  />
+                                  <button
+                                    onClick={() => handleAddComment(groupPost.post.id)}
+                                    disabled={!commentText[groupPost.post.id]?.trim() || createCommentMutation.isPending}
+                                    className="mt-2 px-4 py-2 bg-olive-600 hover:bg-olive-700 text-white text-sm rounded-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {createCommentMutation.isPending ? 'Posting...' : 'Post Comment'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {!isMember && (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <p className="text-sm text-yellow-800">
+                                  You must be a member of this group to comment on posts.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Approval Actions - Only show for admins/owners on pending posts */}
                         {groupPost.status === 'PENDING_APPROVAL' && (userRole === 'ADMIN' || userRole === 'OWNER') && (

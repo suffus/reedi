@@ -89,6 +89,9 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
           }
         },
         comments: {
+          where: {
+            context: 'FEED' // Only show FEED context comments in public feed
+          },
           include: {
             author: {
               select: {
@@ -283,6 +286,9 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
           }
         },
         comments: {
+          where: {
+            context: 'FEED' // Only show FEED context comments in personalized feed
+          },
           include: {
             author: {
               select: {
@@ -603,6 +609,11 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
         }
       },
       comments: {
+        where: {
+          context: {
+            in: ['FEED', 'USER_PAGE'] // Show FEED and USER_PAGE comments for single post view
+          }
+        },
         include: {
           author: {
             select: {

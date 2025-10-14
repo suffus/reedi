@@ -17,6 +17,7 @@ import { seedGalleries, seedExtendedGalleries } from './generators/galleries'
 import { seedPosts, seedExtendedPosts } from './generators/posts'
 import { seedGroups, seedExtendedGroups } from './generators/groups'
 import { seedMessages, seedExtendedMessages } from './generators/messages'
+import { seedComments } from './generators/comments'
 
 interface SeedOptions {
   extended: boolean
@@ -107,6 +108,11 @@ async function main() {
     }
     
     console.log('✅ Messages seeded')
+    
+    // Seed comments
+    console.log('\n💬 Seeding comments...')
+    await seedComments()
+    console.log('✅ Comments seeded')
     
     // Print summary
     console.log('\n' + '='.repeat(50))

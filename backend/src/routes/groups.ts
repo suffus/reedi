@@ -902,6 +902,23 @@ router.get('/:groupIdentifier/feed', authMiddleware, asyncHandler(async (req: Au
               },
               orderBy: { order: 'asc' }
             },
+            comments: {
+              where: {
+                context: 'GROUP',
+                groupId: group.id // Only show comments from this group context
+              },
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    avatar: true
+                  }
+                }
+              },
+              orderBy: { createdAt: 'asc' }
+            },
             _count: {
               select: {
                 comments: true,

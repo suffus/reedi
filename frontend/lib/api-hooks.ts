@@ -474,7 +474,14 @@ export const useCreateComment = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (commentData: { content: string; postId?: string; mediaId?: string; parentId?: string }) => {
+    mutationFn: async (commentData: { 
+      content: string; 
+      postId?: string; 
+      mediaId?: string; 
+      parentId?: string;
+      context?: 'FEED' | 'GROUP' | 'USER_PAGE'; // NEW: Comment context
+      groupId?: string; // NEW: Group ID for GROUP context
+    }) => {
       const token = getToken()
       if (!token) throw new Error('No token found')
       
@@ -494,6 +501,12 @@ export const useCreateComment = () => {
         queryClient.invalidateQueries({ queryKey: ['comments', variables.postId] })
         queryClient.invalidateQueries({ queryKey: ['posts'] })
         queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
+        
+        // If this is a group comment, invalidate group queries
+        if (variables.context === 'GROUP' && variables.groupId) {
+          queryClient.invalidateQueries({ queryKey: ['groups', variables.groupId, 'posts'] })
+          queryClient.invalidateQueries({ queryKey: ['groups', variables.groupId, 'feed'] })
+        }
       }
       if (variables.mediaId) {
         queryClient.invalidateQueries({ queryKey: ['comments', 'media', variables.mediaId] })

@@ -93,14 +93,20 @@ model Post {
 }
 
 model Comment {
-  id            String         @id @default(cuid())
-  content       String
-  postId        String?
-  authorId      String
-  parentId      String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  mediaId       String?
+  id        String   @id @default(cuid())
+  content   String
+  postId    String?
+  authorId  String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  mediaId   String?
+
+  // NEW: Context tracking for comment isolation
+  context CommentContext @default(FEED)
+  groupId String?
+
+  // Relations
   post          Post?          @relation(fields: [postId], references: [id], onDelete: Cascade)
   media         Media?         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -108,7 +114,9 @@ model Comment {
   replies       Comment[]      @relation("CommentReplies")
   reactions     Reaction[]
   notifications Notification[]
+  group         Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
+  @@index([groupId])
   @@map("comments")
 }
 
@@ -464,6 +472,7 @@ model Group {
   invitations     GroupInvitation[]
   applications    GroupApplication[]
   actions         GroupAction[]
+  comments        Comment[] // NEW: Group can have comments
   avatarMedia     Media?             @relation("GroupAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
   coverPhotoMedia Media?             @relation("GroupCoverPhoto", fields: [coverPhotoId], references: [id], onDelete: SetNull)
 
@@ -652,6 +661,13 @@ enum DeliveryStatus {
   SENT
   DELIVERED
   READ
+}
+
+// Comment context enum for isolation
+enum CommentContext {
+  FEED // Comment made in user's feed
+  GROUP // Comment made in a group
+  USER_PAGE // Comment made on user's public page
 }
 
 // Group-related enums
