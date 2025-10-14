@@ -179,6 +179,7 @@ describe('Media Gallery Management (P0)', () => {
       it('should filter unorganized media (not in any gallery)', async () => {
         const response = await request(app)
           .get(`/api/media/user/${alice!.id}?showOnlyUnorganized=true`)
+          .set('Authorization', `Bearer ${aliceToken}`)
         
         expect(response.status).toBe(200)
         

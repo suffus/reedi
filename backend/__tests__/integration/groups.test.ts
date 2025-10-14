@@ -239,7 +239,7 @@ describe('Groups (P1)', () => {
           message: 'Applying again'
         })
 
-      expect(response.status).toBe(409)
+      expect(response.status).toBe(403)
     })
 
     it('should get pending applications (admin only)', async () => {

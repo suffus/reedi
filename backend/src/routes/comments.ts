@@ -20,8 +20,20 @@ const router = Router()
 router.get('/post/:postId', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const auth = getAuthContext(req)
   const { postId } = req.params
-  const { page = 1, limit = 20 } = req.query
+  const { page = 1, limit = 20, context, groupId } = req.query
   const offset = (Number(page) - 1) * Number(limit)
+
+  // Validate context (default to FEED for backward compatibility)
+  const commentContext = (context as string) || 'FEED'
+  const validContexts = ['FEED', 'GROUP', 'USER_PAGE']
+  
+  if (!validContexts.includes(commentContext)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid context. Must be one of: FEED, GROUP, USER_PAGE'
+    })
+    return
+  }
 
   // Check if user can view this post (and thus its comments)
   const post = await prisma.post.findUnique({
@@ -50,12 +62,28 @@ router.get('/post/:postId', optionalAuthMiddleware, asyncHandler(async (req: Aut
     return
   }
 
+  // Build where clause with context filtering
+  const whereClause: any = {
+    postId,
+    parentId: null, // Only top-level comments
+    context: commentContext
+  }
+
+  // Add groupId filter if context is GROUP
+  if (commentContext === 'GROUP') {
+    if (!groupId) {
+      res.status(400).json({
+        success: false,
+        error: 'groupId is required when context is GROUP'
+      })
+      return
+    }
+    whereClause.groupId = groupId as string
+  }
+
   const [comments, total] = await Promise.all([
     prisma.comment.findMany({
-      where: { 
-        postId,
-        parentId: null // Only top-level comments
-      },
+      where: whereClause,
       include: {
         author: {
           select: {
@@ -89,10 +117,7 @@ router.get('/post/:postId', optionalAuthMiddleware, asyncHandler(async (req: Aut
       orderBy: { createdAt: 'desc' }
     }),
     prisma.comment.count({
-      where: { 
-        postId,
-        parentId: null
-      }
+      where: whereClause
     })
   ])
 
@@ -212,7 +237,7 @@ router.get('/media/:mediaId', optionalAuthMiddleware, asyncHandler(async (req: A
 router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const auth = getAuthContext(req)
   const userId = req.user?.id
-  const { content, postId, mediaId, parentId } = req.body
+  const { content, postId, mediaId, parentId, context, groupId } = req.body
 
   if (!userId) {
     res.status(401).json({
@@ -237,6 +262,57 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
       error: 'Cannot comment on both post and media simultaneously'
     })
     return
+  }
+
+  // Validate context (default to FEED for backward compatibility)
+  const commentContext = context || 'FEED'
+  const validContexts = ['FEED', 'GROUP', 'USER_PAGE']
+  
+  if (!validContexts.includes(commentContext)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid context. Must be one of: FEED, GROUP, USER_PAGE'
+    })
+    return
+  }
+
+  // If context is GROUP, groupId is required
+  if (commentContext === 'GROUP' && !groupId) {
+    res.status(400).json({
+      success: false,
+      error: 'groupId is required when context is GROUP'
+    })
+    return
+  }
+
+  // Validate group exists and post is in that group
+  if (commentContext === 'GROUP' && groupId) {
+    const group = await prisma.group.findUnique({
+      where: { id: groupId }
+    })
+
+    if (!group) {
+      res.status(404).json({
+        success: false,
+        error: 'Group not found'
+      })
+      return
+    }
+
+    // Verify post exists in this group
+    if (postId) {
+      const groupPost = await prisma.groupPost.findUnique({
+        where: { groupId_postId: { groupId, postId } }
+      })
+
+      if (!groupPost) {
+        res.status(400).json({
+          success: false,
+          error: 'Post does not exist in this group'
+        })
+        return
+      }
+    }
   }
 
   // Check permission to comment on post or media
@@ -296,13 +372,31 @@ router.post('/', authMiddleware, asyncHandler(async (req: AuthenticatedRequest, 
     }
   }
 
+  // If this is a reply, inherit parent comment's context and groupId
+  let finalContext = commentContext
+  let finalGroupId = groupId
+
+  if (parentId) {
+    const parentComment = await prisma.comment.findUnique({
+      where: { id: parentId },
+      select: { context: true, groupId: true }
+    })
+
+    if (parentComment) {
+      finalContext = parentComment.context
+      finalGroupId = parentComment.groupId
+    }
+  }
+
   const comment = await prisma.comment.create({
     data: {
       content,
       postId,
-              mediaId,
+      mediaId,
       parentId,
-      authorId: userId
+      authorId: userId,
+      context: finalContext,
+      groupId: finalGroupId
     },
     include: {
       author: {
