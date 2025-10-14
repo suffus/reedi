@@ -193,10 +193,10 @@ export function PostMediaDisplay({
           <LazyMedia
             src={mediaUrl}
             alt={typeof mediaItem === 'string' ? 'Post media' : (mediaItem.media?.caption || mediaItem.media?.altText || 'Post media')}
-            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+            className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
             style={{
-              height: 'auto',
               width: '100%',
+              height: 'auto',
               display: 'block'
             }}
             onClick={() => onMediaClick(mediaItem, reorderedMedia)}
@@ -256,10 +256,10 @@ export function PostMediaDisplay({
                   <LazyMedia
                     src={mediaUrl}
                     alt={typeof mediaItem === 'string' ? `Post media ${idx + 1}` : (mediaItem.media?.caption || mediaItem.media?.altText || `Post media ${idx + 1}`)}
-                    className={`w-full rounded-lg object-contain max-h-72 transition-opacity ${
+                    className={`w-full h-auto rounded-lg max-h-72 transition-opacity ${
                       isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                     } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
-                    style={typeof mediaItem === 'string' ? undefined : { aspectRatio: mediaItem.media?.width && mediaItem.media?.height ? `${mediaItem.media?.width} / ${mediaItem.media?.height}` : undefined }}
+                    style={{ width: '100%', height: 'auto' }}
                     onClick={() => onMediaClick(mediaItem, reorderedMedia)}
                     mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.media?.mediaType || 'IMAGE'}
                     showProgressiveEffect={true}
@@ -313,7 +313,7 @@ export function PostMediaDisplay({
           </div>
         )}
         {/* Main image container - 80% width */}
-        <div className="w-4/5 flex justify-center">
+        <div className="w-4/5">
           <div
             draggable={isOwner && showReorderControls}
             onDragStart={(e) => handleDragStart(e, main, 0)}
@@ -321,20 +321,18 @@ export function PostMediaDisplay({
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, 0)}
             onDragEnd={handleDragEnd}
-            className={`relative ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-grab'}`}
+            className={`relative w-full ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-grab'}`}
           >
             {mainMediaUrl ? (
               <LazyMedia
                 src={mainMediaUrl}
                 alt={typeof main === 'string' ? 'Main post media' : (main.media?.caption || main.media?.altText || 'Main post media')}
-                className={`rounded-lg object-cover transition-opacity ${
+                className={`w-full h-auto rounded-lg transition-opacity ${
                   isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
                 } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
                 style={{
                   width: '100%',
-                  maxWidth: '100%',
-                  height: 'auto',
-                  aspectRatio: typeof main === 'string' ? undefined : (main.media?.width && main.media?.height ? `${main.media?.width} / ${main.media?.height}` : undefined)
+                  height: 'auto'
                 }}
                 onClick={() => onMediaClick(main, reorderedMedia)}
                 mediaType={typeof main === 'string' ? 'IMAGE' : main.media?.mediaType || 'IMAGE'}
@@ -435,10 +433,10 @@ export function PostMediaDisplay({
             <LazyMedia
               src={mainMediaUrl}
               alt={typeof main === 'string' ? 'Main post media' : (main.media?.caption || main.media?.altText || 'Main post media')}
-              className={`w-full rounded-lg object-contain transition-opacity ${
+              className={`w-full h-auto rounded-lg transition-opacity ${
                 isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
               } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
-              style={typeof main === 'string' ? undefined : { aspectRatio: main.media?.width && main.media?.height ? `${main.media?.width} / ${main.media?.height}` : undefined }}
+              style={{ width: '100%', height: 'auto' }}
               onClick={() => onMediaClick(main, reorderedMedia)}
               mediaType={typeof main === 'string' ? 'IMAGE' : main.media?.mediaType || 'IMAGE'}
               isMainMedia={true}
