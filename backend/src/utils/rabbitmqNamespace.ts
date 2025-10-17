@@ -31,6 +31,18 @@ export function createNamespacedExchanges() {
 }
 
 /**
+ * Create unified namespaced queue names for media processing
+ * Single queue for all media types (image, video, zip)
+ */
+export function createNamespacedMediaQueues() {
+  return {
+    requests: createNamespacedName('media.processing.requests'),
+    updates: createNamespacedName('media.processing.updates')
+  }
+}
+
+/**
+ * @deprecated Use createNamespacedMediaQueues() instead
  * Create namespaced queue names for video processing
  */
 export function createNamespacedVideoQueues() {
@@ -41,6 +53,7 @@ export function createNamespacedVideoQueues() {
 }
 
 /**
+ * @deprecated Use createNamespacedMediaQueues() instead
  * Create namespaced queue names for image processing
  */
 export function createNamespacedImageQueues() {
@@ -51,6 +64,7 @@ export function createNamespacedImageQueues() {
 }
 
 /**
+ * @deprecated Staged processing queues are being removed
  * Create namespaced queue names for staged processing
  */
 export function createNamespacedStagedQueues(mediaType: 'video' | 'images') {

@@ -1,37 +1,32 @@
 import { PrismaClient } from '@prisma/client'
-import { RabbitMQService, ImageProcessingRequest, ImageProgressUpdate } from './rabbitmqService'
+import { BaseMediaProcessingService } from './baseMediaProcessingService'
+import { MediaProcessingMessage, MediaProcessingRequest, MediaProgressUpdate, MediaProcessingResult } from '../types/media-processing'
 import logger from '../utils/logger'
 
-export class ImageProcessingService {
+export class ImageProcessingService extends BaseMediaProcessingService {
   private prisma: PrismaClient
-  private rabbitmqService: RabbitMQService
 
-  constructor(prisma: PrismaClient, rabbitmqService: RabbitMQService) {
+  constructor(prisma: PrismaClient, skipQueueConsumption: boolean = false) {
+    super('image', skipQueueConsumption)
     this.prisma = prisma
-    this.rabbitmqService = rabbitmqService
   }
 
   async start(): Promise<void> {
-    await this.rabbitmqService.connect()
+    await super.start()
     
-    // Start listening for progress updates
-    await this.rabbitmqService.consumeProgressUpdates(
-      (update: any) => this.handleProgressUpdate(update)
-    )
+    // Set up update callback
+    this.setUpdateCallback((update: MediaProcessingMessage) => this.handleProgressUpdate(update))
 
-    logger.info('Image processing service started 1')
-  }
-
-  async stop(): Promise<void> {
-    await this.rabbitmqService.close()
-    logger.info('Image processing service stopped')
+    logger.info('Image processing service started')
   }
 
   async requestImageProcessing(
     mediaId: string,
     userId: string,
     s3Key: string,
-    originalFilename: string
+    originalFilename: string,
+    mimeType?: string,
+    fileSize?: number
   ): Promise<string> {
     const jobId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     
@@ -58,117 +53,194 @@ export class ImageProcessingService {
       }
     })
 
-    // Send processing request to media processor
-    const request: ImageProcessingRequest = {
-      type: 'image_processing_request',
-      job_id: jobId,
-      media_id: mediaId,
-      user_id: userId,
-      s3_key: s3Key,
-      original_filename: originalFilename,
-      request_progress_updates: true,
-      progress_interval: 10,
-      timestamp: new Date().toISOString()
-    }
-
-    await this.rabbitmqService.sendMessage('media.images.processing.download', request)
+    // Send processing request using unified message format
+    await this.publishProcessingRequest({
+      mediaId,
+      userId,
+      s3Key,
+      originalFilename,
+      mimeType: mimeType || 'image/jpeg',
+      fileSize: fileSize || 0,
+      metadata: {
+        jobId,
+        requestProgressUpdates: true,
+        progressInterval: 10
+      }
+    })
     
     logger.info(`Image processing requested for media ${mediaId}, job ${jobId}`)
     return jobId
   }
 
-  private async handleProgressUpdate(update: ImageProgressUpdate): Promise<void> {
-    const { job_id, media_id, status, progress, current_step, image_versions, metadata, error_message } = update
-    logger.info(`Image processing update for job ${job_id}: ${status} (${progress}%)`)
-    logger.info(`Received image_versions: ${JSON.stringify(image_versions)}`)
+  async handleProgressUpdate(update: MediaProcessingMessage): Promise<void> {
     try {
-      // Update processing job
-      await this.prisma.mediaProcessingJob.update({
-        where: { id: job_id },
-        data: {
-          status: this.mapStatus(status),
-          progress,
-          currentStep: current_step,
-          errorMessage: error_message,
-          imageVersions: image_versions ? JSON.stringify(image_versions) : undefined,
-          metadata: metadata ? JSON.stringify(metadata) : undefined,
-          completedAt: status === 'completed' || status === 'failed' ? new Date() : undefined
-        }
-      })
-
-      // Update media record
-      const mediaUpdateData: any = {
-        imageProcessingStatus: this.mapStatus(status)
-      }
-
-      if (status === 'completed' && image_versions) {
-        mediaUpdateData.imageVersions = JSON.stringify(image_versions)
-        
-        // Extract specific fields from image_versions array
-        const thumbnailVersion = image_versions.find((version: any) => version.quality === 'thumbnail')
-        const highQualityVersion = image_versions.find((version: any) => version.quality === '1080p')
-        const mediumQualityVersion = image_versions.find((version: any) => version.quality === '720p')
-        
-        // Update thumbnail fields
-        if (thumbnailVersion) {
-          mediaUpdateData.thumbnail = thumbnailVersion.s3Key
-          mediaUpdateData.thumbnailS3Key = thumbnailVersion.s3Key
-        }
-        
-        // Update main image fields - use highest quality available for URL and size
-        if (highQualityVersion) {
-          mediaUpdateData.url = highQualityVersion.s3Key
-          mediaUpdateData.size = highQualityVersion.fileSize
-        } else if (mediumQualityVersion) {
-          mediaUpdateData.url = mediumQualityVersion.s3Key
-          mediaUpdateData.size = mediumQualityVersion.fileSize
-        } else if (image_versions.length > 0) {
-          // Fallback to first available version
-          const firstVersion = image_versions[0]
-          mediaUpdateData.url = firstVersion.s3Key
-          mediaUpdateData.size = firstVersion.fileSize
-        }
-        
-        // Use original corrected dimensions from metadata (with EXIF orientation applied)
-        if (metadata && metadata.width && metadata.height) {
-          mediaUpdateData.width = metadata.width
-          mediaUpdateData.height = metadata.height
-        } else if (highQualityVersion) {
-          // Fallback to processed version dimensions if metadata not available
-          mediaUpdateData.width = highQualityVersion.width
-          mediaUpdateData.height = highQualityVersion.height
-        } else if (mediumQualityVersion) {
-          mediaUpdateData.width = mediumQualityVersion.width
-          mediaUpdateData.height = mediumQualityVersion.height
-        } else if (image_versions.length > 0) {
-          const firstVersion = image_versions[0]
-          mediaUpdateData.width = firstVersion.width
-          mediaUpdateData.height = firstVersion.height
-        }
-      }
-
-      if (metadata) {
-        mediaUpdateData.imageMetadata = JSON.stringify(metadata)
-      }
-
-      await this.prisma.media.update({
-        where: { id: media_id },
-        data: mediaUpdateData
-      })
-
-      logger.info(`Image processing update for media ${media_id}: ${status} (${progress}%)`)
+      console.log(`🖼️ [IMAGE-SERVICE] Handling update:`, JSON.stringify(update, null, 2))
       
-      if (status === 'completed') {
-        logger.info(`Image processing completed for media ${media_id}`)
-        if (image_versions) {
-          logger.info(`Updated media with ${image_versions.length} versions`)
+      if (update.messageType === 'progress') {
+        const progressUpdate = update as MediaProgressUpdate
+        const { mediaId, status, progress, stage, details } = progressUpdate
+        
+        // Extract job ID from metadata if available
+        const jobId = details?.jobId || `img_${mediaId}`
+        
+        console.log(`🖼️ [IMAGE-SERVICE] Progress update for job ${jobId}: ${status} (${progress}%)`)
+        logger.info(`Image processing update for job ${jobId}: ${status} (${progress}%)`)
+        
+        // Update processing job
+        const jobUpdate = await this.prisma.mediaProcessingJob.updateMany({
+          where: { 
+            mediaId,
+            mediaType: 'IMAGE',
+            status: { in: ['PENDING', 'PROCESSING'] }
+          },
+          data: {
+            status: this.mapStatus(status),
+            progress,
+            currentStep: stage,
+            errorMessage: details?.errorMessage,
+            imageVersions: details?.imageVersions ? JSON.stringify(details.imageVersions) : undefined,
+            metadata: details ? JSON.stringify(details) : undefined,
+            completedAt: status === 'COMPLETED' || status === 'FAILED' ? new Date() : undefined
+          }
+        })
+        
+        console.log(`🖼️ [IMAGE-SERVICE] Updated ${jobUpdate.count} processing jobs`)
+
+        // Update media record
+        const mediaUpdate = await this.prisma.media.update({
+          where: { id: mediaId },
+          data: {
+            imageProcessingStatus: this.mapStatus(status)
+          }
+        })
+        
+        console.log(`🖼️ [IMAGE-SERVICE] Updated media record for progress:`, JSON.stringify(mediaUpdate, null, 2))
+
+      } else if (update.messageType === 'result') {
+        const resultUpdate = update as MediaProcessingResult
+        const { mediaId, status, result, error } = resultUpdate
+        
+        // Extract job ID from metadata if available
+        const jobId = result?.metadata?.jobId || `img_${mediaId}`
+        
+        console.log(`🖼️ [IMAGE-SERVICE] Result update for job ${jobId}: ${status}`)
+        console.log(`🖼️ [IMAGE-SERVICE] Result data:`, JSON.stringify(result, null, 2))
+        logger.info(`Image processing result for job ${jobId}: ${status}`)
+        
+        // Update processing job
+        const jobUpdate = await this.prisma.mediaProcessingJob.updateMany({
+          where: { 
+            mediaId,
+            mediaType: 'IMAGE',
+            status: { in: ['PENDING', 'PROCESSING'] }
+          },
+          data: {
+            status: this.mapStatus(status),
+            progress: status === 'COMPLETED' ? 100 : 0,
+            currentStep: status === 'COMPLETED' ? 'completed' : 'failed',
+            errorMessage: error,
+            imageVersions: result?.metadata?.imageVersions ? JSON.stringify(result.metadata.imageVersions) : undefined,
+            metadata: result?.metadata ? JSON.stringify(result.metadata) : undefined,
+            completedAt: new Date()
+          }
+        })
+        
+        console.log(`🖼️ [IMAGE-SERVICE] Updated ${jobUpdate.count} processing jobs for result`)
+
+        // Update media record with processing results
+        if (status === 'COMPLETED' && result) {
+          console.log(`🖼️ [IMAGE-SERVICE] Updating media record for completed processing`)
+          console.log(`🖼️ [IMAGE-SERVICE] Result data:`, JSON.stringify(result, null, 2))
+          
+          const mediaUpdateData: any = {
+            imageProcessingStatus: 'COMPLETED'
+          }
+
+          // Handle the new result format from unified processor
+          if (result.s3Key) {
+            // Use the result data directly
+            mediaUpdateData.url = result.s3Key
+            mediaUpdateData.thumbnail = result.thumbnailS3Key || result.s3Key
+            mediaUpdateData.thumbnailS3Key = result.thumbnailS3Key || result.s3Key
+            
+            if (result.width && result.height) {
+              mediaUpdateData.width = result.width
+              mediaUpdateData.height = result.height
+            }
+            
+            if (result.metadata) {
+              mediaUpdateData.imageMetadata = JSON.stringify(result.metadata)
+            }
+            
+            console.log(`🖼️ [IMAGE-SERVICE] Media update data:`, JSON.stringify(mediaUpdateData, null, 2))
+          } else if (result.metadata?.imageVersions) {
+            // Handle legacy format with imageVersions array
+            const imageVersions = result.metadata.imageVersions
+            mediaUpdateData.imageVersions = JSON.stringify(imageVersions)
+            
+            const thumbnailVersion = imageVersions.find((version: any) => version.quality === 'thumbnail')
+            const highQualityVersion = imageVersions.find((version: any) => version.quality === '1080p')
+            const mediumQualityVersion = imageVersions.find((version: any) => version.quality === '720p')
+            
+            // Update thumbnail fields
+            if (thumbnailVersion) {
+              mediaUpdateData.thumbnail = thumbnailVersion.s3Key
+              mediaUpdateData.thumbnailS3Key = thumbnailVersion.s3Key
+            }
+            
+            // Update main image fields - use highest quality available for URL and size
+            if (highQualityVersion) {
+              mediaUpdateData.url = highQualityVersion.s3Key
+              mediaUpdateData.size = highQualityVersion.fileSize
+            } else if (mediumQualityVersion) {
+              mediaUpdateData.url = mediumQualityVersion.s3Key
+              mediaUpdateData.size = mediumQualityVersion.fileSize
+            } else if (imageVersions.length > 0) {
+              // Fallback to first available version
+              const firstVersion = imageVersions[0]
+              mediaUpdateData.url = firstVersion.s3Key
+              mediaUpdateData.size = firstVersion.fileSize
+            }
+            
+            // Use original corrected dimensions from metadata (with EXIF orientation applied)
+            if (result.metadata?.width && result.metadata?.height) {
+              mediaUpdateData.width = result.metadata.width
+              mediaUpdateData.height = result.metadata.height
+            } else if (highQualityVersion) {
+              // Fallback to processed version dimensions if metadata not available
+              mediaUpdateData.width = highQualityVersion.width
+              mediaUpdateData.height = highQualityVersion.height
+            } else if (mediumQualityVersion) {
+              mediaUpdateData.width = mediumQualityVersion.width
+              mediaUpdateData.height = mediumQualityVersion.height
+            } else if (imageVersions.length > 0) {
+              const firstVersion = imageVersions[0]
+              mediaUpdateData.width = firstVersion.width
+              mediaUpdateData.height = firstVersion.height
+            }
+          }
+
+          // Update the media record
+          const updatedMedia = await this.prisma.media.update({
+            where: { id: mediaId },
+            data: mediaUpdateData
+          })
+          
+          console.log(`🖼️ [IMAGE-SERVICE] Updated media record:`, JSON.stringify(updatedMedia, null, 2))
+          logger.info(`Image processing completed for media ${mediaId}`)
+        } else if (status === 'FAILED') {
+          await this.prisma.media.update({
+            where: { id: mediaId },
+            data: {
+              imageProcessingStatus: 'FAILED'
+            }
+          })
+          logger.error(`Image processing failed for media ${mediaId}: ${error}`)
         }
-      } else if (status === 'failed') {
-        logger.error(`Image processing failed for media ${media_id}: ${error_message}`)
       }
 
     } catch (error) {
-      logger.error(`Error handling image processing update for job ${job_id}:`, error)
+      logger.error(`Error handling image processing update for media ${update.mediaId}:`, error)
     }
   }
 

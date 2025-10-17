@@ -2,13 +2,15 @@
 
 import express from 'express'
 import cors from 'cors'
-import { StagedVideoProcessingService } from './services/stagedVideoProcessingService'
-import { StagedImageProcessingService } from './services/stagedImageProcessingService'
-import { EnhancedRabbitMQService } from './services/enhancedRabbitMQService'
+// Removed old staged processing services - now using unified processor
 import { S3ProcessorService } from './services/s3ProcessorService'
+import { ZipExtractionService } from './services/zipExtractionService'
+import { FileValidationService } from './services/fileValidationService'
+import { UnifiedMediaProcessor } from './consumers/unifiedMediaProcessor'
+import { initRabbitMQ } from './utils/rabbitmq'
 import dotenv from 'dotenv'
 import logger from './utils/logger'
-import { createNamespacedExchanges, createNamespacedStagedQueues } from './utils/rabbitmqNamespace'
+import { createNamespacedExchanges, createNamespacedMediaQueues } from './utils/rabbitmqNamespace'
 
 dotenv.config()
 
@@ -21,8 +23,7 @@ async function main() {
     rabbitmq: {
       url: process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
       exchanges: createNamespacedExchanges(),
-      staged_video_queues: createNamespacedStagedQueues('video'),
-      staged_image_queues: createNamespacedStagedQueues('images')
+      media_queues: createNamespacedMediaQueues()
     },
     s3: {
       region: process.env['IDRIVE_REGION'] || 'us-east-1',
@@ -35,7 +36,8 @@ async function main() {
       tempDir: process.env['TEMP_DIR'] || '/tmp',
       progressInterval: parseInt(process.env['PROGRESS_INTERVAL'] || '5'),
       maxConcurrentVideoJobs: parseInt(process.env['MAX_CONCURRENT_VIDEO_JOBS'] || '3'),
-      maxConcurrentImageJobs: parseInt(process.env['MAX_CONCURRENT_IMAGE_JOBS'] || '10')
+      maxConcurrentImageJobs: parseInt(process.env['MAX_CONCURRENT_IMAGE_JOBS'] || '10'),
+      maxFileSize: parseInt(process.env['MAX_FILE_SIZE'] || '1073741824') // 1GB default
     }
   }
 
@@ -46,8 +48,7 @@ async function main() {
             process.exit(1)
           }
 
-  let videoProcessingService: StagedVideoProcessingService | null = null
-  let imageProcessingService: StagedImageProcessingService | null = null
+  let unifiedMediaProcessor: UnifiedMediaProcessor | null = null
 
   try {
     logger.info('Starting media processing services...')
@@ -62,45 +63,29 @@ async function main() {
       config.s3.endpoint
     )
 
-    // Initialize video processing service
-    logger.info('Starting staged video processing service...')
-    const videoRabbitmqService = new EnhancedRabbitMQService(
-      config.rabbitmq.url,
-      config.rabbitmq.exchanges,
-      'video',
-      config.rabbitmq.staged_video_queues
+    // Initialize unified media processor
+    logger.info('Starting unified media processor...')
+    
+    // Initialize RabbitMQ
+    await initRabbitMQ()
+    
+    // Initialize supporting services
+    const zipExtractionService = new ZipExtractionService(config.processing.tempDir)
+    const fileValidationService = new FileValidationService(
+      config.processing.maxFileSize || 1024 * 1024 * 1024 // 1GB default
     )
 
-    videoProcessingService = new StagedVideoProcessingService(
-      videoRabbitmqService,
+    // Initialize unified media processor
+    unifiedMediaProcessor = new UnifiedMediaProcessor(
       s3Service,
-      config.processing.tempDir,
-      config.processing.maxConcurrentVideoJobs
+      zipExtractionService,
+      fileValidationService,
+      config.processing.tempDir
     )
 
-    // Start the video processing service
-    await videoProcessingService.start()
-    logger.info('✅ Video processing service started successfully')
-
-    // Initialize image processing service
-    logger.info('Starting staged image processing service...')
-    const imageRabbitmqService = new EnhancedRabbitMQService(
-      config.rabbitmq.url,
-      config.rabbitmq.exchanges,
-      'images',
-      config.rabbitmq.staged_image_queues
-    )
-
-    imageProcessingService = new StagedImageProcessingService(
-      imageRabbitmqService,
-      s3Service,
-      config.processing.tempDir,
-      config.processing.maxConcurrentImageJobs
-    )
-
-    // Start the image processing service
-    await imageProcessingService.start()
-    logger.info('✅ Image processing service started successfully')
+    // Start the unified media processor
+    await unifiedMediaProcessor.start()
+    logger.info('✅ Unified media processor started successfully')
 
     // Create Express server for health checks and monitoring
     const app = express()
@@ -112,47 +97,37 @@ async function main() {
     app.get('/health', (_req, res) => {
       res.json({
         status: 'OK',
-        service: 'video-processing',
+        service: 'unified-media-processing',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        rabbitmq: videoRabbitmqService.isConnected() && imageRabbitmqService.isConnected(),
-        concurrency: {
-          video: {
-            maxConcurrentJobs: config.processing.maxConcurrentVideoJobs,
-            activeJobs: videoProcessingService ? videoProcessingService.getActiveJobCount() : 0
-          },
-          image: {
-            maxConcurrentJobs: config.processing.maxConcurrentImageJobs,
-            activeJobs: imageProcessingService ? imageProcessingService.getActiveJobCount() : 0
+        rabbitmq: true, // RabbitMQ connection is managed by unified processor
+        unifiedProcessor: {
+          status: unifiedMediaProcessor ? 'running' : 'stopped',
+          concurrency: {
+            video: {
+              maxConcurrentJobs: config.processing.maxConcurrentVideoJobs,
+              activeJobs: 0 // Not tracked in unified processor
+            },
+            image: {
+              maxConcurrentJobs: config.processing.maxConcurrentImageJobs,
+              activeJobs: 0 // Not tracked in unified processor
+            }
           }
-        },
-        tempFiles: {
-          video: videoProcessingService ? videoProcessingService.getTempFileStats() : null,
-          image: imageProcessingService ? imageProcessingService.getTempFileStats() : null
         }
       })
     })
 
     // Service info endpoint
     app.get('/info', (_req, res) => {
+      const queues = createNamespacedMediaQueues()
       res.json({
-        service: 'Media Processing Service',
-        version: '2.0.0',
+        service: 'Unified Media Processing Service',
+        version: '3.0.0',
         port: config.server.port,
-        services: {
-          video: {
-            status: videoProcessingService ? 'running' : 'stopped',
-            exchanges: config.rabbitmq.exchanges,
-            queues: config.rabbitmq.staged_video_queues
-          },
-          image: {
-            status: imageProcessingService ? 'running' : 'stopped',
-              exchanges: {
-                processing: 'reedi.images.processing',
-                updates: 'reedi.images.updates'
-              },
-            queues: config.rabbitmq.staged_image_queues
-          }
+        unifiedProcessor: {
+          status: unifiedMediaProcessor ? 'running' : 'stopped',
+          queues: queues,
+          exchanges: config.rabbitmq.exchanges
         },
         rabbitmq: {
           url: config.rabbitmq.url.replace(/\/\/.*@/, '//***:***@')
@@ -179,8 +154,8 @@ async function main() {
     const cleanupInterval = setInterval(async () => {
       try {
         logger.info('Running periodic cleanup of old temporary files...')
-        await videoProcessingService?.cleanupOldTempFiles(6) // Clean up files older than 6 hours
-        await imageProcessingService?.cleanupOldTempFiles(6)
+        // Note: Cleanup is handled by the unified processor
+        // Individual services no longer exist
       } catch (error) {
         logger.error('Error during periodic cleanup:', error)
       }
@@ -195,20 +170,15 @@ async function main() {
       // Run final cleanup before shutdown
       try {
         logger.info('Running final cleanup before shutdown...')
-        await videoProcessingService?.cleanupOldTempFiles(0) // Clean up all files
-        await imageProcessingService?.cleanupOldTempFiles(0)
+        // Note: Cleanup is handled by the unified processor
+        // Individual services no longer exist
       } catch (error) {
         logger.error('Error during final cleanup:', error)
       }
       
-      if (videoProcessingService) {
-        await videoProcessingService.stop()
-        logger.info('Video processing service stopped')
-      }
-      
-      if (imageProcessingService) {
-        await imageProcessingService.stop()
-        logger.info('Image processing service stopped')
+      if (unifiedMediaProcessor) {
+        await unifiedMediaProcessor.stop()
+        logger.info('Unified media processor stopped')
       }
       
       logger.info('All media processing services stopped')
@@ -221,12 +191,8 @@ async function main() {
   } catch (error) {
     logger.error('Failed to start media processing services:', error)
     
-    if (videoProcessingService) {
-      await videoProcessingService.stop()
-    }
-    
-    if (imageProcessingService) {
-      await imageProcessingService.stop()
+    if (unifiedMediaProcessor) {
+      await unifiedMediaProcessor.stop()
     }
     
     process.exit(1)
