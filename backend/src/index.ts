@@ -26,10 +26,8 @@ import messageRoutes from '@/routes/messages'
 
 // Import services
 import { MessagingService } from '@/services/messagingService'
+import { UnifiedMediaProcessingService } from '@/services/unifiedMediaProcessingService'
 
-// Import services
-import { StagedVideoProcessingService } from '@/services/stagedVideoProcessingService'
-import { ImageProcessingService } from '@/services/imageProcessingService'
 import { RabbitMQService } from '@/services/rabbitmqService'
 import { createNamespacedExchanges, createNamespacedImageQueues, createNamespacedVideoQueues } from '@/utils/rabbitmqNamespace'
 
@@ -157,8 +155,7 @@ setInterval(async () => {
 }, 30000) // Check every 30 seconds
 
 // Initialize services
-let videoProcessingService: StagedVideoProcessingService | null = null
-let imageProcessingService: ImageProcessingService | null = null
+let unifiedMediaProcessingService: UnifiedMediaProcessingService | null = null
 let messagingService: MessagingService | null = null
 
 // Start server
@@ -178,39 +175,26 @@ async function startServer() {
       console.warn('⚠️ Real-time messaging will be disabled')
     }
 
-    // Initialize video processing service
+    // Initialize unified media processing service
     try {
-      const rabbitmqService = new RabbitMQService(
-        process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
-        createNamespacedExchanges(),
-        'video',
-        createNamespacedVideoQueues()
-      )
-      videoProcessingService = new StagedVideoProcessingService(prisma, rabbitmqService)
-      await videoProcessingService.start()
-      app.locals.videoProcessingService = videoProcessingService
-      console.log('✅ Staged video processing service started')
+      unifiedMediaProcessingService = new UnifiedMediaProcessingService(prisma)
+      await unifiedMediaProcessingService.start()
+      
+      // Expose individual services for backward compatibility
+      app.locals.imageProcessingService = unifiedMediaProcessingService.getImageService()
+      app.locals.zipProcessingService = unifiedMediaProcessingService.getZipService()
+      app.locals.videoProcessingService = unifiedMediaProcessingService.getVideoService()
+      app.locals.unifiedMediaProcessingService = unifiedMediaProcessingService
+      
+      console.log('✅ Unified media processing service started')
+      console.log('  - Image processing: enabled')
+      console.log('  - Zip processing: enabled')
+      console.log('  - Video processing: enabled')
     } catch (error) {
-      console.warn('⚠️ Video processing service failed to start:', error)
-      console.warn('⚠️ Video processing will be disabled')
+      console.warn('⚠️ Unified media processing service failed to start:', error)
+      console.warn('⚠️ All media processing will be disabled')
     }
 
-    // Initialize image processing service
-    try {
-      const imageRabbitmqService = new RabbitMQService(
-        process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`,
-        createNamespacedExchanges(),
-        'images',
-        createNamespacedImageQueues()
-      )
-      imageProcessingService = new ImageProcessingService(prisma, imageRabbitmqService)
-      await imageProcessingService.start()
-      app.locals.imageProcessingService = imageProcessingService
-      console.log('✅ Image processing service started')
-    } catch (error) {
-      console.warn('⚠️ Image processing service failed to start:', error)
-      console.warn('⚠️ Image processing will be disabled')
-    }
 
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`)
@@ -227,11 +211,17 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down gracefully...')
-  if (videoProcessingService) {
-    await videoProcessingService.stop()
+  if (app.locals.videoProcessingService) {
+    await app.locals.videoProcessingService.stop()
   }
-  if (imageProcessingService) {
-    await imageProcessingService.stop()
+  if (app.locals.imageProcessingService) {
+    await app.locals.imageProcessingService.stop()
+  }
+  if (app.locals.zipProcessingService) {
+    await app.locals.zipProcessingService.stop()
+  }
+  if (app.locals.unifiedMediaProcessingService) {
+    await app.locals.unifiedMediaProcessingService.stop()
   }
   await prisma.$disconnect()
   process.exit(0)
@@ -239,11 +229,17 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down gracefully...')
-  if (videoProcessingService) {
-    await videoProcessingService.stop()
+  if (app.locals.videoProcessingService) {
+    await app.locals.videoProcessingService.stop()
   }
-  if (imageProcessingService) {
-    await imageProcessingService.stop()
+  if (app.locals.imageProcessingService) {
+    await app.locals.imageProcessingService.stop()
+  }
+  if (app.locals.zipProcessingService) {
+    await app.locals.zipProcessingService.stop()
+  }
+  if (app.locals.unifiedMediaProcessingService) {
+    await app.locals.unifiedMediaProcessingService.stop()
   }
   await prisma.$disconnect()
   process.exit(0)

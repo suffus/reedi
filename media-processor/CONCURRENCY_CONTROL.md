@@ -136,7 +136,7 @@ INFO: Resubscribed to queue video.processing.upload - capacity available
 ### Service Structure
 
 ```
-StagedVideoProcessingService (max 3 concurrent)
+VideoProcessingService (max 3 concurrent)
 ├── maxConcurrentJobs: number
 ├── activeJobs: Set<string>
 ├── jobCallbacks: Map<string, Function>

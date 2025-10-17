@@ -283,4 +283,39 @@ export async function getImageFromS3(key: string): Promise<Buffer> {
  */
 export async function getPublicUrl(key: string): Promise<string> {
   return await generatePresignedUrl(key, 24 * 60 * 60) // 24 hours
+}
+
+/**
+ * Upload zip file to S3
+ */
+export async function uploadZipFile(file: Express.Multer.File, userId: string): Promise<string> {
+  const timestamp = Date.now()
+  const key = `zip-uploads/${userId}/${timestamp}-${file.originalname}`
+  
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Body: file.buffer,
+    ContentType: 'application/zip',
+    Metadata: {
+      userId,
+      originalName: file.originalname,
+      uploadedAt: new Date().toISOString()
+    }
+  })
+
+  await s3Client.send(command)
+  return key
+}
+
+/**
+ * Delete zip file from S3
+ */
+export async function deleteZipFile(key: string): Promise<void> {
+  const command = new DeleteObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key
+  })
+
+  await s3Client.send(command)
 } 

@@ -63,6 +63,7 @@ model User {
   facetAssignments FacetAssignment[]
   facetHistory     FacetAssignmentHistory[]
   permissionAudits PermissionAuditLog[]
+  
 
   @@index([lineManagerId])
   @@map("users")
@@ -182,7 +183,10 @@ model Media {
   mediaProcessingJobs   MediaProcessingJob[]
   messages              Message[]            @relation("MessageMedia")
   messageMediaItems     MessageMedia[]       @relation("MessageMediaItems")
+  zipMediaId            String?              // Link to original zip file if extracted from zip
+  originalPath          String?              // Original path within zip (e.g., "photos/vacation/img1.jpg")
 
+  @@index([zipMediaId])
   @@map("media")
 }
 
@@ -201,6 +205,7 @@ model Gallery {
 
   @@map("galleries")
 }
+
 
 model Hashtag {
   id        String   @id @default(cuid())
@@ -627,6 +632,7 @@ enum FriendRequestStatus {
 enum MediaType {
   IMAGE
   VIDEO
+  ZIP
 }
 
 enum ProcessingStatus {
@@ -707,6 +713,7 @@ enum GroupPostStatus {
   REJECTED
   DELETED
 }
+
 
 enum GroupModerationPolicy {
   NO_MODERATION

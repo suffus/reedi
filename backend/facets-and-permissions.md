@@ -12,7 +12,7 @@ To implement this, we need a way of applying sets of facets to entities.  We alr
 
 In contrast to a facet which describes what an entity is (or which groups it belongs to, or what its role is), a permission describes what some agent can do to what, in what scopes.  Generally facets apply to agents and entities.  Permissions apply to **operations**.
 
-For example, media-read(C,X,Z) will be true iff X has permission to read media item Z in context C.  For higher level permissions, assign-facet(C,X1,X2,F) will be true if X1 has the capability of assigning facet F to user X2 in context C.  The assign-facet function will return a **permission** `{"grant":<string>,"reason":<string>,"user":<id>,"item":<id>}` which will essentially give a reason for the grant (eg F was a low level facet, X1 (the request User) had "can-assign-facet:1").  In all these cases, the context (or scope) C will correspond to the JWT presented as the Bearer token to the API call (which should identify the user and the authentication used at a minimum).  
+For example, media-read(C,X,Z) will be true iff X has permission to read media item Z in context C.  For higher level permissions, assign-facet(C,X1,X2,F) will be true if X1 has the capability of assigning facet F to user X2 in context C.  The assign-facet function will return a **permission** object `{"grant":<string>,"reason":<string>,"user":<id>,"item":<id>}` which will essentially give a reason for the grant (eg F was a low level facet, X1 (the request User) had "can-assign-facet:1").  In all these cases, the context (or scope) C will correspond to the JWT presented as the Bearer token to the API call (which should identify the user and the authentication used at a minimum).  
 
 ## Coding permissions
 
@@ -59,3 +59,38 @@ function canDoMediaRead(auth: Authentication, u: User, item: MediaItem) {
 
 This function would be used throughout the module whenever a decision was needed to screen media.
 
+## Auditing permissions
+
+In due course, all or a subset of granted permissions could be stored in a database or send to RabbitMQ for further processing or storing outside the backend.
+
+## Auditing Facet assignment
+
+The assignment of facets to users must be tracked in the database.  The logic of who has what authority to assign facets will be developed with the application.  For now, a user must have the 'reedi-facet-admin:global' facet to be able to assign any facet.  We shall also define more restricted rules for enabling facet assignment in due course.
+
+### Facet lifecycle
+
+After assignment, facets will have an expiry time, and will need to be reconfirmed by an agent and extended (or revoked).  
+
+### Facet hierarchies
+
+facets are naturally in a hierarchy which is a partial order, and this needs to be defined at the time they are created.  For example, a job title may be a facet, and a Devops Director may be above Devops Engineer, but there may be tests which say that everything that needs a Devops Engineer facet can also apply to a Devops Manager.  For example `user.getFacet('job-role').isAtLeast('devops-engineer')`.
+
+# Permissions
+
+Permissions are calculated by a piece of javascript which returns a permissions object.   These checks are explicitly called whenever a decission to serve or include an item or execute an event is to be made, therefore there should eb no permission conflicts.
+
+## Defaults and errors
+
+In general the permissions checker logic shoudl handle all cases.  If a case is not handled by the permissions checker logic, or if the permissions checker logic or database throws an error, the permission should not be granted and a 500 shoudl be returned to note it is an error and not a 401 or 403.
+
+## Relationship to existing permission logic
+
+The facet based permissions system augments but does not replace the current permission systems for groups and visibility.  It is designed to add in admin functionality, and to allow reporting hierarchies or geograhical hierarchies of corporate users to be taken into account when making permissions decisions.
+
+## Divisions and Departments
+
+In due course, we shall introduce models for corporate divisions (operating units) and departments (functional corporate administrative units). Currently they will be handled by facets, with users having a 'division' facet ad a 'department' facet.  These will be selected currently from the facet system but may be joined with a later corporate structure model.
+
+## Permissions introspection
+
+This is calculated from other information, notably facets.  So while there may be a 1-1 relationship between facets and permissions in some cases, normally this is not the case, so permissions introspection is not possible.

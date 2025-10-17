@@ -109,6 +109,42 @@ export class S3ProcessorService {
     }
   }
 
+  async downloadFile(s3Key: string, localPath?: string): Promise<string> {
+    const filePath = localPath || path.join(this.tempDir, `${uuidv4()}_${path.basename(s3Key)}`)
+    
+    try {
+      logger.info(`Downloading file from S3: ${s3Key} to ${filePath}`)
+      
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: s3Key
+      })
+
+      const response = await this.s3Client.send(command)
+      
+      if (!response.Body) {
+        throw new Error('No file content received from S3')
+      }
+
+      // Convert stream to buffer and write to file
+      const chunks: Uint8Array[] = []
+      const stream = response.Body as any
+      
+      for await (const chunk of stream) {
+        chunks.push(chunk)
+      }
+      
+      const buffer = Buffer.concat(chunks)
+      fs.writeFileSync(filePath, buffer)
+      
+      logger.info(`Successfully downloaded file to ${filePath}`)
+      return filePath
+    } catch (error) {
+      logger.error(`Failed to download file from S3: ${error}`)
+      throw error
+    }
+  }
+
   async uploadFile(localPath: string, s3Key: string, contentType?: string): Promise<void> {
     try {
       logger.info(`Uploading file to S3: ${localPath} -> ${s3Key}`)

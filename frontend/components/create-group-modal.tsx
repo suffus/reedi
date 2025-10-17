@@ -274,29 +274,29 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-sm shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-200">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
-            <h2 className="text-2xl font-bold">Create New Group</h2>
-            <p className="text-gray-600">Build a community around your interests</p>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-wide">Create New Group</h2>
+            <p className="text-gray-600 mt-1">Build a community around your interests</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Progress Bar */}
-        <div className="px-6 py-4 border-b">
+        <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Step {currentStep} of {totalSteps}</span>
+            <span className="text-sm font-medium text-gray-700">Step {currentStep} of {totalSteps}</span>
             <span className="text-sm text-gray-500">
               {Math.round((currentStep / totalSteps) * 100)}% Complete
             </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${(currentStep / totalSteps) * 100}%` }}
             />
           </div>
@@ -310,14 +310,14 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">Group Name *</label>
+                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">Group Name *</label>
                     <input
                       id="name"
                       value={formData.name}
                       onChange={(e) => handleInputChange('name', e.target.value)}
                       placeholder="Enter group name"
                       maxLength={100}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200"
                     />
                     <p className="mt-1 text-xs text-gray-500">
                       {formData.name.length}/100 characters
@@ -325,7 +325,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   </div>
                   
                   <div>
-                    <label htmlFor="username" className="block text-sm font-medium text-gray-700">Group Username *</label>
+                    <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">Group Username *</label>
                     <div className="relative">
                       <input
                         id="username"
@@ -333,7 +333,9 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                         onChange={(e) => handleInputChange('username', e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
                         placeholder="group-username"
                         maxLength={30}
-                        className={usernameAvailable === false ? 'border-red-500' : usernameAvailable === true ? 'border-green-500' : ''}
+                        className={`w-full px-4 py-3 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200 ${
+                          usernameAvailable === false ? 'border-red-500' : usernameAvailable === true ? 'border-green-500' : 'border-gray-300'
+                        }`}
                       />
                       {isCheckingUsername && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -356,8 +358,8 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   </div>
                 </div>
                 
-                <div className="mt-4">
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
+                <div className="mt-6">
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">Description</label>
                   <textarea
                     id="description"
                     value={formData.description}
@@ -365,7 +367,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     placeholder="Describe what this group is about..."
                     maxLength={500}
                     rows={3}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200 resize-none"
                   />
                   <p className="mt-1 text-xs text-gray-500">
                     {formData.description.length}/500 characters
@@ -382,11 +384,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Group Visibility *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Group Visibility *</label>
                     <select
                       value={formData.visibility}
                       onChange={(e) => handleInputChange('visibility', e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200"
                     >
                       <option value="PUBLIC">Public</option>
                       <option value="PRIVATE_VISIBLE">Private (Visible)</option>
@@ -405,11 +407,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Group Type *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Group Type *</label>
                     <select
                       value={formData.type}
                       onChange={(e) => handleInputChange('type', e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200"
                     >
                       <option value="GENERAL">General</option>
                       <option value="SOCIAL_LEARNING">Social Learning</option>
@@ -427,11 +429,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 </div>
                 
                 <div className="mt-6">
-                  <label className="block text-sm font-medium text-gray-700">Moderation Policy *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Moderation Policy *</label>
                   <select
                     value={formData.moderationPolicy}
                     onChange={(e) => handleInputChange('moderationPolicy', e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200"
                   >
                     <option value="NO_MODERATION">No Moderation</option>
                     <option value="ADMIN_APPROVAL_REQUIRED">Admin Approval Required</option>
@@ -463,7 +465,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                         <div>
                           <button
                             onClick={() => document.getElementById('avatar-upload')?.click()}
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            className="btn-primary text-sm"
                           >
                             <Upload className="w-4 h-4 mr-2" />
                             Upload Avatar
@@ -506,7 +508,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                             <button
                               onClick={() => document.getElementById('cover-upload')?.click()}
-                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                              className="btn-primary text-sm"
                             >
                               Upload Cover Photo
                             </button>
@@ -528,7 +530,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 </div>
                 
                 <div className="mt-6">
-                  <label htmlFor="rules" className="block text-sm font-medium text-gray-700">Group Rules</label>
+                  <label htmlFor="rules" className="block text-sm font-medium text-gray-700 mb-2">Group Rules</label>
                   <textarea
                     id="rules"
                     value={formData.rules}
@@ -536,7 +538,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     placeholder="Set rules for your group members..."
                     maxLength={2000}
                     rows={6}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200 resize-none"
                   />
                   <p className="mt-1 text-xs text-gray-500">
                     {formData.rules.length}/2000 characters
@@ -547,10 +549,10 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           )}
 
           {/* Navigation Buttons */}
-          <div className="flex items-center justify-between pt-6 border-t">
+          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
             <div>
               {currentStep > 1 && (
-                <button onClick={prevStep} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                <button onClick={prevStep} className="btn-secondary">
                   Previous
                 </button>
               )}
@@ -561,7 +563,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 <button 
                   onClick={nextStep}
                   disabled={!validateStep(currentStep)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next Step
                 </button>
@@ -569,7 +571,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 <button 
                   onClick={handleSubmit}
                   disabled={!validateStep(currentStep) || isLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? 'Creating Group...' : 'Create Group'}
                 </button>

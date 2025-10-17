@@ -2,10 +2,11 @@
 
 import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, X, Image as ImageIcon, Video, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle } from 'lucide-react'
+import { Upload, X, Image as ImageIcon, Video, Tag, FileText, CheckCircle, AlertCircle, Loader2, Grid3X3, List, AlertTriangle, Archive } from 'lucide-react'
 import { useUploadMedia } from '../../lib/api-hooks'
 import { chunkedUploadService, UploadProgress as ChunkedUploadProgress } from '../../lib/chunkedUploadService'
 import { TagInput } from '../tag-input'
+import { ZipUploadDialog } from '../media/zip-upload'
 //import { ModalEventCatcher } from '../common/modal-event-catcher'
 
 interface MediaUploaderProps {
@@ -55,6 +56,7 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
   const [mediaVisibility, setMediaVisibility] = useState<'PUBLIC' | 'FRIENDS_ONLY' | 'PRIVATE'>('PUBLIC')
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
   const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null)
+  const [showZipUpload, setShowZipUpload] = useState(false)
   // Track the last applied shared metadata to detect changes
   const [lastAppliedSharedMetadata, setLastAppliedSharedMetadata] = useState<{
     title: string
@@ -690,13 +692,23 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
                     Large files (&gt;5MB) use automatic chunked uploads for reliability
                   </span>
                 </p>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn-primary"
-                >
-                  Choose Files
-                </button>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn-primary"
+                  >
+                    Choose Files
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowZipUpload(true)}
+                    className="btn-secondary flex items-center gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Upload ZIP
+                  </button>
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1244,6 +1256,17 @@ export function MediaUploader({ userId, onClose, onUploadComplete, inline = fals
               </div>
             )}
           </AnimatePresence>
+
+          {/* Zip Upload Dialog */}
+          <ZipUploadDialog
+            isOpen={showZipUpload}
+            onClose={() => setShowZipUpload(false)}
+            onUploadSuccess={(batchId) => {
+              console.log('Zip upload successful, batch ID:', batchId);
+              setShowZipUpload(false);
+              onUploadComplete?.();
+            }}
+          />
         </>
       )
     } 

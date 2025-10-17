@@ -2,6 +2,17 @@ import * as amqp from 'amqplib'
 import logger from '../utils/logger'
 import { createNamespacedExchanges, createNamespacedStagedQueues } from '../utils/rabbitmqNamespace'
 
+
+
+declare module 'amqplib' {
+  interface Connection {
+    close: (callback?: () => void) => void;
+    connect: (url: string) => Promise<Connection>;
+    createChannel: () => Promise<Channel>;
+  }
+}
+
+
 export interface ImageProcessingRequest {
   type: 'image_processing_request'
   job_id: string
@@ -61,7 +72,7 @@ export interface ProcessingRequest {
 }
 
 export interface ProgressUpdate {
-  type: 'video_processing_update'
+  type: 'image_processing_update' | 'video_processing_update' | 'zip_processing_update'
   job_id: string
   media_id: string
   status: 'pending' | 'processing' | 'completed' | 'rejected' | 'failed'
@@ -138,8 +149,8 @@ export class RabbitMQService {
 
   async connect(): Promise<void> {
     try {
-      this.connection = await amqp.connect(this.url) as any
-      this.channel = await (this.connection as any).createChannel()
+      this.connection = await amqp.connect(this.url) as unknown as amqp.Connection;
+      this.channel = await this.connection.createChannel()
       
       if (!this.channel) {
         throw new Error('Failed to create RabbitMQ channel')
@@ -154,8 +165,9 @@ export class RabbitMQService {
       await this.channel.assertQueue(this.queues.updates, { durable: true })
       
       // Bind queues to exchanges
-      await this.channel.bindQueue(this.queues.requests, this.exchanges.processing, this.routingKey + '.request')
+      await this.channel.bindQueue(this.queues.requests, this.exchanges.processing, this.routingKey + '.requests')
       await this.channel.bindQueue(this.queues.updates, this.exchanges.updates, this.routingKey + '.updates')
+      logger.info(`Binding queue ${this.queues.requests} to exchange ${this.exchanges.processing} with routing key ${this.routingKey + '.requests'}`)
       logger.info(`Binding queue ${this.queues.updates} to exchange ${this.exchanges.updates} with routing key ${this.routingKey + '.updates'}`)
       
       logger.info('RabbitMQ connection established')
@@ -202,8 +214,17 @@ export class RabbitMQService {
         { persistent: true }
       )
       
+      console.log(`🐰 [BACKEND] Sending message to queue: ${queueName}`)
+      console.log(`🐰 [BACKEND] Routing code: ${routingCode}`)
+      console.log(`🐰 [BACKEND] Exchange: ${this.exchanges.processing}`)
+      console.log(`🐰 [BACKEND] Message type: ${message.messageType}`)
+      console.log(`🐰 [BACKEND] Media type: ${message.mediaType}`)
+      console.log(`🐰 [BACKEND] Media ID: ${message.mediaId}`)
+      console.log(`🐰 [BACKEND] Full message:`, JSON.stringify(message, null, 2))
+      
       logger.info(`Sent message to queue ${queueName} with routing code ${routingCode} over exchange ${this.exchanges.processing}: ${message.id || message.job_id}`)
     } catch (error) {
+      console.error(`❌ [BACKEND] Failed to send message to queue ${queueName}:`, error)
       logger.error(`Failed to send message to queue ${queueName}:`, error)
       throw error
     }
@@ -215,17 +236,69 @@ export class RabbitMQService {
     }
 
     this.updateCallback = callback
+    console.log(`🐰 [BACKEND] Starting to consume progress updates from queue: ${this.queues.updates}`)
     logger.info(`Rabbit MQ Consuming progress updates from queue: ${this.queues.updates}`)
+    
     await this.channel.consume(this.queues.updates, async (msg: amqp.ConsumeMessage | null) => {
       if (!msg) {
         console.log('XXX No message received in updates queue ' + this.queues.updates)
         return
       }
 
+      console.log(`🐰 [BACKEND] Received message from updates queue: ${this.queues.updates}`)
+      console.log(`🐰 [BACKEND] Message content:`, msg.content.toString())
       logger.info(`Rabbit MQ Consuming an update from queue: ${this.queues.updates}`)
 
       try {
-        const update: ProgressUpdate = JSON.parse(msg.content.toString())
+        const messageContent = msg.content.toString()
+        const parsedMessage = JSON.parse(messageContent)
+        
+        console.log(`🐰 [BACKEND] Parsed message:`, JSON.stringify(parsedMessage, null, 2))
+        console.log(`🐰 [BACKEND] Message type: ${parsedMessage.messageType}`)
+        console.log(`🐰 [BACKEND] Media type: ${parsedMessage.mediaType}`)
+        console.log(`🐰 [BACKEND] Media ID: ${parsedMessage.mediaId}`)
+        
+        // Try to convert to ProgressUpdate format for backward compatibility
+        let progress = parsedMessage.progress || 0
+        let status = parsedMessage.status?.toLowerCase() || 'processing'
+        let currentStep = parsedMessage.stage || 'processing'
+        
+        // Handle result messages - if it's a result with COMPLETED status, set progress to 100
+        if (parsedMessage.messageType === 'result' && parsedMessage.status === 'COMPLETED') {
+          progress = 100
+          status = 'completed'
+          currentStep = 'completed'
+        } else if (parsedMessage.messageType === 'result' && parsedMessage.status === 'FAILED') {
+          progress = 0
+          status = 'failed'
+          currentStep = 'failed'
+        }
+        
+        const update: ProgressUpdate = {
+          type: parsedMessage.mediaType === 'video' ? 'video_processing_update' : 
+                parsedMessage.mediaType === 'zip' ? 'zip_processing_update' : 
+                'image_processing_update',
+          job_id: parsedMessage.details?.jobId || `img_${parsedMessage.mediaId}`,
+          media_id: parsedMessage.mediaId,
+          status,
+          progress,
+          current_step: currentStep,
+          timestamp: parsedMessage.timestamp,
+          // Include result data if it's a result message
+          ...(parsedMessage.messageType === 'result' && parsedMessage.result ? {
+            image_versions: parsedMessage.result.s3Key ? [{
+              quality: 'original',
+              s3Key: parsedMessage.result.s3Key,
+              width: parsedMessage.result.width || 0,
+              height: parsedMessage.result.height || 0,
+              fileSize: 0
+            }] : undefined,
+            metadata: parsedMessage.result.metadata
+          } : {})
+        }
+        
+        console.log(`🐰 [BACKEND] Converted to ProgressUpdate:`, JSON.stringify(update, null, 2))
+        console.log(`🐰 [BACKEND] Message conversion: ${parsedMessage.messageType} -> ${update.status} (${update.progress}%)`)
         logger.info(`Received progress update for job ${update.job_id}: ${update.status} (${update.progress}%)`)
         
         // Acknowledge the message
@@ -235,6 +308,7 @@ export class RabbitMQService {
         }
         
       } catch (error) {
+        console.error(`❌ [BACKEND] Error processing progress update:`, error)
         logger.error('Error processing progress update:', error)
         
         // Reject the message and requeue it
@@ -243,6 +317,51 @@ export class RabbitMQService {
     })
 
     logger.info(`Started consuming progress updates from queue: ${this.queues.updates}`)
+  }
+
+  async consumeRawUpdates(callback: (message: any) => Promise<void>): Promise<void> {
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel not initialized')
+    }
+
+    console.log(`🐰 [BACKEND] Starting to consume raw updates from queue: ${this.queues.updates}`)
+    logger.info(`Rabbit MQ Consuming raw updates from queue: ${this.queues.updates}`)
+    
+    await this.channel.consume(this.queues.updates, async (msg: amqp.ConsumeMessage | null) => {
+      if (!msg) {
+        console.log('XXX No message received in updates queue ' + this.queues.updates)
+        return
+      }
+
+      console.log(`🐰 [BACKEND] Received raw message from updates queue: ${this.queues.updates}`)
+      console.log(`🐰 [BACKEND] Raw message content:`, msg.content.toString())
+      logger.info(`Rabbit MQ Consuming raw update from queue: ${this.queues.updates}`)
+
+      try {
+        const messageContent = msg.content.toString()
+        const parsedMessage = JSON.parse(messageContent)
+        
+        console.log(`🐰 [BACKEND] Parsed raw message:`, JSON.stringify(parsedMessage, null, 2))
+        console.log(`🐰 [BACKEND] Message type: ${parsedMessage.messageType}`)
+        console.log(`🐰 [BACKEND] Media type: ${parsedMessage.mediaType}`)
+        console.log(`🐰 [BACKEND] Media ID: ${parsedMessage.mediaId}`)
+        
+        // Pass the raw message directly without conversion
+        await callback(parsedMessage)
+        
+        // Acknowledge the message
+        this.channel!.ack(msg)
+        
+      } catch (error) {
+        console.error(`❌ [BACKEND] Error processing raw update:`, error)
+        logger.error('Error processing raw update:', error)
+        
+        // Reject the message and requeue it
+        this.channel!.nack(msg, false, true)
+      }
+    })
+
+    logger.info(`Started consuming raw updates from queue: ${this.queues.updates}`)
   }
 
   async close(): Promise<void> {
@@ -275,8 +394,8 @@ export async function initAuditChannel(): Promise<void> {
   try {
     const url = process.env['RABBITMQ_URL'] || `amqp://${process.env['RABBITMQ_USER'] || 'guest'}:${process.env['RABBITMQ_PASSWORD'] || 'guest'}@localhost:${process.env['RABBITMQ_PORT'] || '5672'}`;
     
-    auditConnection = await amqp.connect(url);
-    auditChannel = await auditConnection.createChannel();
+    auditConnection = await amqp.connect(url) as unknown as amqp.Connection;
+    auditChannel = await auditConnection.createChannel() as amqp.Channel;
     
     // Declare audit queues
     await auditChannel.assertQueue('permission-audit', { durable: true });
@@ -329,6 +448,9 @@ export async function consumeQueue(
     throw new Error('RabbitMQ audit channel not initialized');
   }
   
+  // Assert the queue exists before consuming
+  await auditChannel.assertQueue(queueName, { durable: true });
+  
   await auditChannel.consume(queueName, async (msg) => {
     if (!msg) return;
     
@@ -356,7 +478,7 @@ export async function closeAuditChannel(): Promise<void> {
       auditChannel = null;
     }
     if (auditConnection) {
-      await auditConnection.close();
+      await (auditConnection as amqp.Connection).close( ()=>{} );
       auditConnection = null;
     }
     logger.info('RabbitMQ audit channel closed');

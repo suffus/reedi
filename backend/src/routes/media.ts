@@ -57,7 +57,13 @@ const upload = multer({
       return
     }
     
-    cb(new Error('Only image and video files are allowed'))
+    // Accept zip files
+    if (file.mimetype === 'application/zip' || file.mimetype === 'application/x-zip-compressed') {
+      cb(null, true)
+      return
+    }
+    
+    cb(new Error('Only image, video, and zip files are allowed'))
   }
 })
 
@@ -310,7 +316,8 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
   }
 
   const isVideo = req.file.mimetype.startsWith('video/')
-  const mediaType = isVideo ? 'VIDEO' : 'IMAGE'
+  const isZip = req.file.mimetype === 'application/zip' || req.file.mimetype === 'application/x-zip-compressed'
+  const mediaType = isVideo ? 'VIDEO' : isZip ? 'ZIP' : 'IMAGE'
 
   // Parse tags from form data
   let tags: string[] = []
@@ -420,6 +427,61 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
       }
     } else {
       console.warn('Image processing service not available, skipping image processing')
+    }
+  }
+
+  if (isZip) {
+    // For zip files, upload to S3 and queue for processing
+    const s3Key = await uploadToS3(
+      req.file.buffer, 
+      req.file.originalname, 
+      req.file.mimetype, 
+      userId,
+      (progress) => {
+        console.log(`Zip upload progress: ${progress.percentage}% (${progress.uploadedBytes}/${progress.totalBytes} bytes)`)
+      }
+    )
+    
+    media = await prisma.media.create({
+      data: {
+        url: s3Key, // Store S3 key for now
+        s3Key: s3Key,
+        originalFilename: req.file.originalname,
+        altText: req.body.title || req.body.altText || 'Uploaded zip file',
+        caption: req.body.description || req.body.caption || '',
+        tags: tags,
+        size: Math.ceil(req.file.size / 1024), // Convert bytes to kilobytes
+        mimeType: req.file.mimetype,
+        mediaType: 'ZIP',
+        processingStatus: 'PENDING',
+        authorId: userId
+      }
+    })
+
+    // Queue zip processing job
+    const zipProcessingService = req.app.locals.zipProcessingService
+    if (zipProcessingService) {
+      try {
+        await zipProcessingService.requestZipProcessing(
+          media.id,
+          userId,
+          s3Key,
+          req.file.originalname,
+          req.file.mimetype,
+          req.file.size,
+          {
+            preserveStructure: req.body.preserveStructure === 'true',
+            maxFileSize: req.body.maxFileSize ? parseInt(req.body.maxFileSize) : 1073741824, // 1GB default
+            allowedTypes: req.body.allowedTypes ? JSON.parse(req.body.allowedTypes) : ['IMAGE', 'VIDEO']
+          }
+        )
+        console.log(`Zip processing job queued for media ${media.id}`)
+      } catch (error) {
+        console.error(`Failed to queue zip processing job for media ${media.id}:`, error)
+        // Don't fail the upload, just log the error
+      }
+    } else {
+      console.warn('Zip processing service not available, skipping zip processing')
     }
   }
 
@@ -609,7 +671,8 @@ router.post('/upload/complete', authMiddleware, asyncHandler(async (req: Authent
     
     // Create media record
     const isVideo = contentType.startsWith('video/')
-    const mediaType = isVideo ? 'VIDEO' : 'IMAGE'
+    const isZip = contentType === 'application/zip' || contentType === 'application/x-zip-compressed'
+    const mediaType = isVideo ? 'VIDEO' : isZip ? 'ZIP' : 'IMAGE'
     
     const media = await prisma.media.create({
       data: {
@@ -645,6 +708,34 @@ router.post('/upload/complete', authMiddleware, asyncHandler(async (req: Authent
         } catch (error) {
           console.error(`Failed to queue video processing job:`, error)
         }
+      }
+    } else if (isZip) {
+      // Queue zip processing job
+      const zipProcessingService = req.app.locals.zipProcessingService
+      if (zipProcessingService) {
+        try {
+          // Parse options from metadata
+          const options = metadata?.options ? JSON.parse(metadata.options) : {}
+          await zipProcessingService.requestZipProcessing(
+            media.id,
+            userId,
+            s3Key,
+            filename,
+            contentType,
+            fileSize,
+            {
+              preserveStructure: options.preserveStructure || false,
+              maxFileSize: options.maxFileSize || 1073741824, // 1GB default
+              allowedTypes: options.allowedTypes || ['IMAGE', 'VIDEO']
+            }
+          )
+          console.log(`Zip processing job queued for media ${media.id}`)
+        } catch (error) {
+          console.error(`Failed to queue zip processing job for media ${media.id}:`, error)
+          // Don't fail the upload, just log the error
+        }
+      } else {
+        console.warn('Zip processing service not available, skipping zip processing')
       }
     } else {
       // Queue image processing job

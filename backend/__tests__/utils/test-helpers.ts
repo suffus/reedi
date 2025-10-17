@@ -23,7 +23,7 @@ export interface AuthTokens {
  * Generate a valid JWT token for testing
  */
 export function generateTestToken(user: { id: string; email: string }): string {
-  const secret = process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only'
+  const secret = process.env.JWT_SECRET || 'your-secret-key'
   return jwt.sign(
     {
       userId: user.id,
@@ -38,7 +38,7 @@ export function generateTestToken(user: { id: string; email: string }): string {
  * Generate an expired JWT token for testing
  */
 export function generateExpiredToken(user: { id: string; email: string }): string {
-  const secret = process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only'
+  const secret = process.env.JWT_SECRET || 'your-secret-key'
   return jwt.sign(
     {
       userId: user.id,
