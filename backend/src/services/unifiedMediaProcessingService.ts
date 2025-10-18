@@ -34,7 +34,7 @@ export class UnifiedMediaProcessingService extends RabbitMQService {
     this.prisma = prisma
     this.imageService = new ImageProcessingService(prisma, true) // Skip queue consumption
     this.zipService = new ZipProcessingService(prisma, true) // Skip queue consumption
-    this.videoService = new VideoProcessingService(prisma) // Skip queue consumption
+    this.videoService = new VideoProcessingService(prisma, true) // Skip queue consumption
   }
 
   async start(): Promise<void> {

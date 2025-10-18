@@ -7,8 +7,8 @@ import logger from '../utils/logger'
 export class VideoProcessingService extends BaseMediaProcessingService {
   private prisma: PrismaClient
 
-  constructor(prisma: PrismaClient) {
-    super('video')
+  constructor(prisma: PrismaClient, skipQueueConsumption: boolean = false) {
+    super('video', skipQueueConsumption)
     this.prisma = prisma
   }
 
