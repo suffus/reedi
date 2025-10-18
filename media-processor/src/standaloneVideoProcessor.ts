@@ -1,7 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg'
 import * as path from 'path'
 import * as fs from 'fs'
-import { config } from './utils/config'
 
 interface VideoMetadata {
   duration: number
@@ -38,11 +37,6 @@ interface ProcessingResult {
 export class StandaloneVideoProcessor {
   private readonly tempDir: string
   private readonly outputDir: string
-  private readonly videoQualities = [
-    { name: '360p', resolution: '640x360', bitrate: '800k', width: 640, height: 360 },
-    { name: '540p', resolution: '960x540', bitrate: '1500k', width: 960, height: 540 },
-    { name: '720p', resolution: '1280x720', bitrate: '2500k', width: 1280, height: 720 }
-  ]
 
   constructor(tempDir: string = '/tmp', outputDir: string = './output') {
     this.tempDir = tempDir
@@ -74,7 +68,7 @@ export class StandaloneVideoProcessor {
       console.log(`Video metadata: ${JSON.stringify(metadata)}`)
 
       // Generate thumbnails
-      const thumbnails = await this.generateThumbnails(videoPath, mediaId, metadata.duration)
+      const thumbnails = await this.generateThumbnails(videoPath, mediaId, metadata.duration, metadata)
       outputs.push(...thumbnails)
 
       // Convert and save original video to MP4 format
@@ -173,6 +167,43 @@ export class StandaloneVideoProcessor {
     return parseFloat(framerate) || 0
   }
 
+  private getVideoOrientation(width: number, height: number): 'landscape' | 'portrait' | 'square' {
+    const aspectRatio = width / height
+    if (aspectRatio > 1.1) return 'landscape'
+    if (aspectRatio < 0.9) return 'portrait'
+    return 'square'
+  }
+
+  private getTargetResolutions(orientation: 'landscape' | 'portrait' | 'square') {
+    const resolutions = {
+      landscape: [
+        { name: '360p', width: 640, height: 360, bitrate: '800k' },
+        { name: '540p', width: 960, height: 540, bitrate: '1500k' },
+        { name: '720p', width: 1280, height: 720, bitrate: '2500k' }
+      ],
+      portrait: [
+        { name: '360p', width: 360, height: 640, bitrate: '800k' },
+        { name: '540p', width: 540, height: 960, bitrate: '1500k' },
+        { name: '720p', width: 720, height: 1280, bitrate: '2500k' }
+      ],
+      square: [
+        { name: '360p', width: 360, height: 360, bitrate: '800k' },
+        { name: '540p', width: 540, height: 540, bitrate: '1500k' },
+        { name: '720p', width: 720, height: 720, bitrate: '2500k' }
+      ]
+    }
+    return resolutions[orientation]
+  }
+
+  private getThumbnailSize(orientation: 'landscape' | 'portrait' | 'square') {
+    const sizes = {
+      landscape: { width: 300, height: 169 }, // 16:9 aspect ratio
+      portrait: { width: 169, height: 300 },  // 9:16 aspect ratio
+      square: { width: 300, height: 300 }     // 1:1 aspect ratio
+    }
+    return sizes[orientation]
+  }
+
   private formatTimestamp(seconds: number): string {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
@@ -181,20 +212,20 @@ export class StandaloneVideoProcessor {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  private async generateThumbnails(videoPath: string, mediaId: string, duration: number): Promise<ProcessingOutput[]> {
+  private async generateThumbnails(videoPath: string, mediaId: string, duration: number, metadata: VideoMetadata): Promise<ProcessingOutput[]> {
     const outputs: ProcessingOutput[] = []
     
-    // Parse thumbnail size from config
-    const [thumbnailWidth, thumbnailHeight] = config.processing.thumbnailSize.split('x').map(Number)
-    if (!thumbnailWidth || !thumbnailHeight) {
-      throw new Error(`Invalid thumbnail size format: ${config.processing.thumbnailSize}. Expected format: WIDTHxHEIGHT`)
-    }
+    // Determine video orientation and get appropriate thumbnail size
+    const orientation = this.getVideoOrientation(metadata.width, metadata.height)
+    const thumbnailSize = this.getThumbnailSize(orientation)
+    
+    console.log(`Generating thumbnails for ${orientation} video (${metadata.width}x${metadata.height}) at ${thumbnailSize.width}x${thumbnailSize.height}`)
     
     // Generate one thumbnail for every 15 seconds of video
     const thumbnailInterval = 15 // seconds
     const numThumbnails = Math.max(1, Math.ceil(duration / thumbnailInterval))
     
-    console.log(`Generating ${numThumbnails} thumbnails for ${duration}s video (one every ${thumbnailInterval}s) at ${config.processing.thumbnailSize}`)
+    console.log(`Generating ${numThumbnails} thumbnails for ${duration}s video (one every ${thumbnailInterval}s)`)
 
     for (let i = 0; i < numThumbnails; i++) {
       // Calculate timestamp: start at 15s, then 30s, 45s, etc.
@@ -204,7 +235,7 @@ export class StandaloneVideoProcessor {
       const outputPath = path.join(this.tempDir, `${mediaId}_thumb_${i}.jpg`)
       
       try {
-        await this.generateThumbnail(videoPath, outputPath, time || '00:00:05')
+        await this.generateThumbnail(videoPath, outputPath, time || '00:00:05', thumbnailSize)
         
         // Save thumbnail to output directory
         const thumbnailOutputPath = path.join(this.outputDir, 'thumbnails', `${mediaId}_${i}.jpg`)
@@ -215,8 +246,8 @@ export class StandaloneVideoProcessor {
         outputs.push({
           type: 'thumbnail',
           s3Key,
-          width: thumbnailWidth,
-          height: thumbnailHeight,
+          width: thumbnailSize.width,
+          height: thumbnailSize.height,
           fileSize: fs.statSync(thumbnailOutputPath).size,
           mimeType: 'image/jpeg',
           quality: `${i + 1}`,
@@ -234,12 +265,17 @@ export class StandaloneVideoProcessor {
     return outputs
   }
 
-  private async generateThumbnail(videoPath: string, outputPath: string, time: string): Promise<void> {
+  private async generateThumbnail(videoPath: string, outputPath: string, time: string, thumbnailSize: { width: number; height: number }): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Create FFmpeg filter for thumbnail letterboxing
+      // This scales the video frame to fit within the target thumbnail size while maintaining aspect ratio,
+      // then pads it to the exact target size with black borders
+      const filter = `scale=${thumbnailSize.width}:${thumbnailSize.height}:force_original_aspect_ratio=decrease,pad=${thumbnailSize.width}:${thumbnailSize.height}:(ow-iw)/2:(oh-ih)/2:black`
+      
       ffmpeg(videoPath)
         .seekInput(time)
         .frames(1)
-        .size(config.processing.thumbnailSize)
+        .videoFilters(filter)
         .output(outputPath)
         .on('end', () => resolve())
         .on('error', (err) => reject(err))
@@ -255,8 +291,15 @@ export class StandaloneVideoProcessor {
     const outputs: ProcessingOutput[] = []
     const originalWidth = metadata.width
     const originalHeight = metadata.height
+    
+    // Determine video orientation and get appropriate target resolutions
+    const orientation = this.getVideoOrientation(originalWidth, originalHeight)
+    const targetResolutions = this.getTargetResolutions(orientation)
+    
+    console.log(`Video orientation: ${orientation} (${originalWidth}x${originalHeight})`)
+    console.log(`Target resolutions: ${targetResolutions.map(r => `${r.name}: ${r.width}x${r.height}`).join(', ')}`)
 
-    for (const quality of this.videoQualities) {
+    for (const quality of targetResolutions) {
       // Only create versions smaller than the original
       if (quality.width >= originalWidth && quality.height >= originalHeight) {
         console.log(`Skipping ${quality.name} - original is smaller (${originalWidth}x${originalHeight})`)
@@ -326,11 +369,16 @@ export class StandaloneVideoProcessor {
   private async generateQualityVersion(
     videoPath: string, 
     outputPath: string, 
-    quality: { name: string; resolution: string; bitrate: string; width: number; height: number }
+    quality: { name: string; bitrate: string; width: number; height: number }
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Create FFmpeg filter for letterboxing
+      // This scales the video to fit within the target resolution while maintaining aspect ratio,
+      // then pads it to the exact target resolution with black borders
+      const filter = `scale=${quality.width}:${quality.height}:force_original_aspect_ratio=decrease,pad=${quality.width}:${quality.height}:(ow-iw)/2:(oh-ih)/2:black`
+      
       ffmpeg(videoPath)
-        .size(quality.resolution)
+        .videoFilters(filter)
         .videoBitrate(quality.bitrate)
         .audioCodec('aac')
         .audioBitrate('128k')
