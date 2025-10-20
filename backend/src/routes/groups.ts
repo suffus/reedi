@@ -938,16 +938,15 @@ router.get('/:groupIdentifier/feed', authMiddleware, asyncHandler(async (req: Au
     prisma.groupPost.count({ where: whereClause })
   ])
 
-  // Map media to array of media objects in order, maintaining the structure PostMediaDisplay expects
+  // Map media to array of media objects in order, flattening the structure for consistency with other post endpoints
   const postsWithOrderedMedia = posts.map(groupPost => ({
     ...groupPost,
     post: {
       ...groupPost.post,
       media: groupPost.post.media.map(pm => ({
-        id: pm.media.id, // Use the actual Media.id, not PostMedia.id
+        ...pm.media, // Flatten the media data for consistency
         order: pm.order,
-        isLocked: pm.isLocked,
-        media: pm.media // Keep the nested media structure
+        isLocked: pm.isLocked
       }))
     }
   }))

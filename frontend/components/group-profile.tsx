@@ -419,7 +419,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
         }
       }
       
-      // API now returns flattened Media objects directly, no nested structure
+      // Media is already flattened by the API
       return mediaItem
     }
     
