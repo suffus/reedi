@@ -10,7 +10,7 @@ interface FlexibleMedia {
   thumbnail?: string
   mimeType?: string
   originalFilename?: string
-  mediaType?: 'IMAGE' | 'VIDEO'
+  mediaType?: 'IMAGE' | 'VIDEO' | 'ZIP'
   altText?: string
   caption?: string
   width?: number

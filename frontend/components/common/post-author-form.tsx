@@ -7,6 +7,7 @@ import { MediaPicker } from './media-picker'
 import { useAuth } from '../../lib/api-hooks'
 import { API_BASE_URL, getAuthHeaders } from '../../lib/api'
 import { Media } from '../../lib/types'
+import { getFirstThumbnail } from '../../lib/media-utils'
 
 interface FeedTarget {
   id: string
@@ -481,7 +482,7 @@ export function PostAuthorForm({
                   }}
                 >
                   <img
-                    src={media.thumbnail || media.url}
+                    src={getFirstThumbnail(media)}
                     alt={media.altText || `Media ${index + 1}`}
                     className="w-full h-full object-cover rounded-sm pointer-events-none"
                   />

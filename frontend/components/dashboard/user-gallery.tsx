@@ -143,7 +143,6 @@ export function UserGallery({ userId }: UserGalleryProps) {
         ...mapped,
         // Keep the original S3 keys for the MediaDetailModal
         s3Key: mediaItem.s3Key || mediaItem.url,
-        thumbnailS3Key: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
         // Use getMediaUrlFromMedia to construct URLs pointing to backend serve endpoints
         url: getMediaUrlFromMedia(mapped, false),
         thumbnail: bestThumbnail || getMediaUrlFromMedia(mapped, true), // Use best thumbnail or fallback
@@ -658,7 +657,7 @@ export function UserGallery({ userId }: UserGalleryProps) {
                   
                   showToast({
                     type: 'success',
-                    message: `${mediaType === 'VIDEO' ? 'Video' : 'Image'} downloaded successfully!`
+                    message: `${mediaType === 'VIDEO' ? 'Video' : mediaType === 'ZIP' ? 'ZIP file' : 'Image'} downloaded successfully!`
                   })
                 } catch (error) {
                   console.error('Download failed:', error)

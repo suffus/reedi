@@ -145,12 +145,12 @@ export class MessagingService {
                 select: { id: true, name: true, username: true, avatar: true }
               },
               media: {
-                select: { id: true, url: true, thumbnail: true, mimeType: true, originalFilename: true }
+                select: { id: true, url: true, mimeType: true, originalFilename: true }
               },
               mediaItems: {
                 include: {
                   media: {
-                    select: { id: true, url: true, thumbnail: true, mimeType: true, originalFilename: true }
+                    select: { id: true, url: true, mimeType: true, originalFilename: true }
                   }
                 },
                 orderBy: { order: 'asc' }
@@ -178,12 +178,12 @@ export class MessagingService {
                   select: { id: true, name: true, username: true, avatar: true }
                 },
                 media: {
-                  select: { id: true, url: true, thumbnail: true, mimeType: true, originalFilename: true }
+                  select: { id: true, url: true, mimeType: true, originalFilename: true }
                 },
                 mediaItems: {
                   include: {
                     media: {
-                      select: { id: true, url: true, thumbnail: true, mimeType: true, originalFilename: true }
+                      select: { id: true, url: true, mimeType: true, originalFilename: true }
                     }
                   },
                   orderBy: { order: 'asc' }
@@ -223,8 +223,7 @@ export class MessagingService {
           // Transform media URLs to full URLs
           const mediaWithUrls = message.media ? {
             ...message.media,
-            url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null,
-            thumbnail: message.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}/thumbnail` : null
+            url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null
           } : null;
 
           // Transform mediaItems URLs to full URLs
@@ -232,8 +231,7 @@ export class MessagingService {
             ...item,
             media: {
               ...item.media,
-              url: item.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}` : null,
-              thumbnail: item.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}/thumbnail` : null
+              url: item.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}` : null
             }
           })) || [];
 

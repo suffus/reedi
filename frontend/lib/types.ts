@@ -141,7 +141,8 @@ export interface Post {
   isLocked: boolean
   unlockPrice?: number
   author: User
-  media?: PostMedia[]
+  media?: Media[] // Flattened array of Media objects directly
+  hashtags?: Hashtag[]
   comments?: Comment[]
   reactions?: Reaction[]
   _count?: {
@@ -150,21 +151,12 @@ export interface Post {
   }
 }
 
-export interface PostMedia {
-  id: string
-  postId: string
-  mediaId: string
-  order: number
-  isLocked: boolean
-  media: Media
-}
+// PostMedia interface removed - API returns flattened Media objects directly in Post.media array
 
 export interface Media {
   id: string
   url: string
-  thumbnail?: string
   s3Key?: string
-  thumbnailS3Key?: string
   originalFilename?: string
   altText?: string
   caption?: string
@@ -178,7 +170,7 @@ export interface Media {
   authorId: string
   galleryId?: string
   order: number
-  mediaType: 'IMAGE' | 'VIDEO'
+  mediaType: 'IMAGE' | 'VIDEO' | 'ZIP' // Added ZIP support
   processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
   duration?: number
   codec?: string
@@ -188,14 +180,13 @@ export interface Media {
   videoS3Key?: string
   createdAt: string
   updatedAt: string
-  videoMetadata?: Record<string, unknown>
-  videoProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-  videoThumbnails?: Array<{ url: string; width: number; height: number }>
-  videoVersions?: Array<{ quality: string; url: string; width: number; height: number }>
-  imageMetadata?: Record<string, unknown>
-  imageProcessingStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
-  imageVersions?: Array<{ quality: string; url: string; width: number; height: number }>
-  author: User
+  metadata?: Record<string, unknown>
+  thumbnails?: Array<{ s3Key: string; width: number; height: number; fileSize?: number }> // Updated to match API
+  versions?: Array<{ quality: string; s3Key: string; width: number; height: number }> // Updated to match API
+  isLocked?: boolean // Added from PostMedia.isLocked
+  originalPath?: string // Added for zip files
+  zipMediaId?: string // Added for zip files
+  author?: User // Made optional since not all responses include it
 }
 
 export interface Comment {
@@ -407,16 +398,15 @@ export interface MediaProcessingJob {
   id: string
   mediaId: string
   userId: string
-  mediaType: 'IMAGE' | 'VIDEO'
+  mediaType: 'IMAGE' | 'VIDEO' | 'ZIP' // Added ZIP support
   s3Key: string
   originalFilename: string
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'
   progress: number
   currentStep?: string
   errorMessage?: string
-  thumbnails?: Array<{ url: string; width: number; height: number }>
-  videoVersions?: Array<{ quality: string; url: string; width: number; height: number }>
-  imageVersions?: Array<{ quality: string; url: string; width: number; height: number }>
+  thumbnails?: Array<{ s3Key: string; width: number; height: number; fileSize?: number }> // Updated to match API
+  versions?: Array<{ quality: string; s3Key: string; width: number; height: number }> // Updated to match API
   metadata?: Record<string, unknown>
   createdAt: string
   updatedAt: string

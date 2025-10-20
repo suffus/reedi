@@ -88,7 +88,6 @@ router.get('/media/tags', optionalAuthMiddleware, asyncHandler(async (req: Authe
       select: {
         id: true,
         s3Key: true,
-        thumbnailS3Key: true,
         altText: true,
         caption: true,
         width: true,

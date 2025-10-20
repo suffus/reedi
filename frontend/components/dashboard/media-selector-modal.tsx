@@ -7,7 +7,7 @@ import { MediaUploader } from './media-uploader'
 import { useInfiniteFilteredUserMedia, useSearchMediaByTags, useMyGalleries } from '../../lib/api-hooks'
 import { MediaGrid } from '../media-grid'
 import { Media } from '@/lib/types'
-import { mapMediaData } from '@/lib/media-utils'
+import { mapMediaData, getFirstThumbnail } from '@/lib/media-utils'
 import { getMediaUrlFromMedia } from '@/lib/api'
 import { InfiniteScrollContainer } from '../infinite-scroll-container'
 import { TagInput } from '../tag-input'
@@ -308,7 +308,7 @@ export function MediaSelectorModal({ isOpen, onClose, onMediaSelected, userId, e
                         >
                           <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden border-2 border-blue-300">
                             <img
-                              src={media.thumbnail || media.url}
+                              src={getFirstThumbnail(media)}
                               alt={media.altText || 'Selected media'}
                               className="w-full h-full object-cover"
                             />

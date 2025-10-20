@@ -35,7 +35,7 @@ router.get('/conversations', authMiddleware, async (req, res) => {
               select: { id: true, name: true, username: true, avatar: true }
             },
             media: {
-              select: { id: true, url: true, thumbnail: true, mimeType: true }
+              select: { id: true, url: true, mimeType: true, mediaType: true }
             }
           }
         }
@@ -50,8 +50,7 @@ router.get('/conversations', authMiddleware, async (req, res) => {
         ...message,
         media: message.media ? {
           ...message.media,
-          url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null,
-          thumbnail: message.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}/thumbnail` : null
+          url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null
         } : null
       }))
     }));
@@ -251,12 +250,12 @@ router.get('/conversations/:conversationId/messages', authMiddleware, async (req
           select: { id: true, name: true, username: true, avatar: true }
         },
         media: {
-          select: { id: true, url: true, thumbnail: true, mimeType: true, originalFilename: true }
+          select: { id: true, url: true, mimeType: true, originalFilename: true, mediaType: true }
         },
         mediaItems: {
           include: {
             media: {
-              select: { id: true, url: true, thumbnail: true, mimeType: true, originalFilename: true }
+              select: { id: true, url: true, mimeType: true, originalFilename: true, mediaType: true }
             }
           },
           orderBy: { order: 'asc' }
@@ -274,15 +273,13 @@ router.get('/conversations/:conversationId/messages', authMiddleware, async (req
       ...message,
       media: message.media ? {
         ...message.media,
-        url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null,
-        thumbnail: message.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}/thumbnail` : null
+        url: message.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${message.media.id}` : null
       } : null,
       mediaItems: message.mediaItems?.map(item => ({
         ...item,
         media: {
           ...item.media,
-          url: item.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}` : null,
-          thumbnail: item.media.thumbnail ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}/thumbnail` : null
+          url: item.media.url ? `${process.env.API_URL || 'http://localhost:8088'}/api/media/serve/${item.media.id}` : null
         }
       })) || []
     }));

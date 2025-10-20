@@ -24,7 +24,6 @@ async function getGalleriesWithCounts(userId: string, page: number, limit: numbe
           select: {
             id: true,
             s3Key: true,
-            thumbnailS3Key: true,
             altText: true,
             caption: true
           }
@@ -295,7 +294,6 @@ router.get('/:id/media', optionalAuthMiddleware, asyncHandler(async (req: Authen
       select: {
         id: true,
         s3Key: true,
-        thumbnailS3Key: true,
         originalFilename: true,
         altText: true,
         caption: true,
@@ -364,7 +362,6 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
         select: {
           id: true,
           s3Key: true,
-          thumbnailS3Key: true,
           originalFilename: true,
           altText: true,
           caption: true,
@@ -392,7 +389,6 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
         select: {
           id: true,
           s3Key: true,
-          thumbnailS3Key: true,
           altText: true,
           caption: true
         }
@@ -523,7 +519,6 @@ router.put('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequest
         select: {
           id: true,
           s3Key: true,
-          thumbnailS3Key: true,
           altText: true,
           caption: true
         }
@@ -597,7 +592,6 @@ router.post('/:id/cover', authMiddleware, asyncHandler(async (req: Authenticated
         select: {
           id: true,
           s3Key: true,
-          thumbnailS3Key: true,
           altText: true,
           caption: true
         }

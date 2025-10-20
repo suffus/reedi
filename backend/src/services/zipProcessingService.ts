@@ -155,14 +155,9 @@ export class ZipProcessingService extends BaseMediaProcessingService {
             processingStatus: 'COMPLETED'
           }
 
-          // Store zip processing metadata
+          // Store zip processing metadata in unified metadata field
           if (result.metadata) {
-            mediaUpdateData.zipMetadata = JSON.stringify(result.metadata)
-          }
-
-          // Store extracted media count
-          if (result.metadata?.extractedCount) {
-            mediaUpdateData.extractedMediaCount = result.metadata.extractedCount
+            mediaUpdateData.metadata = result.metadata
           }
 
           await this.prisma.media.update({
@@ -206,7 +201,6 @@ export class ZipProcessingService extends BaseMediaProcessingService {
     userId: string,
     extractedMedia: Array<{
       s3Key: string
-      thumbnailS3Key?: string
       originalFilename: string
       mimeType: string
       width?: number
@@ -241,7 +235,6 @@ export class ZipProcessingService extends BaseMediaProcessingService {
         return {
           url: media.s3Key,
           s3Key: media.s3Key,
-          thumbnailS3Key: media.thumbnailS3Key,
           originalFilename: media.originalFilename,
           altText: `Extracted from zip: ${media.originalFilename}`,
           caption: '',

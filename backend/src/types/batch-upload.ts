@@ -23,7 +23,6 @@ export interface ZipMediaResult {
   // If successful
   media?: {
     s3Key: string;
-    thumbnailS3Key?: string;
     mediaType: 'IMAGE' | 'VIDEO';
     mimeType: string;
     fileSize: number;

@@ -63,7 +63,19 @@ app.use(cors({
 }))
 app.use(limiter)
 app.use(morgan('combined'))
-app.use(express.json({ limit: '10mb' }))
+// JSON parsing middleware - skip multipart requests
+app.use((req, res, next) => {
+  const contentType = req.get('Content-Type') || ''
+  console.log('Request Content-Type:', contentType)
+  
+  if (contentType.includes('multipart/form-data')) {
+    console.log('Skipping JSON parsing for multipart request')
+    return next()
+  }
+  
+  console.log('Applying JSON parsing')
+  express.json({ limit: '10mb' })(req, res, next)
+})
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Serve uploads directory as static files

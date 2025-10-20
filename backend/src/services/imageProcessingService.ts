@@ -49,7 +49,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
     await this.prisma.media.update({
       where: { id: mediaId },
       data: {
-        imageProcessingStatus: 'PENDING'
+            processingStatus: 'PENDING'
       }
     })
 
@@ -98,7 +98,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
             progress,
             currentStep: stage,
             errorMessage: details?.errorMessage,
-            imageVersions: details?.imageVersions ? JSON.stringify(details.imageVersions) : undefined,
+            versions: details?.imageVersions ? details.imageVersions : undefined,
             metadata: details ? JSON.stringify(details) : undefined,
             completedAt: status === 'COMPLETED' || status === 'FAILED' ? new Date() : undefined
           }
@@ -110,7 +110,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
         const mediaUpdate = await this.prisma.media.update({
           where: { id: mediaId },
           data: {
-            imageProcessingStatus: this.mapStatus(status)
+            processingStatus: this.mapStatus(status)
           }
         })
         
@@ -139,7 +139,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
             progress: status === 'COMPLETED' ? 100 : 0,
             currentStep: status === 'COMPLETED' ? 'completed' : 'failed',
             errorMessage: error,
-            imageVersions: result?.metadata?.imageVersions ? JSON.stringify(result.metadata.imageVersions) : undefined,
+            versions: result?.metadata?.imageVersions ? result.metadata.imageVersions : undefined,
             metadata: result?.metadata ? JSON.stringify(result.metadata) : undefined,
             completedAt: new Date()
           }
@@ -153,15 +153,14 @@ export class ImageProcessingService extends BaseMediaProcessingService {
           console.log(`🖼️ [IMAGE-SERVICE] Result data:`, JSON.stringify(result, null, 2))
           
           const mediaUpdateData: any = {
-            imageProcessingStatus: 'COMPLETED'
+            processingStatus: 'COMPLETED'
           }
 
           // Handle the new result format from unified processor
           if (result.s3Key) {
             // Use the result data directly
             mediaUpdateData.url = result.s3Key
-            mediaUpdateData.thumbnail = result.thumbnailS3Key || result.s3Key
-            mediaUpdateData.thumbnailS3Key = result.thumbnailS3Key || result.s3Key
+            // Note: thumbnail and thumbnailS3Key are no longer used - all thumbnail data is in thumbnails JSON array
             
             if (result.width && result.height) {
               mediaUpdateData.width = result.width
@@ -169,24 +168,20 @@ export class ImageProcessingService extends BaseMediaProcessingService {
             }
             
             if (result.metadata) {
-              mediaUpdateData.imageMetadata = JSON.stringify(result.metadata)
+              mediaUpdateData.metadata = result.metadata
             }
             
             console.log(`🖼️ [IMAGE-SERVICE] Media update data:`, JSON.stringify(mediaUpdateData, null, 2))
           } else if (result.metadata?.imageVersions) {
             // Handle legacy format with imageVersions array
             const imageVersions = result.metadata.imageVersions
-            mediaUpdateData.imageVersions = JSON.stringify(imageVersions)
+            mediaUpdateData.versions = imageVersions
             
             const thumbnailVersion = imageVersions.find((version: any) => version.quality === 'thumbnail')
             const highQualityVersion = imageVersions.find((version: any) => version.quality === '1080p')
             const mediumQualityVersion = imageVersions.find((version: any) => version.quality === '720p')
             
-            // Update thumbnail fields
-            if (thumbnailVersion) {
-              mediaUpdateData.thumbnail = thumbnailVersion.s3Key
-              mediaUpdateData.thumbnailS3Key = thumbnailVersion.s3Key
-            }
+            // Note: thumbnail and thumbnailS3Key are no longer used - all thumbnail data is in thumbnails JSON array
             
             // Update main image fields - use highest quality available for URL and size
             if (highQualityVersion) {
@@ -232,7 +227,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
           await this.prisma.media.update({
             where: { id: mediaId },
             data: {
-              imageProcessingStatus: 'FAILED'
+              processingStatus: 'FAILED'
             }
           })
           logger.error(`Image processing failed for media ${mediaId}: ${error}`)
@@ -279,7 +274,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
       progress: job.progress,
       currentStep: job.currentStep || undefined,
       errorMessage: job.errorMessage || undefined,
-      imageVersions: job.imageVersions ? JSON.parse(job.imageVersions as string) : undefined,
+      imageVersions: job.versions ? JSON.parse(job.versions as string) : undefined,
       metadata: job.metadata ? JSON.parse(job.metadata as string) : undefined
     }
   }
@@ -303,7 +298,7 @@ export class ImageProcessingService extends BaseMediaProcessingService {
     await this.prisma.media.update({
       where: { id: mediaId },
       data: {
-        imageProcessingStatus: 'FAILED'
+        processingStatus: 'FAILED'
       }
     })
 

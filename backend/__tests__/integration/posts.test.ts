@@ -18,6 +18,11 @@ import {
   generateTestToken, 
   getTestUserByEmail 
 } from '../utils/test-helpers'
+import { 
+  PostsResponseSchema, 
+  SinglePostResponseSchema,
+  expectPostMediaHaveType 
+} from '../utils/validation-schemas'
 import postsRouter from '../../src/routes/posts'
 import { errorHandler } from '../../src/middleware/errorHandler'
 
@@ -668,6 +673,126 @@ describe('Posts Creation & Management (P0)', () => {
         expect(response.status).toBe(200)
         expect(response.body.data.post.publicationStatus).toBe('PAUSED')
       }
+    })
+  })
+
+  describe('MediaType Validation', () => {
+    it('should include mediaType in posts feed response', async () => {
+      const response = await request(app)
+        .get('/api/posts')
+        .set('Authorization', `Bearer ${aliceToken}`)
+      
+      expect(response.status).toBe(200)
+      
+      // Validate response structure with Zod
+      const validatedResponse = PostsResponseSchema.parse(response.body)
+      expect(validatedResponse.success).toBe(true)
+      
+      // Check that all media items have mediaType
+      expectPostMediaHaveType(validatedResponse.data.posts)
+    })
+
+    it('should include mediaType in personalized feed response', async () => {
+      const response = await request(app)
+        .get('/api/posts/feed')
+        .set('Authorization', `Bearer ${aliceToken}`)
+      
+      expect(response.status).toBe(200)
+      
+      const validatedResponse = PostsResponseSchema.parse(response.body)
+      expect(validatedResponse.success).toBe(true)
+      
+      // Check that all media items have mediaType
+      expectPostMediaHaveType(validatedResponse.data.posts)
+    })
+
+    it('should include mediaType in user public posts response', async () => {
+      const response = await request(app)
+        .get(`/api/posts/user/${alice!.id}/public`)
+        .set('Authorization', `Bearer ${bobToken}`)
+      
+      expect(response.status).toBe(200)
+      
+      const validatedResponse = PostsResponseSchema.parse(response.body)
+      expect(validatedResponse.success).toBe(true)
+      
+      // Check that all media items have mediaType
+      expectPostMediaHaveType(validatedResponse.data.posts)
+    })
+
+    it('should include mediaType in public posts response', async () => {
+      // Use the public feed endpoint which doesn't require auth
+      const response = await request(app)
+        .get('/api/posts')
+      
+      expect(response.status).toBe(200)
+      
+      const validatedResponse = PostsResponseSchema.parse(response.body)
+      expect(validatedResponse.success).toBe(true)
+      
+      // Check that all media items have mediaType
+      expectPostMediaHaveType(validatedResponse.data.posts)
+    })
+
+    it('should include mediaType in single post response', async () => {
+      // Find a post with media
+      const postWithMedia = await testPrisma.post.findFirst({
+        where: {
+          media: {
+            some: {}
+          }
+        }
+      })
+
+      if (postWithMedia) {
+        const response = await request(app)
+          .get(`/api/posts/${postWithMedia.id}`)
+          .set('Authorization', `Bearer ${aliceToken}`)
+        
+        expect(response.status).toBe(200)
+        
+        const validatedResponse = SinglePostResponseSchema.parse(response.body)
+        expect(validatedResponse.success).toBe(true)
+        
+        // Check that all media items have mediaType
+        expectPostMediaHaveType([validatedResponse.data.post])
+      }
+    })
+
+    it('should handle posts with no media gracefully', async () => {
+      // Create a post without media
+      const response = await request(app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${aliceToken}`)
+        .send({
+          content: 'Post without media',
+          visibility: 'PUBLIC'
+        })
+      
+      expect(response.status).toBe(201)
+      
+      const validatedResponse = SinglePostResponseSchema.parse(response.body)
+      expect(validatedResponse.success).toBe(true)
+      expect(validatedResponse.data.post.media).toEqual([])
+    })
+
+    it('should validate mediaType values are valid enum values', async () => {
+      const response = await request(app)
+        .get('/api/posts')
+        .set('Authorization', `Bearer ${aliceToken}`)
+      
+      expect(response.status).toBe(200)
+      
+      const validatedResponse = PostsResponseSchema.parse(response.body)
+      
+      // This will throw if any mediaType is not a valid enum value
+      validatedResponse.data.posts.forEach(post => {
+        (post.media || []).forEach((mediaItem: any) => {
+          if (mediaItem.media) {
+            expect(['IMAGE', 'VIDEO', 'ZIP']).toContain(mediaItem.media.mediaType)
+          }
+        })
+      })
     })
   })
 })

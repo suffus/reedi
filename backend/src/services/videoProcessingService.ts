@@ -53,8 +53,7 @@ export class VideoProcessingService extends BaseMediaProcessingService {
       await this.prisma.media.update({
         where: { id: mediaId },
         data: {
-          videoProcessingStatus: 'PENDING',
-          processingStatus: 'PENDING'
+            processingStatus: 'PENDING'
         }
       })
 
@@ -134,7 +133,6 @@ export class VideoProcessingService extends BaseMediaProcessingService {
       return {
         mediaId: media.id,
         processingStatus: media.processingStatus,
-        videoProcessingStatus: media.videoProcessingStatus,
         latestJob: latestJob ? {
           jobId: latestJob.id,
           status: latestJob.status,
@@ -184,8 +182,7 @@ export class VideoProcessingService extends BaseMediaProcessingService {
         await this.prisma.media.update({
           where: { id: mediaId },
           data: {
-            processingStatus: this.mapStatus(status),
-            videoProcessingStatus: this.mapStatus(status)
+            processingStatus: this.mapStatus(status)
           }
         })
 
@@ -218,15 +215,14 @@ export class VideoProcessingService extends BaseMediaProcessingService {
         // Update media record with processing results
         if (status === 'COMPLETED' && result) {
           const mediaUpdateData: any = {
-            processingStatus: 'COMPLETED',
-            videoProcessingStatus: 'COMPLETED'
+            processingStatus: 'COMPLETED'
           }
 
           // Extract video-specific metadata
           if (result.metadata) {
-            mediaUpdateData.videoThumbnails = result.metadata.thumbnails || []
-            mediaUpdateData.videoVersions = result.metadata.videoVersions || []
-            mediaUpdateData.videoMetadata = result.metadata
+            mediaUpdateData.thumbnails = result.metadata.thumbnails || []
+            mediaUpdateData.versions = result.metadata.videoVersions || []
+            mediaUpdateData.metadata = result.metadata
             mediaUpdateData.duration = result.metadata.duration
             mediaUpdateData.codec = result.metadata.codec
             mediaUpdateData.bitrate = result.metadata.bitrate
@@ -236,15 +232,25 @@ export class VideoProcessingService extends BaseMediaProcessingService {
           // Update S3 keys if available
           if (result.s3Key) {
             mediaUpdateData.videoS3Key = result.s3Key
+            mediaUpdateData.url = result.s3Key  // Set main URL to the video S3 key
           }
-          if (result.thumbnailS3Key) {
-            mediaUpdateData.thumbnailS3Key = result.thumbnailS3Key
-          }
+          // Note: thumbnailS3Key is no longer used - all thumbnail data is in thumbnails JSON array
+          
+          // Note: We no longer set thumbnailS3Key and thumbnail fields
+          // All thumbnail data is now stored in the thumbnails JSON array
 
           // Update dimensions if available
           if (result.width && result.height) {
             mediaUpdateData.width = result.width
             mediaUpdateData.height = result.height
+          }
+          
+          // Set file size from the main video version
+          if (result.metadata?.videoVersions && result.metadata.videoVersions.length > 0) {
+            const mainVideo = result.metadata.videoVersions.find((v: any) => v.quality === 'original') || result.metadata.videoVersions[0]
+            if (mainVideo.fileSize) {
+              mediaUpdateData.size = mainVideo.fileSize
+            }
           }
 
           await this.prisma.media.update({
@@ -257,8 +263,7 @@ export class VideoProcessingService extends BaseMediaProcessingService {
           await this.prisma.media.update({
             where: { id: mediaId },
             data: {
-              processingStatus: 'FAILED',
-              videoProcessingStatus: 'FAILED'
+              processingStatus: 'FAILED'
             }
           })
           logger.error(`Video processing failed for media ${mediaId}: ${error}`)
