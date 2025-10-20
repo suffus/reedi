@@ -98,6 +98,16 @@ export const getAuthHeaders = (token?: string) => {
   return headers
 }
 
+export const getAuthHeadersForMultipart = (token?: string) => {
+  const headers: Record<string, string> = {}
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  
+  return headers
+}
+
 // Helper function to get full image URL
 export const getImageUrl = (imagePath: string): string => {
   if (!imagePath) return ''
@@ -122,7 +132,7 @@ export const getImageUrl = (imagePath: string): string => {
 }
 
 // Helper function to get image URL from image object or path
-export const getImageUrlFromImage = (image: { id?: string; thumbnail?: string | null; url?: string }, useThumbnail: boolean = false): string => {
+export const getImageUrlFromImage = (image: { id?: string; url?: string }, useThumbnail: boolean = false): string => {
   if (!image) return ''
   
   // If image has an ID, use the new backend serving endpoint
@@ -132,12 +142,12 @@ export const getImageUrlFromImage = (image: { id?: string; thumbnail?: string | 
   }
   
   // Fallback to the old getImageUrl function for backward compatibility
-  const path = useThumbnail ? (image.thumbnail || image.url) : image.url
+  const path = image.url
   return path ? getImageUrl(path) : ''
 }
 
 // Helper function to get media URL from media object or path
-export const getMediaUrlFromMedia = (media: { id?: string; thumbnail?: string; url?: string; type?: string; isLocked?: boolean }, useThumbnail: boolean = false): string => {
+export const getMediaUrlFromMedia = (media: { id?: string; url?: string; type?: string; isLocked?: boolean }, useThumbnail: boolean = false): string => {
   //console.log('getMediaUrlFromMedia called with:', { media, useThumbnail })
   
   if (!media) {
@@ -159,7 +169,7 @@ export const getMediaUrlFromMedia = (media: { id?: string; thumbnail?: string; u
   }
   
   // Fallback to the old getImageUrl function for backward compatibility
-  const path = useThumbnail ? (media.thumbnail || media.url) : media.url
+  const path = media.url
   const fallbackUrl = path ? getImageUrl(path) : ''
   console.log('Generated fallback URL:', fallbackUrl)
   return fallbackUrl

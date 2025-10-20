@@ -87,7 +87,6 @@ export interface VideoProcessingResult {
   videoUrl: string
   videoS3Key: string
   thumbnailUrl: string
-  thumbnailS3Key: string
 }
 
 // Gallery types

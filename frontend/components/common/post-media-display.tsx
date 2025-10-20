@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-import { Post } from '@/lib/types'
+import { Post, Media } from '@/lib/types'
 import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality } from '@/lib/api'
 import { getBestThumbnailUrl, getSmartMediaUrl } from '@/lib/media-utils'
 import { Lock } from 'lucide-react'
@@ -9,8 +9,8 @@ import { useReorderPostMedia } from '@/lib/api-hooks'
 import { usePostsFeed } from '@/lib/api-hooks'
 
 interface PostMediaDisplayProps {
-  media: Post["media"]
-  onMediaClick: (media: any, postMedia?: any[]) => void
+  media: Post["media"] // Media[] - flattened array from API
+  onMediaClick: (media: any, allMedia?: Media[]) => void // allMedia is the same Media[] array
   postId?: string
   isOwner?: boolean
   showReorderControls?: boolean
@@ -115,7 +115,7 @@ export function PostMediaDisplay({
     }
     
     // For videos, always use thumbnail for display (not the video file itself)
-    const isVideo = mediaItem.media?.mediaType === 'VIDEO' || mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
+    const isVideo = mediaItem.mediaType === 'VIDEO' || mediaItem.mimeType?.startsWith('video/')
     if (isVideo || useThumbnail) {
       // For thumbnails and videos, use the smart thumbnail URL
       return getSmartMediaUrl(mediaItem, 'thumbnail')
@@ -178,7 +178,7 @@ export function PostMediaDisplay({
   // Single media item
   if (reorderedMedia.length === 1) {
     const mediaItem = reorderedMedia[0];
-    const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
+    const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
     const mediaUrl = getBestMediaUrl(mediaItem, false);
     const videoUrl = getCachedVideoUrl(mediaItem);
     
@@ -192,7 +192,7 @@ export function PostMediaDisplay({
         {mediaUrl ? (
           <LazyMedia
             src={mediaUrl}
-            alt={typeof mediaItem === 'string' ? 'Post media' : (mediaItem.media?.caption || mediaItem.media?.altText || 'Post media')}
+            alt={typeof mediaItem === 'string' ? 'Post media' : (mediaItem.caption || mediaItem.altText || 'Post media')}
             className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
             style={{
               width: '100%',
@@ -206,7 +206,7 @@ export function PostMediaDisplay({
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, 0)}
             onDragEnd={handleDragEnd}
-            mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.media?.mediaType || 'IMAGE'}
+            mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
             showProgressiveEffect={true}
             isMainMedia={true}
             videoUrl={videoUrl}
@@ -237,7 +237,7 @@ export function PostMediaDisplay({
         )}
         <div className={`grid grid-cols-${reorderedMedia.length} gap-2`}>
           {reorderedMedia.map((mediaItem, idx) => {
-            const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
+            const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
             const mediaUrl = getBestMediaUrl(mediaItem, false);
             const videoUrl = getCachedVideoUrl(mediaItem);
             
@@ -255,13 +255,13 @@ export function PostMediaDisplay({
                 {mediaUrl ? (
                   <LazyMedia
                     src={mediaUrl}
-                    alt={typeof mediaItem === 'string' ? `Post media ${idx + 1}` : (mediaItem.media?.caption || mediaItem.media?.altText || `Post media ${idx + 1}`)}
+                    alt={typeof mediaItem === 'string' ? `Post media ${idx + 1}` : (mediaItem.caption || mediaItem.altText || `Post media ${idx + 1}`)}
                     className={`w-full h-auto rounded-lg max-h-72 transition-opacity ${
                       isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                     } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
                     style={{ width: '100%', height: 'auto' }}
                     onClick={() => onMediaClick(mediaItem, reorderedMedia)}
-                    mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.media?.mediaType || 'IMAGE'}
+                    mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
                     showProgressiveEffect={true}
                     isMainMedia={idx === 0} // First item is main media
                     videoUrl={videoUrl}
@@ -291,14 +291,14 @@ export function PostMediaDisplay({
   
   // 4+ media items: Layout based on main media aspect ratio
   const [main, ...thumbs] = reorderedMedia;
-  const isMainVideo = typeof main !== 'string' && main.media?.mediaType === 'VIDEO';
+  const isMainVideo = typeof main !== 'string' && main.mediaType === 'VIDEO';
   const mainMediaUrl = getBestMediaUrl(main, false);
   const mainVideoUrl = getCachedVideoUrl(main);
   
   // Calculate aspect ratio for main media
   const mainAspectRatio = typeof main === 'string' ? 1 : (
-    main.media?.width && main.media?.height && main.media.width > 0 && main.media.height > 0
-      ? main.media.width / main.media.height 
+    main.width && main.height && main.width > 0 && main.height > 0
+      ? main.width / main.height 
       : 0.75 // Default to portrait aspect ratio when dimensions are unknown
   );
   const isPortrait = mainAspectRatio < 1;
@@ -326,7 +326,7 @@ export function PostMediaDisplay({
             {mainMediaUrl ? (
               <LazyMedia
                 src={mainMediaUrl}
-                alt={typeof main === 'string' ? 'Main post media' : (main.media?.caption || main.media?.altText || 'Main post media')}
+                alt={typeof main === 'string' ? 'Main post media' : (main.caption || main.altText || 'Main post media')}
                 className={`w-full h-auto rounded-lg transition-opacity ${
                   isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
                 } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
@@ -335,7 +335,7 @@ export function PostMediaDisplay({
                   height: 'auto'
                 }}
                 onClick={() => onMediaClick(main, reorderedMedia)}
-                mediaType={typeof main === 'string' ? 'IMAGE' : main.media?.mediaType || 'IMAGE'}
+                mediaType={typeof main === 'string' ? 'IMAGE' : main.mediaType || 'IMAGE'}
                 isMainMedia={true}
                 videoUrl={mainVideoUrl}
                 showVideoControls={isMainVideo}
@@ -360,7 +360,7 @@ export function PostMediaDisplay({
         {/* Thumbnails - 17.5% of post width, vertical stack */}
         <div className="flex flex-col gap-2" style={{ width: '17.5%' }}>
           {thumbs.map((mediaItem, idx) => {
-            const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
+            const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
             const mediaUrl = getSmartMediaUrl(mediaItem, 'thumbnail');
             const videoUrl = getCachedVideoUrl(mediaItem);
             const actualIndex = idx + 1; // +1 because main media is at index 0
@@ -378,7 +378,7 @@ export function PostMediaDisplay({
                 {mediaUrl ? (
                   <LazyMedia
                     src={mediaUrl}
-                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.media?.caption || mediaItem.media?.altText || `Thumbnail ${idx + 2}`)}
+                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
                     className={`rounded-lg object-cover transition-opacity ${
                       isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                     } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
@@ -387,9 +387,9 @@ export function PostMediaDisplay({
                       aspectRatio: '1 / 1'
                     }}
                     onClick={() => onMediaClick(mediaItem, reorderedMedia)}
-                    mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.media?.mediaType || 'IMAGE'}
+                    mediaType={typeof mediaItem === 'string' ? 'IMAGE' : (mediaItem as any).mediaType || 'IMAGE'}
                     videoUrl={videoUrl}
-                    showPlayButton={isVideo}
+                    showPlayButton={true}
                   />
                 ) : (
                   // Locked media placeholder
@@ -432,13 +432,13 @@ export function PostMediaDisplay({
           {mainMediaUrl ? (
             <LazyMedia
               src={mainMediaUrl}
-              alt={typeof main === 'string' ? 'Main post media' : (main.media?.caption || main.media?.altText || 'Main post media')}
+              alt={typeof main === 'string' ? 'Main post media' : (main.caption || main.altText || 'Main post media')}
               className={`w-full h-auto rounded-lg transition-opacity ${
                 isDragging && draggedMedia?.id === main.id ? 'opacity-50' : 'opacity-100'
               } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
               style={{ width: '100%', height: 'auto' }}
               onClick={() => onMediaClick(main, reorderedMedia)}
-              mediaType={typeof main === 'string' ? 'IMAGE' : main.media?.mediaType || 'IMAGE'}
+              mediaType={typeof main === 'string' ? 'IMAGE' : main.mediaType || 'IMAGE'}
               isMainMedia={true}
               videoUrl={mainVideoUrl}
               showVideoControls={isMainVideo}
@@ -462,7 +462,7 @@ export function PostMediaDisplay({
         {/* Thumbnails - horizontal row at 17.5% of post width */}
         <div className="flex gap-2 overflow-x-auto">
           {thumbs.map((mediaItem, idx) => {
-            const isVideo = typeof mediaItem !== 'string' && mediaItem.media?.mediaType === 'VIDEO';
+            const isVideo = typeof mediaItem !== 'string' && mediaItem.mediaType === 'VIDEO';
             const mediaUrl = getSmartMediaUrl(mediaItem, 'thumbnail');
             const videoUrl = getCachedVideoUrl(mediaItem);
             const actualIndex = idx + 1; // +1 because main media is at index 0
@@ -481,7 +481,7 @@ export function PostMediaDisplay({
                 {mediaUrl ? (
                   <LazyMedia
                     src={mediaUrl}
-                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.media?.caption || mediaItem.media?.altText || `Thumbnail ${idx + 2}`)}
+                    alt={typeof mediaItem === 'string' ? `Thumbnail ${idx + 2}` : (mediaItem.caption || mediaItem.altText || `Thumbnail ${idx + 2}`)}
                     className={`w-full rounded-lg object-cover border border-gray-200 transition-opacity ${
                       isDragging && draggedMedia?.id === mediaItem.id ? 'opacity-50' : 'opacity-100'
                     } ${isDragging && showReorderControls ? 'cursor-grabbing' : 'cursor-pointer hover:opacity-90'}`}
@@ -489,10 +489,10 @@ export function PostMediaDisplay({
                       aspectRatio: '1 / 1'
                     }}
                     onClick={() => onMediaClick(mediaItem, reorderedMedia)}
-                    mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.media?.mediaType || 'IMAGE'}
+                    mediaType={typeof mediaItem === 'string' ? 'IMAGE' : mediaItem.mediaType || 'IMAGE'}
                     videoUrl={videoUrl}
                     showPlayButton={isVideo}
-                  />
+                  />                  
                 ) : (
                   // Locked media placeholder
                   <div className="w-full bg-gray-100 rounded-lg aspect-square flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border border-gray-200">

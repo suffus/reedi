@@ -1,6 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg'
 import * as path from 'path'
 import * as fs from 'fs'
+import sharp from 'sharp'
 
 interface VideoMetadata {
   duration: number
@@ -196,12 +197,9 @@ export class StandaloneVideoProcessor {
   }
 
   private getThumbnailSize(orientation: 'landscape' | 'portrait' | 'square') {
-    const sizes = {
-      landscape: { width: 300, height: 169 }, // 16:9 aspect ratio
-      portrait: { width: 169, height: 300 },  // 9:16 aspect ratio
-      square: { width: 300, height: 300 }     // 1:1 aspect ratio
-    }
-    return sizes[orientation]
+    // All thumbnails will be scaled to fit within 720x720 using Sharp
+    // This method is kept for compatibility but the actual scaling is done by Sharp
+    return { width: 720, height: 720 }
   }
 
   private formatTimestamp(seconds: number): string {
@@ -212,14 +210,54 @@ export class StandaloneVideoProcessor {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  private async probeVideoFile(videoPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(videoPath, (err, metadata) => {
+        if (err) {
+          console.error(`FFprobe error for ${videoPath}:`, err.message)
+          reject(err)
+          return
+        }
+        
+        console.log(`Video metadata:`, {
+          duration: metadata.format.duration,
+          bitrate: metadata.format.bit_rate,
+          codec: metadata.streams[0]?.codec_name,
+          width: metadata.streams[0]?.width,
+          height: metadata.streams[0]?.height,
+          fps: metadata.streams[0]?.r_frame_rate,
+          pixelFormat: metadata.streams[0]?.pix_fmt
+        })
+        
+        resolve()
+      })
+    })
+  }
+
   private async generateThumbnails(videoPath: string, mediaId: string, duration: number, metadata: VideoMetadata): Promise<ProcessingOutput[]> {
     const outputs: ProcessingOutput[] = []
+    
+    // First, check if the video file exists and is readable
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`Video file not found: ${videoPath}`)
+    }
+    
+    // Check video file properties
+    try {
+      const stats = fs.statSync(videoPath)
+      console.log(`Video file stats: size=${stats.size} bytes, modified=${stats.mtime}`)
+      
+      // Probe video file with ffprobe to get detailed information
+      await this.probeVideoFile(videoPath)
+    } catch (error) {
+      console.error(`Error reading video file stats:`, error)
+    }
     
     // Determine video orientation and get appropriate thumbnail size
     const orientation = this.getVideoOrientation(metadata.width, metadata.height)
     const thumbnailSize = this.getThumbnailSize(orientation)
     
-    console.log(`Generating thumbnails for ${orientation} video (${metadata.width}x${metadata.height}) at ${thumbnailSize.width}x${thumbnailSize.height}`)
+    console.log(`Generating thumbnails for ${orientation} video (${metadata.width}x${metadata.height}) - will scale to fit within 720x720`)
     
     // Generate one thumbnail for every 15 seconds of video
     const thumbnailInterval = 15 // seconds
@@ -235,7 +273,16 @@ export class StandaloneVideoProcessor {
       const outputPath = path.join(this.tempDir, `${mediaId}_thumb_${i}.jpg`)
       
       try {
+        // Try to generate thumbnail at the calculated time
         await this.generateThumbnail(videoPath, outputPath, time || '00:00:05', thumbnailSize)
+        
+        // Verify the thumbnail was created successfully
+        if (!fs.existsSync(outputPath)) {
+          throw new Error(`Thumbnail file was not created: ${outputPath}`)
+        }
+        
+        // Get the actual dimensions of the scaled thumbnail
+        const { width: actualWidth, height: actualHeight } = await sharp(outputPath).metadata()
         
         // Save thumbnail to output directory
         const thumbnailOutputPath = path.join(this.outputDir, 'thumbnails', `${mediaId}_${i}.jpg`)
@@ -246,8 +293,8 @@ export class StandaloneVideoProcessor {
         outputs.push({
           type: 'thumbnail',
           s3Key,
-          width: thumbnailSize.width,
-          height: thumbnailSize.height,
+          width: actualWidth || 720,
+          height: actualHeight || 720,
           fileSize: fs.statSync(thumbnailOutputPath).size,
           mimeType: 'image/jpeg',
           quality: `${i + 1}`,
@@ -258,7 +305,41 @@ export class StandaloneVideoProcessor {
         fs.unlinkSync(outputPath)
         
       } catch (error) {
-        console.error(`Failed to generate thumbnail ${i} for media ${mediaId}:`, error)
+        console.error(`Failed to generate thumbnail ${i} for media ${mediaId} at time ${time}:`, error)
+        
+        // Try fallback: generate thumbnail at a different time with simple method
+        if (i === 0) {
+          console.log(`Trying fallback thumbnail generation at 00:00:01 for media ${mediaId}`)
+          try {
+            await this.generateThumbnailSimple(videoPath, outputPath, '00:00:01', thumbnailSize)
+            
+            if (fs.existsSync(outputPath)) {
+              // Get the actual dimensions of the scaled thumbnail
+              const { width: actualWidth, height: actualHeight } = await sharp(outputPath).metadata()
+              
+              const thumbnailOutputPath = path.join(this.outputDir, 'thumbnails', `${mediaId}_${i}.jpg`)
+              fs.copyFileSync(outputPath, thumbnailOutputPath)
+              
+              const s3Key = `thumbnails/${mediaId}_${i}.jpg`
+              
+              outputs.push({
+                type: 'thumbnail',
+                s3Key,
+                width: actualWidth || 720,
+                height: actualHeight || 720,
+                fileSize: fs.statSync(thumbnailOutputPath).size,
+                mimeType: 'image/jpeg',
+                quality: `${i + 1}`,
+                localPath: thumbnailOutputPath
+              })
+              
+              fs.unlinkSync(outputPath)
+              console.log(`Fallback thumbnail generation successful for media ${mediaId}`)
+            }
+          } catch (fallbackError) {
+            console.error(`Fallback thumbnail generation also failed for media ${mediaId}:`, fallbackError)
+          }
+        }
       }
     }
 
@@ -266,20 +347,126 @@ export class StandaloneVideoProcessor {
   }
 
   private async generateThumbnail(videoPath: string, outputPath: string, time: string, thumbnailSize: { width: number; height: number }): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Create FFmpeg filter for thumbnail letterboxing
-      // This scales the video frame to fit within the target thumbnail size while maintaining aspect ratio,
-      // then pads it to the exact target size with black borders
-      const filter = `scale=${thumbnailSize.width}:${thumbnailSize.height}:force_original_aspect_ratio=decrease,pad=${thumbnailSize.width}:${thumbnailSize.height}:(ow-iw)/2:(oh-ih)/2:black`
-      
-      ffmpeg(videoPath)
-        .seekInput(time)
-        .frames(1)
-        .videoFilters(filter)
-        .output(outputPath)
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err))
-        .run()
+    return new Promise(async (resolve, reject) => {
+      try {
+        // First, extract a frame from the video at the specified time
+        const tempFramePath = path.join(this.tempDir, `temp_frame_${Date.now()}.jpg`)
+        
+        console.log(`Extracting frame at time ${time} from video`)
+        
+        // Extract frame using FFmpeg without any scaling
+        await new Promise<void>((ffmpegResolve, ffmpegReject) => {
+          ffmpeg(videoPath)
+            .seekInput(time)
+            .frames(1)
+            .outputOptions(['-q:v', '2']) // High quality JPEG
+            .output(tempFramePath)
+            .on('start', (commandLine) => {
+              console.log(`FFmpeg command: ${commandLine}`)
+            })
+            .on('end', () => {
+              console.log(`Frame extracted successfully: ${tempFramePath}`)
+              ffmpegResolve()
+            })
+            .on('error', (err) => {
+              console.error(`FFmpeg error for frame extraction at ${time}:`, err.message)
+              ffmpegReject(err)
+            })
+            .run()
+        })
+        
+        // Now use Sharp to scale the frame to fit within 720x720 while maintaining aspect ratio
+        console.log(`Scaling frame to fit within 720x720 using Sharp`)
+        
+        const sharpInstance = sharp(tempFramePath)
+        const { width: originalWidth, height: originalHeight } = await sharpInstance.metadata()
+        console.log(`Original frame dimensions: ${originalWidth}x${originalHeight}`)
+        
+        await sharpInstance
+          .resize(720, 720, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .jpeg({
+            quality: 85,
+            progressive: true,
+            mozjpeg: true
+          })
+          .toFile(outputPath)
+        
+        // Get the actual dimensions of the scaled thumbnail
+        const { width: scaledWidth, height: scaledHeight } = await sharp(outputPath).metadata()
+        console.log(`Thumbnail scaled and saved: ${outputPath} (${scaledWidth}x${scaledHeight})`)
+        
+        // Clean up temp frame
+        if (fs.existsSync(tempFramePath)) {
+          fs.unlinkSync(tempFramePath)
+        }
+        
+        resolve()
+      } catch (error) {
+        console.error(`Error generating thumbnail:`, error)
+        reject(error)
+      }
+    })
+  }
+
+  private async generateThumbnailSimple(videoPath: string, outputPath: string, time: string, thumbnailSize: { width: number; height: number }): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // First, extract a frame from the video at the specified time
+        const tempFramePath = path.join(this.tempDir, `temp_frame_simple_${Date.now()}.jpg`)
+        
+        console.log(`Extracting frame at time ${time} from video (simple method)`)
+        
+        // Extract frame using FFmpeg without any scaling
+        await new Promise<void>((ffmpegResolve, ffmpegReject) => {
+          ffmpeg(videoPath)
+            .seekInput(time)
+            .frames(1)
+            .outputOptions(['-q:v', '2']) // High quality JPEG
+            .output(tempFramePath)
+            .on('start', (commandLine) => {
+              console.log(`Simple FFmpeg command: ${commandLine}`)
+            })
+            .on('end', () => {
+              console.log(`Frame extracted successfully: ${tempFramePath}`)
+              ffmpegResolve()
+            })
+            .on('error', (err) => {
+              console.error(`Simple FFmpeg error for frame extraction at ${time}:`, err.message)
+              ffmpegReject(err)
+            })
+            .run()
+        })
+        
+        // Now use Sharp to scale the frame to fit within 720x720 while maintaining aspect ratio
+        console.log(`Scaling frame to fit within 720x720 using Sharp (simple method)`)
+        
+        await sharp(tempFramePath)
+          .resize(720, 720, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .jpeg({
+            quality: 85,
+            progressive: true,
+            mozjpeg: true
+          })
+          .toFile(outputPath)
+        
+        console.log(`Simple thumbnail scaled and saved: ${outputPath}`)
+        
+        // Clean up temp frame
+        if (fs.existsSync(tempFramePath)) {
+          fs.unlinkSync(tempFramePath)
+        }
+        
+        resolve()
+      } catch (error) {
+        console.error(`Error generating simple thumbnail:`, error)
+        reject(error)
+      }
     })
   }
 

@@ -152,7 +152,6 @@ export abstract class BaseMediaProcessingService extends RabbitMQService {
             status: update.status.toUpperCase() as ProcessingStatus,
             result: update.image_versions ? {
               s3Key: update.image_versions[0]?.s3Key || '',
-              thumbnailS3Key: update.image_versions[0]?.s3Key || '',
               width: update.image_versions[0]?.width || 0,
               height: update.image_versions[0]?.height || 0,
               metadata: update.metadata || {}

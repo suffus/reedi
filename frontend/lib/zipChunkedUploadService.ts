@@ -1,5 +1,7 @@
-import { API_BASE_URL, getAuthHeaders } from './api'
+import { API_BASE_URL, getAuthHeaders, getAuthHeadersForMultipart } from './api'
 import { genericChunkedUploadService, ChunkedUploadConfig, UploadProgress, ChunkedUploadEndpoints } from './genericChunkedUploadService'
+
+export type { UploadProgress } from './genericChunkedUploadService'
 
 export interface ZipUploadOptions {
   preserveStructure?: boolean
@@ -78,7 +80,7 @@ export class ZipChunkedUploadService {
     const token = localStorage.getItem('token')
     const response = await fetch(`${API_BASE_URL}/media/upload`, {
       method: 'POST',
-      headers: getAuthHeaders(token || undefined),
+      headers: getAuthHeadersForMultipart(token || undefined),
       body: formData,
     })
 

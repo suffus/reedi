@@ -83,12 +83,16 @@ export function MediaGrid({
     }
   }
 
-  const getMediaIcon = (mediaType: 'IMAGE' | 'VIDEO') => {
-    return mediaType === 'VIDEO' ? <Video className="w-4 h-4" /> : null
+  const getMediaIcon = (mediaType: 'IMAGE' | 'VIDEO' | 'ZIP') => {
+    if (mediaType === 'VIDEO') return <Video className="w-4 h-4" />
+    if (mediaType === 'ZIP') return <div className="w-4 h-4 text-gray-600">📁</div>
+    return null
   }
 
-  const getMediaTypeLabel = (mediaType: 'IMAGE' | 'VIDEO') => {
-    return mediaType === 'VIDEO' ? 'Video' : 'Image'
+  const getMediaTypeLabel = (mediaType: 'IMAGE' | 'VIDEO' | 'ZIP') => {
+    if (mediaType === 'VIDEO') return 'Video'
+    if (mediaType === 'ZIP') return 'ZIP'
+    return 'Image'
   }
 
   const getGridColsClass = () => {
@@ -164,8 +168,8 @@ export function MediaGrid({
               
               {/* Video Play Icon - REMOVED since we have video indicator */}
               
-              {/* Media Type Indicator - Only show for videos */}
-              {mediaItem.mediaType === 'VIDEO' && (
+              {/* Media Type Indicator - Show for videos and ZIP files */}
+              {(mediaItem.mediaType === 'VIDEO' || mediaItem.mediaType === 'ZIP') && (
                 <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
                   {getMediaIcon(mediaItem.mediaType)}
                   <span>{getMediaTypeLabel(mediaItem.mediaType)}</span>
@@ -310,7 +314,7 @@ export function MediaGrid({
                   <h3 className="text-sm font-medium text-gray-900 truncate">
                     {mediaItem.altText || 'Untitled'}
                   </h3>
-                  {mediaItem.mediaType === 'VIDEO' && (
+                  {(mediaItem.mediaType === 'VIDEO' || mediaItem.mediaType === 'ZIP') && (
                     <span className="text-xs text-gray-500">
                       ({getMediaTypeLabel(mediaItem.mediaType)})
                     </span>

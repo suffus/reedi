@@ -12,7 +12,7 @@ import { Post, Comment } from '@/lib/types'
 
 import { PostAuthorForm } from './post-author-form'
 import { getMediaUrl, getMediaUrlFromMedia, getVideoUrlWithQuality, fetchFreshMediaData } from '../../lib/api'
-import { getBestThumbnailUrl, getSmartMediaUrl } from '../../lib/media-utils'
+import { getBestThumbnailUrl, getSmartMediaUrl, getFirstThumbnail } from '../../lib/media-utils'
 import { LazyMedia } from '../lazy-media'
 import { InfiniteScrollContainer } from '../infinite-scroll-container'
 
@@ -185,9 +185,8 @@ export function PersonalFeed() {
       const mappedMedia = {
         id: media.id,
         s3Key: media.s3Key || media.url,
-        thumbnailS3Key: media.thumbnailS3Key || media.thumbnail || media.url,
         url: media.s3Key || media.url, // Keep for backward compatibility
-        thumbnail: media.thumbnailS3Key || media.thumbnail || media.url, // Keep for backward compatibility
+        thumbnail: getFirstThumbnail(media), // Use new helper function
         altText: media.altText,
         caption: media.caption,
         createdAt: media.createdAt,
@@ -221,7 +220,7 @@ export function PersonalFeed() {
           const mappedPostMedia = postMedia.map(mediaItem => ({
             id: mediaItem.id,
             url: mediaItem.s3Key || mediaItem.url,
-            thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+            thumbnail: getFirstThumbnail(mediaItem),
             altText: mediaItem.altText,
             caption: mediaItem.caption,
             createdAt: mediaItem.createdAt,
@@ -257,9 +256,8 @@ export function PersonalFeed() {
       const fallbackMedia = {
         id: media.id,
         s3Key: media.s3Key || media.url,
-        thumbnailS3Key: media.thumbnailS3Key || media.thumbnail || media.url,
         url: media.s3Key || media.url,
-        thumbnail: media.thumbnailS3Key || media.thumbnail || media.url,
+        thumbnail: getFirstThumbnail(media),
         altText: media.altText,
         caption: media.caption,
         createdAt: media.createdAt,
@@ -284,7 +282,7 @@ export function PersonalFeed() {
         const mappedPostMedia = postMedia.map(mediaItem => ({
           id: mediaItem.id,
           url: mediaItem.s3Key || mediaItem.url,
-          thumbnail: mediaItem.thumbnailS3Key || mediaItem.thumbnail || mediaItem.url,
+          thumbnail: getFirstThumbnail(mediaItem),
           altText: mediaItem.altText,
           caption: mediaItem.caption,
           createdAt: mediaItem.createdAt,

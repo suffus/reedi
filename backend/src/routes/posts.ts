@@ -49,11 +49,35 @@ function createLockedMediaPlaceholder(mediaItem: any) {
     framerate: mediaItem.framerate,
     videoUrl: mediaItem.videoUrl,
     videoS3Key: mediaItem.videoS3Key,
-    // Note: s3Key and thumbnailS3Key are intentionally omitted for locked media
+    // Note: s3Key is intentionally omitted for locked media
     isLocked: true
   }
 }
 
+
+const mediaSelect = {
+  id: true,
+  s3Key: true,
+  originalFilename: true,
+  altText: true,
+  caption: true,
+  tags: true,
+  visibility: true,
+  createdAt: true,
+  updatedAt: true,
+  width: true,
+  height: true,
+  size: true,
+  mimeType: true,
+  authorId: true,
+  mediaType: true,
+  processingStatus: true,
+  duration: true,
+  videoUrl: true,
+  videoS3Key: true,
+  thumbnails: true,
+  versions: true
+}
 // Get all posts (public feed)
 router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const auth = getAuthContext(req)
@@ -113,8 +137,7 @@ router.get('/', optionalAuthMiddleware, asyncHandler(async (req: AuthenticatedRe
         media: {
           include: { 
             media: {
-              include: {
-              }
+              select: mediaSelect
             }
           },
           orderBy: { order: 'asc' }
@@ -310,8 +333,7 @@ router.get('/feed', authMiddleware, asyncHandler(async (req: AuthenticatedReques
         media: {
           include: { 
             media: {
-              include: {
-              }
+              select: mediaSelect
             }
           },
           orderBy: { order: 'asc' }
@@ -633,7 +655,6 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
             select: {
               id: true,
               s3Key: true,
-              thumbnailS3Key: true,
               originalFilename: true,
               altText: true,
               caption: true,
@@ -1388,8 +1409,7 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
         media: {
           include: { 
             media: {
-              include: {
-              }
+              select: mediaSelect
             }
           },
           orderBy: { order: 'asc' }
@@ -1480,8 +1500,7 @@ router.get('/public', asyncHandler(async (req: Request, res: Response) => {
         media: {
           include: { 
             media: {
-              include: {
-              }
+              select: mediaSelect
             }
           },
           orderBy: { order: 'asc' }

@@ -5,9 +5,7 @@ export function mapMediaData(rawMedia: any, order: number = 0): Media {
   return {
     id: rawMedia.id,
     url: rawMedia.url || '',
-    thumbnail: rawMedia.thumbnail || null,
     s3Key: rawMedia.s3Key,
-    thumbnailS3Key: rawMedia.thumbnailS3Key,
     originalFilename: rawMedia.originalFilename,
     altText: rawMedia.altText || rawMedia.title || null,
     caption: rawMedia.caption || rawMedia.description || null,
@@ -25,11 +23,10 @@ export function mapMediaData(rawMedia: any, order: number = 0): Media {
     framerate: rawMedia.framerate || null,
     videoUrl: rawMedia.videoUrl || null,
     videoS3Key: rawMedia.videoS3Key || null,
-    // Video processing fields
-    videoProcessingStatus: rawMedia.videoProcessingStatus || null,
-    videoThumbnails: rawMedia.videoThumbnails || null,
-    videoVersions: rawMedia.videoVersions || null,
-    videoMetadata: rawMedia.videoMetadata || null,
+    // Unified processing fields
+    thumbnails: rawMedia.thumbnails || null,
+    versions: rawMedia.versions || null,
+    metadata: rawMedia.metadata || null,
     createdAt: rawMedia.createdAt,
     updatedAt: rawMedia.updatedAt,
     authorId: rawMedia.authorId,
@@ -60,6 +57,16 @@ export function mapMediaArray(rawMediaArray: any[]): Media[] {
 export function getBestThumbnailUrl(media: Media): string | null {
   // Use the main thumbnail endpoint which now handles both image and video thumbnails
   return `${BACKEND_BASE_URL}/api/media/serve/${media.id}/thumbnail`
+}
+
+/**
+ * Get the first thumbnail from the thumbnails array, or fallback to the main URL
+ */
+export function getFirstThumbnail(media: any): string {
+  if (media.thumbnails && Array.isArray(media.thumbnails) && media.thumbnails.length > 0) {
+    return getBestThumbnailUrl(media) || media.url || ''
+  }
+  return media.url || ''
 }
 
 /**

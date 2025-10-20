@@ -4,6 +4,7 @@ import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { MediaDisplay } from '../common/media-display';
 import { useMediaDetail } from '../common/media-detail-context';
+import { LazyMedia } from '../lazy-media';
 
 interface MessageProps {
   message: {
@@ -79,23 +80,26 @@ export function Message({ message, isOwnMessage, showAvatar }: MessageProps) {
         return (
           <div className="max-w-md">
             <div className="flex items-center justify-center">
-              <video
-                src={message.media?.url}
-                controls
-                className="w-auto h-auto max-w-full h-auto rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              <LazyMedia
+                src={message.media?.url || ''}
+                alt={message.media?.originalFilename || 'Video message'}
+                className="w-auto h-auto max-w-full rounded-lg object-contain cursor-pointer hover:opacity-90 transition-opacity"
                 style={{
                   // Ensure video maintains aspect ratio and fits within container
                   maxWidth: '100%',
                   height: 'auto',
                   width: 'auto'
                 }}
-                poster={message.media?.thumbnail}
                 onClick={() => {
                   if (message.media) {
                     // Open in shared media detail modal
                     openMediaDetail(message.media);
                   }
                 }}
+                mediaType="VIDEO"
+                showPlayButton={true}
+                showVideoControls={true}
+                isMainMedia={true}
               />
             </div>
             {message.content && (

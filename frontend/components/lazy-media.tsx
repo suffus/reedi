@@ -6,7 +6,7 @@ import { Play, Video, Image as ImageIcon } from 'lucide-react'
 interface LazyMediaProps {
   src: string
   alt: string
-  mediaType: 'IMAGE' | 'VIDEO'
+  mediaType: 'IMAGE' | 'VIDEO' | 'ZIP'
   className?: string
   style?: React.CSSProperties
   onClick?: (e?: React.MouseEvent) => void
@@ -201,6 +201,25 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
     `)}`
   }
 
+  if (mediaType === 'ZIP') {
+    // Handle ZIP files - show as a file icon with download option
+    return (
+      <div className="relative">
+        <div className="w-full h-64 bg-gray-100 rounded-lg flex flex-col items-center justify-center border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors">
+          <div className="text-6xl text-gray-400 mb-4">📁</div>
+          <div className="text-lg font-medium text-gray-700 mb-2">ZIP File</div>
+          <div className="text-sm text-gray-500 mb-4">{alt}</div>
+          <button
+            onClick={(e) => onClick?.(e)}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            Download
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (mediaType === 'VIDEO') {
     // If this is the main media item, show the video player
     if (isMainMedia) {
@@ -253,7 +272,7 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
 
     // For video thumbnails, show as image with play button overlay
     return (
-      <div className="relative group">
+      <div className="relative group w-full h-full">
         {/* Thumbnail image */}
         <img
           ref={mediaRef as React.RefObject<HTMLImageElement>}
@@ -278,10 +297,10 @@ export function LazyMedia(props: LazyMediaProps): JSX.Element {
           {...restProps}
         />
         
-        {/* Play button overlay */}
+        {/* Play button overlay - positioned relative to the container, not the image */}
         {showPlayButton && !isVideoPlaying && (
-          <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-            <div className="bg-white bg-opacity-90 rounded-full p-3 shadow-lg group-hover:scale-110 transition-transform duration-200">
+          <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center pointer-events-none">
+            <div className="bg-white bg-opacity-90 rounded-full p-3 shadow-lg group-hover:scale-110 transition-transform duration-200 pointer-events-auto">
               <Play className="h-6 w-6 text-gray-800 ml-1" fill="currentColor" />
             </div>
           </div>

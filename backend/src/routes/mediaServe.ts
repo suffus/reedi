@@ -541,12 +541,11 @@ async function getMediaAndCheckPermissions(
   viewerId?: string, 
   selectFields?: {
     s3Key?: boolean
-    thumbnailS3Key?: boolean
     videoS3Key?: boolean
     mimeType?: boolean
     mediaType?: boolean
     processingStatus?: boolean
-    videoVersions?: boolean
+    versions?: boolean
   }
 ) {
   // First check if media exists
@@ -642,12 +641,11 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
   
   const { media, canView, error } = await getMediaAndCheckPermissions(id, viewerId, {
     s3Key: true,
-    thumbnailS3Key: true,
     videoS3Key: true,
     mimeType: true,
     mediaType: true,
     processingStatus: true,
-    videoVersions: true
+    versions: true
   })
 
   const dbTime = Date.now() - dbStartTime
@@ -707,8 +705,8 @@ router.get('/:id', optionalAuthMiddleware, asyncHandler(async (req: Authenticate
       let preferredS3Key = null
       
       // Check if 540p version exists in videoVersions
-      if (media.videoVersions && Array.isArray(media.videoVersions)) {
-        const videoVersions = media.videoVersions as any[]
+      if (media.versions && Array.isArray(media.versions)) {
+        const videoVersions = media.versions as any[]
         const version540p = videoVersions.find((version: any) => version.quality === '540p')
         if (version540p) {
           preferredS3Key = version540p.s3Key || version540p.s3_key
@@ -842,8 +840,7 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
     where: { id },
     select: {
       id: true,
-      thumbnailS3Key: true,
-      videoThumbnails: true,
+      thumbnails: true,
       mimeType: true,
       mediaType: true,
       processingStatus: true
@@ -876,27 +873,21 @@ router.get('/:id/thumbnail', optionalAuthMiddleware, asyncHandler(async (req: Au
   try {
     let thumbnailS3Key: string | null = null
 
-    // For videos, check processed thumbnails first
-    if (media.mediaType === 'VIDEO' && media.videoThumbnails) {
-      const videoThumbnails = media.videoThumbnails as any[]
-      if (videoThumbnails && videoThumbnails.length > 0) {
+    // Get thumbnail from the thumbnails JSON array
+    if (media.thumbnails) {
+      const thumbnails = media.thumbnails as any[]
+      if (thumbnails && thumbnails.length > 0) {
         // Use the first thumbnail (or could implement logic to pick the best one)
-        thumbnailS3Key = videoThumbnails[0].s3_key || videoThumbnails[0].s3Key
-        console.log(`🖼️ [${id}] Using processed video thumbnail: ${thumbnailS3Key}`)
+        thumbnailS3Key = thumbnails[0].s3Key || thumbnails[0].s3_key
+        console.log(`🖼️ [${id}] Using thumbnail from JSON array: ${thumbnailS3Key}`)
       }
     }
 
-    // Fall back to original thumbnailS3Key if no processed thumbnails
     if (!thumbnailS3Key) {
-      thumbnailS3Key = media.thumbnailS3Key
-      console.log(`🖼️ [${id}] Using original thumbnail: ${thumbnailS3Key}`)
-    }
-
-    if (!thumbnailS3Key) {
-      console.error(`🖼️ [${id}] No thumbnail S3 key found`)
+      console.error(`🖼️ [${id}] No thumbnail found in thumbnails array`)
       res.status(404).json({
         success: false,
-        error: 'Thumbnail not found'
+        error: 'No thumbnail found'
       })
       return
     }
@@ -948,7 +939,7 @@ router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandl
       id: true,
       mediaType: true,
       processingStatus: true,
-      videoThumbnails: true
+      thumbnails: true
     }
   })
 
@@ -979,7 +970,7 @@ router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandl
 
   try {
     // Validate that the requested s3Key is actually a thumbnail for this video
-    const videoThumbnails = media.videoThumbnails as any[]
+    const videoThumbnails = media.thumbnails as any[]
     const isValidThumbnail = videoThumbnails && videoThumbnails.some((thumb: any) => 
       (thumb.s3_key || thumb.s3Key) === s3Key
     )
@@ -1108,7 +1099,7 @@ router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandl
     select: {
       id: true,
       mediaType: true,
-      videoThumbnails: true
+      thumbnails: true
     }
   })
 
@@ -1129,7 +1120,7 @@ router.get('/:id/processed-thumbnail/:s3Key', optionalAuthMiddleware, asyncHandl
   }
 
   // Verify that the requested S3 key is actually a thumbnail for this video
-  const thumbnails = media.videoThumbnails as any[]
+  const thumbnails = media.thumbnails as any[]
   const thumbnailExists = thumbnails && Array.isArray(thumbnails) && 
     thumbnails.some(thumb => {
       const thumbS3Key = thumb.s3Key || thumb.s3_key
@@ -1186,7 +1177,7 @@ router.get('/:id/qualities', optionalAuthMiddleware, asyncHandler(async (req: Au
       id: true,
       mediaType: true,
       processingStatus: true,
-      videoVersions: true,
+      versions: true,
       videoS3Key: true,
       s3Key: true,
       mimeType: true
@@ -1241,8 +1232,8 @@ router.get('/:id/qualities', optionalAuthMiddleware, asyncHandler(async (req: Au
     }
 
     // Add processed qualities if available
-    if (media.videoVersions && Array.isArray(media.videoVersions)) {
-      for (const version of media.videoVersions as any[]) {
+    if (media.versions && Array.isArray(media.versions)) {
+      for (const version of media.versions as any[]) {
         // Handle both snake_case and camelCase field names
         const s3Key = version.s3Key || version.s3_key
         const quality = version.quality
@@ -1302,8 +1293,7 @@ router.get('/:id/image-qualities', optionalAuthMiddleware, asyncHandler(async (r
       id: true,
       mediaType: true,
       processingStatus: true,
-      imageProcessingStatus: true,
-      imageVersions: true,
+      versions: true,
       s3Key: true,
       mimeType: true
     }
@@ -1326,7 +1316,7 @@ router.get('/:id/image-qualities', optionalAuthMiddleware, asyncHandler(async (r
   }
 
   // Check image processing status specifically
-  const processingStatus = media.imageProcessingStatus || media.processingStatus
+  const processingStatus = media.processingStatus
   if (processingStatus !== 'COMPLETED') {
     res.status(202).json({
       success: false,
@@ -1358,15 +1348,15 @@ router.get('/:id/image-qualities', optionalAuthMiddleware, asyncHandler(async (r
 
     // Add processed qualities if available
     let versions: any[] = []
-    if (media.imageVersions) {
-      if (typeof media.imageVersions === 'string') {
+    if (media.versions) {
+      if (typeof media.versions === 'string') {
         try {
-          versions = JSON.parse(media.imageVersions)
+          versions = JSON.parse(media.versions)
         } catch (error) {
-          console.error('Failed to parse imageVersions JSON in qualities endpoint:', error)
+          console.error('Failed to parse versions JSON in qualities endpoint:', error)
         }
-      } else if (Array.isArray(media.imageVersions)) {
-        versions = media.imageVersions
+      } else if (Array.isArray(media.versions)) {
+        versions = media.versions
       }
     }
     
@@ -1455,9 +1445,7 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
       id: true,
       mediaType: true,
       processingStatus: true,
-      imageProcessingStatus: true,
-      imageVersions: true,
-      videoVersions: true,
+      versions: true,
       s3Key: true, // Fallback to original
       mimeType: true,
       visibility: true,
@@ -1495,7 +1483,7 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
   // Check processing status based on media type
   let processingStatus: string | null = null
   if (media.mediaType === 'IMAGE') {
-    processingStatus = media.imageProcessingStatus || media.processingStatus
+    processingStatus = media.processingStatus
   } else if (media.mediaType === 'VIDEO') {
     processingStatus = media.processingStatus
   }
@@ -1518,14 +1506,14 @@ router.get('/by_quality/:id/:quality', optionalAuthMiddleware, asyncHandler(asyn
     } else {
       // Look for the specific quality in versions based on media type
       let versions: any[] = []
-      let versionsField = media.mediaType === 'VIDEO' ? media.videoVersions : media.imageVersions
+      let versionsField = media.versions
       
       if (versionsField) {
         if (typeof versionsField === 'string') {
           try {
             versions = JSON.parse(versionsField)
           } catch (error) {
-            console.error(`Failed to parse ${media.mediaType === 'VIDEO' ? 'videoVersions' : 'imageVersions'} JSON:`, error)
+            console.error(`Failed to parse versions JSON:`, error)
           }
         } else if (Array.isArray(versionsField)) {
           versions = versionsField
@@ -1616,8 +1604,7 @@ router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (re
       id: true,
       mediaType: true,
       processingStatus: true,
-      videoVersions: true,
-      imageVersions: true
+      versions: true
     }
   })
 
@@ -1640,7 +1627,7 @@ router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (re
     }
 
     // Verify that the requested S3 key is actually a version for this video
-    const versions = media.videoVersions as any[]
+    const versions = media.versions as any[]
     const versionExists = versions && Array.isArray(versions) && 
       versions.some(version => {
         const versionS3Key = version.s3Key || version.s3_key
@@ -1676,7 +1663,7 @@ router.get('/:id/quality/:s3Key', optionalAuthMiddleware, asyncHandler(async (re
     }
 
     // Verify that the requested S3 key is actually a version for this image
-    const versions = media.imageVersions as any[]
+    const versions = media.versions as any[]
     const versionExists = versions && Array.isArray(versions) && 
       versions.some(version => {
         const versionS3Key = version.s3Key || version.s3_key

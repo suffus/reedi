@@ -29,7 +29,6 @@ export const processImage = async (
   height: number
   size: number
   s3Key: string
-  thumbnailS3Key?: string
 }> => {
   // Process image and create thumbnail
   const processedImage: ProcessedImage = await processImageForS3(
@@ -53,15 +52,14 @@ export const processImage = async (
     width: processedImage.width,
     height: processedImage.height,
     size: processedImage.size,
-    s3Key: uploadResult.key,
-    thumbnailS3Key: uploadResult.thumbnailKey
+    s3Key: uploadResult.key
   }
 }
 
 // Delete image files from S3
-export const deleteImageFiles = async (s3Key: string, thumbnailS3Key?: string) => {
+export const deleteImageFiles = async (s3Key: string) => {
   try {
-    await deleteImageWithThumbnail(s3Key, thumbnailS3Key)
+    await deleteImageWithThumbnail(s3Key)
   } catch (error) {
     console.error('Error deleting image files from S3:', error)
     throw error

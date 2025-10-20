@@ -407,7 +407,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
     }
 
   const handleMediaClick = (media: any, allMedia?: any[]) => {
-    // Handle nested PostMedia structure - extract the actual Media object
+    // Handle media data - API now returns flattened Media objects directly
     const extractMediaData = (mediaItem: any) => {
       if (typeof mediaItem === 'string') {
         // If mediaItem is just an ID string, create a basic media object
@@ -419,15 +419,7 @@ const GroupProfile: React.FC<GroupProfileProps> = ({ group, currentUser }) => {
         }
       }
       
-      // If mediaItem has a nested 'media' property (PostMedia structure), use that
-      if (mediaItem.media && typeof mediaItem.media === 'object') {
-        return {
-          ...mediaItem.media,
-          id: mediaItem.media.id || mediaItem.id // Use media.id if available, fallback to mediaItem.id
-        }
-      }
-      
-      // Otherwise, use the mediaItem directly
+      // API now returns flattened Media objects directly, no nested structure
       return mediaItem
     }
     

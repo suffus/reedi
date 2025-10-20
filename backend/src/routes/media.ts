@@ -152,8 +152,40 @@ router.get('/user/:userId', optionalAuthMiddleware, asyncHandler(async (req: Aut
   // Fetch all matching media (before permission filtering)
   const allMedia = await prisma.media.findMany({
     where: whereClause,
-    orderBy: { createdAt: 'desc' }
-    // Note: author object not needed - permission checks only use authorId
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      url: true,
+      s3Key: true,
+      originalFilename: true,
+      altText: true,
+      caption: true,
+      tags: true,
+      visibility: true,
+      createdAt: true,
+      updatedAt: true,
+      width: true,
+      height: true,
+      size: true,
+      mimeType: true,
+      authorId: true,
+      mediaType: true,
+      processingStatus: true,
+      duration: true,
+      codec: true,
+      bitrate: true,
+      framerate: true,
+      videoUrl: true,
+      videoS3Key: true,
+      thumbnails: true,
+      versions: true,
+      postId: true,
+      galleryId: true,
+      order: true,
+      originalPath: true,
+      zipMediaId: true,
+      metadata: true
+    }
   })
 
   // Filter media based on permissions
@@ -225,7 +257,6 @@ router.get('/user/:userId/public', optionalAuthMiddleware, asyncHandler(async (r
       select: {
         id: true,
         s3Key: true,
-        thumbnailS3Key: true,
         originalFilename: true,
         altText: true,
         caption: true,
@@ -431,6 +462,11 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
   }
 
   if (isZip) {
+    console.log('Processing zip file upload')
+    console.log('Request body keys:', Object.keys(req.body))
+    console.log('allowedTypes value:', req.body.allowedTypes)
+    console.log('allowedTypes type:', typeof req.body.allowedTypes)
+    
     // For zip files, upload to S3 and queue for processing
     const s3Key = await uploadToS3(
       req.file.buffer, 
@@ -472,7 +508,14 @@ router.post('/upload', authMiddleware, upload.single('media'), asyncHandler(asyn
           {
             preserveStructure: req.body.preserveStructure === 'true',
             maxFileSize: req.body.maxFileSize ? parseInt(req.body.maxFileSize) : 1073741824, // 1GB default
-            allowedTypes: req.body.allowedTypes ? JSON.parse(req.body.allowedTypes) : ['IMAGE', 'VIDEO']
+            allowedTypes: (() => {
+              try {
+                return req.body.allowedTypes ? JSON.parse(req.body.allowedTypes) : ['IMAGE', 'VIDEO']
+              } catch (error) {
+                console.warn('Failed to parse allowedTypes, using default:', error)
+                return ['IMAGE', 'VIDEO']
+              }
+            })()
           }
         )
         console.log(`Zip processing job queued for media ${media.id}`)
@@ -958,7 +1001,6 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
       id: true,
       authorId: true, 
       s3Key: true, 
-      thumbnailS3Key: true,
       videoS3Key: true,
       mediaType: true,
       visibility: true
@@ -1004,7 +1046,7 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     if (media.mediaType === 'VIDEO') {
       // Delete video files
       if (media.s3Key) {
-        await deleteImageFiles(media.s3Key, media.thumbnailS3Key || undefined)
+        await deleteImageFiles(media.s3Key)
       }
       if (media.videoS3Key) {
         await deleteImageFiles(media.videoS3Key)
@@ -1012,7 +1054,7 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     } else {
       // Delete image files
       if (media.s3Key) {
-        await deleteImageFiles(media.s3Key, media.thumbnailS3Key || undefined)
+        await deleteImageFiles(media.s3Key)
       }
     }
   } catch (error) {
@@ -1152,7 +1194,6 @@ router.get('/search/tags', asyncHandler(async (req: Request, res: Response) => {
       select: {
         id: true,
         s3Key: true,
-        thumbnailS3Key: true,
         originalFilename: true,
         altText: true,
         caption: true,
@@ -1221,8 +1262,6 @@ router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: Auth
       authorId: true,
       mediaType: true,
       processingStatus: true,
-      videoProcessingStatus: true,
-      imageProcessingStatus: true,
       s3Key: true,
       originalFilename: true,
       mimeType: true,
@@ -1262,8 +1301,7 @@ router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: Auth
   // Check if media is in a failed state
   const isFailed = 
     media.processingStatus === 'FAILED' ||
-    (media.mediaType === 'VIDEO' && media.videoProcessingStatus === 'FAILED') ||
-    (media.mediaType === 'IMAGE' && media.imageProcessingStatus === 'FAILED')
+    media.processingStatus === 'REJECTED'
 
   if (!isFailed) {
     res.status(400).json({
@@ -1280,7 +1318,7 @@ router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: Auth
     }
 
     if (media.mediaType === 'VIDEO') {
-      updateData.videoProcessingStatus = 'PENDING'
+      updateData.processingStatus = 'PENDING'
       updateData.duration = null
       updateData.width = null
       updateData.height = null
@@ -1288,14 +1326,13 @@ router.post('/:mediaId/reprocess', authMiddleware, asyncHandler(async (req: Auth
       updateData.bitrate = null
       updateData.framerate = null
       updateData.videoUrl = null
-      updateData.videoThumbnails = null
-      updateData.videoVersions = null
+      updateData.thumbnails = null
+      updateData.versions = null
     } else if (media.mediaType === 'IMAGE') {
-      updateData.imageProcessingStatus = 'PENDING'
+      updateData.processingStatus = 'PENDING'
       updateData.width = null
       updateData.height = null
-      updateData.thumbnailS3Key = null
-      updateData.imageVersions = null
+      updateData.versions = null
     }
 
     // Update the media record

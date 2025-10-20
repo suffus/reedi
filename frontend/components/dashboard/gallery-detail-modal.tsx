@@ -418,7 +418,7 @@ export function GalleryDetailModal({ isOpen, onClose, galleryId, onGalleryDelete
       
       showToast({
         type: 'success',
-        message: `${mediaType === 'VIDEO' ? 'Video' : 'Image'} downloaded successfully!`
+        message: `${mediaType === 'VIDEO' ? 'Video' : mediaType === 'ZIP' ? 'ZIP file' : 'Image'} downloaded successfully!`
       })
     } catch (error) {
       console.error('Download failed:', error)

@@ -71,11 +71,12 @@ export function downloadBlob(blob: Blob, filename: string): void {
 export async function downloadMedia(
   mediaUrl: string, 
   mediaName: string, 
-  mediaType: 'IMAGE' | 'VIDEO' = 'IMAGE'
+  mediaType: 'IMAGE' | 'VIDEO' | 'ZIP' = 'IMAGE'
 ): Promise<void> {
   // Extract file extension from URL
   const urlParts = mediaUrl.split('.')
-  const extension = urlParts[urlParts.length - 1]?.split('?')[0] || (mediaType === 'VIDEO' ? 'mp4' : 'jpg')
+  const extension = urlParts[urlParts.length - 1]?.split('?')[0] || 
+    (mediaType === 'VIDEO' ? 'mp4' : mediaType === 'ZIP' ? 'zip' : 'jpg')
   
   // Create a safe filename
   const safeName = mediaName
