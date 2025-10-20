@@ -12,3 +12,4 @@ DROP TABLE "batch_uploads";
 -- Drop the BatchUploadStatus enum
 DROP TYPE "BatchUploadStatus";
 
+

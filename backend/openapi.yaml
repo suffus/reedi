@@ -3,12 +3,27 @@ info:
   title: Reedi Social Media API
   version: 1.0.0
   description: |
-    REST API for the Reedi social media platform. Inspired by neemlondon.com, supports posts, images, comments, friends, galleries, and more.
+    REST API for the Reedi social media platform. A comprehensive social media platform supporting posts, media (images, videos, zip files), comments, friends, groups, galleries, messaging, and more.
+    
+    ## Features
+    - **Authentication**: JWT-based authentication with role-based permissions
+    - **Posts**: Create, read, update, delete posts with media attachments
+    - **Media**: Upload and manage images, videos, and zip files with processing
+    - **Comments**: Threaded commenting system for posts and media
+    - **Friends**: Friend requests, acceptance, and management
+    - **Groups**: Public and private groups with moderation
+    - **Galleries**: Personal media galleries
+    - **Messaging**: Real-time messaging with media support
+    - **Search**: Full-text search across users, posts, and media
+    - **Facets**: Content categorization and tagging system
     
     All endpoints are prefixed with `/api`.
+
 servers:
   - url: http://localhost:8088/api
     description: Local development server
+  - url: https://api.reedi.com/api
+    description: Production server
 
 components:
   securitySchemes:
@@ -16,125 +31,915 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: JWT token obtained from login endpoint
+
   schemas:
+    # Base Types
+    MediaType:
+      type: string
+      enum: [IMAGE, VIDEO, ZIP]
+      description: Type of media content
+
+    Visibility:
+      type: string
+      enum: [PUBLIC, FRIENDS_ONLY, PRIVATE]
+      description: Visibility level for content
+
+    PublicationStatus:
+      type: string
+      enum: [PUBLIC, PAUSED, CONTROLLED, DELETED]
+      description: Publication status for posts
+
+    ProcessingStatus:
+      type: string
+      enum: [PENDING, PROCESSING, COMPLETED, REJECTED, FAILED]
+      description: Processing status for media
+
+    # User Schemas
     User:
       type: object
+      required: [id, name, email, isPrivate, createdAt, updatedAt]
       properties:
-        id: { type: string }
-        email: { type: string, format: email }
-        name: { type: string }
-        username: { type: string, nullable: true }
-        avatar: { type: string, nullable: true }
-        bio: { type: string, nullable: true }
-        location: { type: string, nullable: true }
-        website: { type: string, nullable: true }
-        isPrivate: { type: boolean }
-        isVerified: { type: boolean }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-    Post:
+        id:
+          type: string
+          description: Unique user identifier
+          example: "cm1234567890abcdef"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "alice@example.com"
+        name:
+          type: string
+          description: User's display name
+          example: "Alice Johnson"
+        username:
+          type: string
+          nullable: true
+          description: User's unique username
+          example: "alice_j"
+        avatar:
+          type: string
+          nullable: true
+          description: URL to user's avatar image
+          example: "https://api.reedi.com/api/media/serve/avatar123"
+        bio:
+          type: string
+          nullable: true
+          description: User's bio/description
+          example: "Photographer and travel enthusiast"
+        location:
+          type: string
+          nullable: true
+          description: User's location
+          example: "San Francisco, CA"
+        website:
+          type: string
+          nullable: true
+          description: User's website URL
+          example: "https://alice-photography.com"
+        isPrivate:
+          type: boolean
+          description: Whether the user's profile is private
+          example: false
+        isVerified:
+          type: boolean
+          description: Whether the user is verified
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+        _count:
+          type: object
+          description: Count statistics
+          properties:
+            posts:
+              type: integer
+              example: 42
+            followers:
+              type: integer
+              example: 1250
+            following:
+              type: integer
+              example: 890
+
+    # Media Schemas
+    Thumbnail:
       type: object
+      required: [s3Key, width, height]
       properties:
-        id: { type: string }
-        title: { type: string, nullable: true }
-        content: { type: string }
-        publicationStatus: { type: string, enum: [PUBLIC, PAUSED, CONTROLLED, DELETED] }
-        visibility: { type: string, enum: [PUBLIC, FRIENDS_ONLY, PRIVATE] }
-        authorId: { type: string }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        author:
-          $ref: '#/components/schemas/User'
-        images:
+        s3Key:
+          type: string
+          description: S3 key for the thumbnail
+          example: "thumbnails/video_123_thumb.jpg"
+        width:
+          type: integer
+          description: Thumbnail width in pixels
+          example: 720
+        height:
+          type: integer
+          description: Thumbnail height in pixels
+          example: 720
+        fileSize:
+          type: integer
+          description: File size in bytes
+          example: 45678
+
+    MediaVersion:
+      type: object
+      required: [quality, s3Key, width, height]
+      properties:
+        quality:
+          type: string
+          description: Quality level of the version
+          example: "high"
+        s3Key:
+          type: string
+          description: S3 key for this version
+          example: "media/images/photo_123_high.jpg"
+        width:
+          type: integer
+          description: Width in pixels
+          example: 1920
+        height:
+          type: integer
+          description: Height in pixels
+          example: 1080
+
+    Media:
+      type: object
+      required: [id, url, mediaType, processingStatus, visibility, authorId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          description: Unique media identifier
+          example: "cm1234567890abcdef"
+        url:
+          type: string
+          description: Public URL to access the media
+          example: "https://api.reedi.com/api/media/serve/cm1234567890abcdef"
+        s3Key:
+          type: string
+          nullable: true
+          description: S3 storage key
+          example: "media/images/photo_123.jpg"
+        originalFilename:
+          type: string
+          nullable: true
+          description: Original filename when uploaded
+          example: "vacation_photo.jpg"
+        altText:
+          type: string
+          nullable: true
+          description: Alt text for accessibility
+          example: "Sunset over the mountains"
+        caption:
+          type: string
+          nullable: true
+          description: Media caption
+          example: "Beautiful sunset from our hike today"
+        width:
+          type: integer
+          nullable: true
+          description: Media width in pixels
+          example: 1920
+        height:
+          type: integer
+          nullable: true
+          description: Media height in pixels
+          example: 1080
+        size:
+          type: integer
+          nullable: true
+          description: File size in bytes
+          example: 2048576
+        mimeType:
+          type: string
+          nullable: true
+          description: MIME type of the media
+          example: "image/jpeg"
+        tags:
           type: array
           items:
-            $ref: '#/components/schemas/Image'
+            type: string
+          description: Tags associated with the media
+          example: ["nature", "sunset", "mountains"]
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        postId:
+          type: string
+          nullable: true
+          description: ID of the post this media belongs to
+          example: "cm1234567890abcdef"
+        galleryId:
+          type: string
+          nullable: true
+          description: ID of the gallery this media belongs to
+          example: "cm1234567890abcdef"
+        authorId:
+          type: string
+          description: ID of the user who uploaded this media
+          example: "cm1234567890abcdef"
+        order:
+          type: integer
+          description: Display order in post/gallery
+          example: 1
+        mediaType:
+          $ref: '#/components/schemas/MediaType'
+        processingStatus:
+          $ref: '#/components/schemas/ProcessingStatus'
+        duration:
+          type: integer
+          nullable: true
+          description: Duration in seconds (for videos)
+          example: 120
+        codec:
+          type: string
+          nullable: true
+          description: Video codec (for videos)
+          example: "h264"
+        bitrate:
+          type: integer
+          nullable: true
+          description: Bitrate in bps (for videos)
+          example: 5000000
+        framerate:
+          type: number
+          nullable: true
+          description: Frame rate (for videos)
+          example: 30.0
+        videoUrl:
+          type: string
+          nullable: true
+          description: URL to video file (for videos)
+          example: "https://api.reedi.com/api/media/serve/video123"
+        videoS3Key:
+          type: string
+          nullable: true
+          description: S3 key for video file (for videos)
+          example: "media/videos/video_123.mp4"
+        thumbnails:
+          type: array
+          items:
+            $ref: '#/components/schemas/Thumbnail'
+          description: Thumbnail images (for videos)
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaVersion'
+          description: Different quality versions of the media
+        isLocked:
+          type: boolean
+          description: Whether the media is locked (requires payment)
+          example: false
+        originalPath:
+          type: string
+          nullable: true
+          description: Original path within zip file (for zip media)
+          example: "photos/vacation/IMG_001.jpg"
+        zipMediaId:
+          type: string
+          nullable: true
+          description: ID of the zip file this media was extracted from
+          example: "cm1234567890abcdef"
+        metadata:
+          type: object
+          description: Additional metadata
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Upload timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+        author:
+          $ref: '#/components/schemas/User'
+
+    # Post Schemas
+    Post:
+      type: object
+      required: [id, content, publicationStatus, visibility, authorId, isLocked, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          description: Unique post identifier
+          example: "cm1234567890abcdef"
+        title:
+          type: string
+          nullable: true
+          description: Post title
+          example: "Amazing Sunset Hike"
+        content:
+          type: string
+          description: Post content/text
+          example: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+        publicationStatus:
+          $ref: '#/components/schemas/PublicationStatus'
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        authorId:
+          type: string
+          description: ID of the post author
+          example: "cm1234567890abcdef"
+        isLocked:
+          type: boolean
+          description: Whether the post is locked (requires payment)
+          example: false
+        unlockPrice:
+          type: number
+          nullable: true
+          description: Price to unlock the post (in cents)
+          example: 500
+        createdAt:
+          type: string
+          format: date-time
+          description: Post creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+        author:
+          $ref: '#/components/schemas/User'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/Media'
+          description: Media attachments
         hashtags:
           type: array
           items:
             $ref: '#/components/schemas/Hashtag'
-    Image:
-      type: object
-      properties:
-        id: { type: string }
-        url: { type: string }
-        thumbnail: { type: string, nullable: true }
-        s3Key: { type: string, nullable: true }
-        thumbnailS3Key: { type: string, nullable: true }
-        altText: { type: string, nullable: true }
-        caption: { type: string, nullable: true }
-        width: { type: integer, nullable: true }
-        height: { type: integer, nullable: true }
-        size: { type: integer, nullable: true }
-        mimeType: { type: string, nullable: true }
-        tags:
+          description: Hashtags in the post
+        comments:
           type: array
-          items: { type: string }
-        visibility: { type: string, enum: [PUBLIC, FRIENDS_ONLY, PRIVATE] }
-        authorId: { type: string }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+          items:
+            $ref: '#/components/schemas/Comment'
+          description: Comments on the post
+        reactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reaction'
+          description: Reactions to the post
+        _count:
+          type: object
+          description: Count statistics
+          properties:
+            comments:
+              type: integer
+              example: 15
+            reactions:
+              type: integer
+              example: 42
+
+    # Comment Schemas
     Comment:
       type: object
+      required: [id, content, authorId, context, createdAt, updatedAt]
       properties:
-        id: { type: string }
-        content: { type: string }
-        postId: { type: string, nullable: true }
-        imageId: { type: string, nullable: true }
-        authorId: { type: string }
-        parentId: { type: string, nullable: true }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+        id:
+          type: string
+          description: Unique comment identifier
+          example: "cm1234567890abcdef"
+        content:
+          type: string
+          description: Comment text content
+          example: "This looks absolutely amazing! Where was this taken?"
+        postId:
+          type: string
+          nullable: true
+          description: ID of the post this comment belongs to
+          example: "cm1234567890abcdef"
+        mediaId:
+          type: string
+          nullable: true
+          description: ID of the media this comment belongs to
+          example: "cm1234567890abcdef"
+        parentId:
+          type: string
+          nullable: true
+          description: ID of the parent comment (for replies)
+          example: "cm1234567890abcdef"
+        authorId:
+          type: string
+          description: ID of the comment author
+          example: "cm1234567890abcdef"
+        context:
+          type: string
+          enum: [FEED, GROUP]
+          description: Context where the comment was made
+          example: "FEED"
+        groupId:
+          type: string
+          nullable: true
+          description: ID of the group (if comment is in a group)
+          example: "cm1234567890abcdef"
+        createdAt:
+          type: string
+          format: date-time
+          description: Comment creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
         author:
           $ref: '#/components/schemas/User'
-    Gallery:
+        replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+          description: Nested replies to this comment
+        _count:
+          type: object
+          description: Count statistics
+          properties:
+            replies:
+              type: integer
+              example: 3
+
+    # Group Schemas
+    Group:
       type: object
+      required: [id, name, username, visibility, type, moderationPolicy, createdById, createdAt, updatedAt]
       properties:
-        id: { type: string }
-        name: { type: string }
-        description: { type: string, nullable: true }
-        isPrivate: { type: boolean }
-        authorId: { type: string }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+        id:
+          type: string
+          description: Unique group identifier
+          example: "cm1234567890abcdef"
+        name:
+          type: string
+          description: Group display name
+          example: "Photography Enthusiasts"
+        username:
+          type: string
+          description: Group unique username
+          example: "photography_enthusiasts"
+        description:
+          type: string
+          nullable: true
+          description: Group description
+          example: "A community for sharing and discussing photography techniques, gear, and inspiration."
+        avatarUrl:
+          type: string
+          nullable: true
+          description: URL to group avatar image
+          example: "https://api.reedi.com/api/media/serve/group_avatar123"
+        visibility:
+          type: string
+          enum: [PUBLIC, PRIVATE_VISIBLE, PRIVATE_HIDDEN]
+          description: Group visibility level
+          example: "PUBLIC"
+        type:
+          type: string
+          enum: [GENERAL, SOCIAL_LEARNING, GAMING, JOBS, BUY_SELL, PARENTING, WORK]
+          description: Group type/category
+          example: "SOCIAL_LEARNING"
+        moderationPolicy:
+          type: string
+          enum: [NO_MODERATION, ADMIN_APPROVAL_REQUIRED, AI_FILTER, SELECTIVE_MODERATION]
+          description: Group moderation policy
+          example: "ADMIN_APPROVAL_REQUIRED"
+        createdById:
+          type: string
+          description: ID of the user who created the group
+          example: "cm1234567890abcdef"
+        memberCount:
+          type: integer
+          description: Number of group members
+          example: 1250
+        isMember:
+          type: boolean
+          description: Whether the current user is a member
+          example: true
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: Current user's role in the group
+          example: "MEMBER"
+        createdAt:
+          type: string
+          format: date-time
+          description: Group creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+
+    # Friend Schemas
     FriendRequest:
       type: object
+      required: [id, senderId, receiverId, status, createdAt, updatedAt]
       properties:
-        id: { type: string }
-        senderId: { type: string }
-        receiverId: { type: string }
-        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED] }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+        id:
+          type: string
+          description: Unique friend request identifier
+          example: "cm1234567890abcdef"
+        senderId:
+          type: string
+          description: ID of the user who sent the request
+          example: "cm1234567890abcdef"
+        receiverId:
+          type: string
+          description: ID of the user who received the request
+          example: "cm1234567890abcdef"
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+          description: Current status of the friend request
+          example: "PENDING"
+        createdAt:
+          type: string
+          format: date-time
+          description: Request creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
         sender:
           $ref: '#/components/schemas/User'
         receiver:
           $ref: '#/components/schemas/User'
+
+    # Gallery Schemas
+    Gallery:
+      type: object
+      required: [id, name, isPrivate, authorId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          description: Unique gallery identifier
+          example: "cm1234567890abcdef"
+        name:
+          type: string
+          description: Gallery name
+          example: "Vacation Photos 2024"
+        description:
+          type: string
+          nullable: true
+          description: Gallery description
+          example: "Photos from my amazing vacation to the mountains"
+        isPrivate:
+          type: boolean
+          description: Whether the gallery is private
+          example: false
+        authorId:
+          type: string
+          description: ID of the gallery owner
+          example: "cm1234567890abcdef"
+        coverMediaId:
+          type: string
+          nullable: true
+          description: ID of the media used as gallery cover
+          example: "cm1234567890abcdef"
+        createdAt:
+          type: string
+          format: date-time
+          description: Gallery creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+        author:
+          $ref: '#/components/schemas/User'
+        coverMedia:
+          $ref: '#/components/schemas/Media'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/Media'
+          description: Media items in the gallery
+
+    # Message Schemas
+    Message:
+      type: object
+      required: [id, content, type, senderId, conversationId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          description: Unique message identifier
+          example: "cm1234567890abcdef"
+        content:
+          type: string
+          description: Message text content
+          example: "Hey! How was your vacation?"
+        type:
+          type: string
+          enum: [TEXT, IMAGE, VIDEO, AUDIO, FILE, SYSTEM, POST]
+          description: Type of message
+          example: "TEXT"
+        senderId:
+          type: string
+          description: ID of the message sender
+          example: "cm1234567890abcdef"
+        conversationId:
+          type: string
+          description: ID of the conversation
+          example: "cm1234567890abcdef"
+        mediaId:
+          type: string
+          nullable: true
+          description: ID of attached media
+          example: "cm1234567890abcdef"
+        postId:
+          type: string
+          nullable: true
+          description: ID of shared post
+          example: "cm1234567890abcdef"
+        createdAt:
+          type: string
+          format: date-time
+          description: Message creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+        sender:
+          $ref: '#/components/schemas/User'
+        media:
+          $ref: '#/components/schemas/Media'
+
+    # Conversation Schemas
+    Conversation:
+      type: object
+      required: [id, type, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          description: Unique conversation identifier
+          example: "cm1234567890abcdef"
+        type:
+          type: string
+          enum: [DIRECT, GROUP]
+          description: Type of conversation
+          example: "DIRECT"
+        name:
+          type: string
+          nullable: true
+          description: Conversation name (for group chats)
+          example: "Photography Group Chat"
+        description:
+          type: string
+          nullable: true
+          description: Conversation description
+          example: "Discussion about photography techniques"
+        createdAt:
+          type: string
+          format: date-time
+          description: Conversation creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+          description: Conversation participants
+        lastMessage:
+          $ref: '#/components/schemas/Message'
+        unreadCount:
+          type: integer
+          description: Number of unread messages for current user
+          example: 3
+
+    # Hashtag Schemas
     Hashtag:
       type: object
+      required: [id, name, createdAt]
       properties:
-        id: { type: string }
-        name: { type: string }
-        createdAt: { type: string, format: date-time }
+        id:
+          type: string
+          description: Unique hashtag identifier
+          example: "cm1234567890abcdef"
+        name:
+          type: string
+          description: Hashtag name (without #)
+          example: "photography"
+        createdAt:
+          type: string
+          format: date-time
+          description: Hashtag creation timestamp
+          example: "2024-01-15T10:30:00Z"
+
+    # Reaction Schemas
+    Reaction:
+      type: object
+      required: [id, type, userId, createdAt]
+      properties:
+        id:
+          type: string
+          description: Unique reaction identifier
+          example: "cm1234567890abcdef"
+        type:
+          type: string
+          enum: [LIKE, LOVE, LAUGH, WOW, SAD, ANGRY]
+          description: Type of reaction
+          example: "LIKE"
+        userId:
+          type: string
+          description: ID of the user who reacted
+          example: "cm1234567890abcdef"
+        postId:
+          type: string
+          nullable: true
+          description: ID of the post (if reacting to post)
+          example: "cm1234567890abcdef"
+        commentId:
+          type: string
+          nullable: true
+          description: ID of the comment (if reacting to comment)
+          example: "cm1234567890abcdef"
+        createdAt:
+          type: string
+          format: date-time
+          description: Reaction creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        user:
+          $ref: '#/components/schemas/User'
+
+    # Facet Schemas
+    Facet:
+      type: object
+      required: [id, name, category, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          description: Unique facet identifier
+          example: "cm1234567890abcdef"
+        name:
+          type: string
+          description: Facet name
+          example: "Photography"
+        description:
+          type: string
+          nullable: true
+          description: Facet description
+          example: "Content related to photography"
+        category:
+          type: string
+          description: Facet category
+          example: "hobbies"
+        isActive:
+          type: boolean
+          description: Whether the facet is active
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Facet creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:22:00Z"
+
+    # Response Schemas
+    Pagination:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          description: Number of items per page
+          example: 20
+        total:
+          type: integer
+          description: Total number of items
+          example: 150
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 8
+        hasNext:
+          type: boolean
+          description: Whether there are more pages
+          example: true
+        hasPrev:
+          type: boolean
+          description: Whether there are previous pages
+          example: false
+
+    ApiResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          description: Whether the request was successful
+          example: true
+        data:
+          type: object
+          description: Response data
+        error:
+          type: string
+          description: Error message (if success is false)
+          example: "User not found"
+        message:
+          type: string
+          description: Success message
+          example: "Post created successfully"
+
+    # Error Schemas
+    Error:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Error message
+          example: "Validation failed"
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+    ValidationError:
+      type: object
+      required: [success, error, details]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Validation failed"
+        details:
+          type: object
+          properties:
+            field:
+              type: string
+              example: "email"
+            message:
+              type: string
+              example: "Invalid email format"
 
 security:
   - BearerAuth: []
 
 tags:
-  - name: Auth
+  - name: Authentication
+    description: User authentication and authorization
   - name: Users
+    description: User management and profiles
   - name: Posts
+    description: Post creation, management, and feeds
+  - name: Media
+    description: Media upload, processing, and management
   - name: Comments
-  - name: Images
+    description: Commenting system
+  - name: Groups
+    description: Group management and interactions
   - name: Galleries
+    description: Personal media galleries
   - name: Friends
+    description: Friend requests and management
+  - name: Messages
+    description: Real-time messaging
   - name: Search
+    description: Search functionality
+  - name: Facets
+    description: Content categorization
 
 paths:
+  # Authentication Endpoints
   /auth/register:
     post:
-      tags: [Auth]
+      tags: [Authentication]
       summary: Register a new user
+      description: Create a new user account with email and password
+      security: []
       requestBody:
         required: true
         content:
@@ -143,18 +948,111 @@ paths:
               type: object
               required: [email, password, name]
               properties:
-                email: { type: string, format: email }
-                password: { type: string }
-                name: { type: string }
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                  example: "alice@example.com"
+                password:
+                  type: string
+                  minLength: 8
+                  description: User's password
+                  example: "securepassword123"
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: User's display name
+                  example: "Alice Johnson"
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  pattern: "^[a-zA-Z0-9_]+$"
+                  description: Desired username (optional)
+                  example: "alice_j"
+            examples:
+              basic_registration:
+                summary: Basic registration
+                value:
+                  email: "alice@example.com"
+                  password: "securepassword123"
+                  name: "Alice Johnson"
+              with_username:
+                summary: Registration with username
+                value:
+                  email: "bob@example.com"
+                  password: "securepassword123"
+                  name: "Bob Smith"
+                  username: "bob_smith"
       responses:
         '201':
-          description: User registered
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          token:
+                            type: string
+                            description: JWT authentication token
+                            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              examples:
+                success:
+                  summary: Successful registration
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "cm1234567890abcdef"
+                        email: "alice@example.com"
+                        name: "Alice Johnson"
+                        username: "alice_j"
+                        isPrivate: false
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-15T10:30:00Z"
+                      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                validation_error:
+                  summary: Validation failed
+                  value:
+                    success: false
+                    error: "Validation failed"
+                    details:
+                      field: "email"
+                      message: "Invalid email format"
         '409':
           description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                email_exists:
+                  summary: Email already registered
+                  value:
+                    success: false
+                    error: "Email already exists"
+
   /auth/login:
     post:
-      tags: [Auth]
-      summary: Login and get JWT
+      tags: [Authentication]
+      summary: Login and get JWT token
+      description: Authenticate user with email and password to receive JWT token
+      security: []
       requestBody:
         required: true
         content:
@@ -163,394 +1061,1689 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string, format: email }
-                password: { type: string }
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                  example: "alice@example.com"
+                password:
+                  type: string
+                  description: User's password
+                  example: "securepassword123"
+            examples:
+              login:
+                summary: User login
+                value:
+                  email: "alice@example.com"
+                  password: "securepassword123"
       responses:
         '200':
-          description: JWT token
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          token:
+                            type: string
+                            description: JWT authentication token
+                            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              examples:
+                success:
+                  summary: Successful login
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "cm1234567890abcdef"
+                        email: "alice@example.com"
+                        name: "Alice Johnson"
+                        username: "alice_j"
+                        isPrivate: false
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-20T14:22:00Z"
+                      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_credentials:
+                  summary: Invalid credentials
+                  value:
+                    success: false
+                    error: "Invalid email or password"
+
   /auth/me:
     get:
-      tags: [Auth]
+      tags: [Authentication]
       summary: Get current user profile
-      security:
-        - BearerAuth: []
+      description: Retrieve the authenticated user's profile information
       responses:
         '200':
-          description: Current user
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+              examples:
+                current_user:
+                  summary: Current user profile
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "cm1234567890abcdef"
+                        email: "alice@example.com"
+                        name: "Alice Johnson"
+                        username: "alice_j"
+                        avatar: "https://api.reedi.com/api/media/serve/avatar123"
+                        bio: "Photographer and travel enthusiast"
+                        location: "San Francisco, CA"
+                        website: "https://alice-photography.com"
+                        isPrivate: false
+                        isVerified: false
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-20T14:22:00Z"
+                        _count:
+                          posts: 42
+                          followers: 1250
+                          following: 890
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unauthorized:
+                  summary: Not authenticated
+                  value:
+                    success: false
+                    error: "Authentication required"
+
+  # User Endpoints
+  /users:
+    get:
+      tags: [Users]
+      summary: Get users list
+      description: Get a list of users for messaging and discovery
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of users per page
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search term for filtering users
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+              examples:
+                users_list:
+                  summary: Users list
+                  value:
+                    - id: "cm1234567890abcdef"
+                      name: "Alice Johnson"
+                      username: "alice_j"
+                      avatar: "https://api.reedi.com/api/media/serve/avatar123"
+                      isPrivate: false
+                    - id: "cm1234567890abcdef"
+                      name: "Bob Smith"
+                      username: "bob_smith"
+                      avatar: null
+                      isPrivate: true
+
   /users/{identifier}:
     get:
       tags: [Users]
       summary: Get user profile by ID or username
+      description: Retrieve a user's profile by their ID or username
       parameters:
         - in: path
           name: identifier
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: User ID or username
+          example: "alice_j"
       responses:
         '200':
           description: User profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+              examples:
+                user_profile:
+                  summary: User profile
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "cm1234567890abcdef"
+                        name: "Alice Johnson"
+                        username: "alice_j"
+                        avatar: "https://api.reedi.com/api/media/serve/avatar123"
+                        bio: "Photographer and travel enthusiast"
+                        location: "San Francisco, CA"
+                        website: "https://alice-photography.com"
+                        isPrivate: false
+                        isVerified: false
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-20T14:22:00Z"
+                        _count:
+                          posts: 42
+                          followers: 1250
+                          following: 890
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                user_not_found:
+                  summary: User not found
+                  value:
+                    success: false
+                    error: "User not found"
+
     put:
       tags: [Users]
       summary: Update user profile
-      security:
-        - BearerAuth: []
+      description: Update the authenticated user's profile information
       parameters:
         - in: path
           name: identifier
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: User ID or username
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/User'
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: User's display name
+                  example: "Alice Johnson"
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  pattern: "^[a-zA-Z0-9_]+$"
+                  description: User's username
+                  example: "alice_j"
+                bio:
+                  type: string
+                  maxLength: 500
+                  description: User's bio
+                  example: "Photographer and travel enthusiast"
+                location:
+                  type: string
+                  maxLength: 100
+                  description: User's location
+                  example: "San Francisco, CA"
+                website:
+                  type: string
+                  format: uri
+                  description: User's website URL
+                  example: "https://alice-photography.com"
+                isPrivate:
+                  type: boolean
+                  description: Whether the profile is private
+                  example: false
+            examples:
+              profile_update:
+                summary: Update profile
+                value:
+                  name: "Alice Johnson"
+                  bio: "Professional photographer and travel blogger"
+                  location: "San Francisco, CA"
+                  website: "https://alice-photography.com"
+                  isPrivate: false
       responses:
         '200':
-          description: Updated user
-  /users/{identifier}/public:
-    get:
-      tags: [Users]
-      summary: Get public user profile by ID or username
-      parameters:
-        - in: path
-          name: identifier
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Public user profile
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+              examples:
+                updated_profile:
+                  summary: Updated profile
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "cm1234567890abcdef"
+                        name: "Alice Johnson"
+                        username: "alice_j"
+                        bio: "Professional photographer and travel blogger"
+                        location: "San Francisco, CA"
+                        website: "https://alice-photography.com"
+                        isPrivate: false
+                        updatedAt: "2024-01-20T14:22:00Z"
+        '403':
+          description: Forbidden - not authorized to update this profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  summary: Not authorized
+                  value:
+                    success: false
+                    error: "Not authorized to update this profile"
+
+  # Post Endpoints
   /posts:
     get:
       tags: [Posts]
       summary: Get public posts feed
+      description: Retrieve a paginated list of public posts
       parameters:
         - in: query
           name: page
-          schema: { type: integer }
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
         - in: query
           name: limit
-          schema: { type: integer }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Number of posts per page
+        - in: query
+          name: hashtag
+          schema:
+            type: string
+          description: Filter posts by hashtag
+          example: "photography"
       responses:
         '200':
           description: List of posts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          posts:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Post'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+              examples:
+                posts_feed:
+                  summary: Posts feed
+                  value:
+                    success: true
+                    data:
+                      posts:
+                        - id: "cm1234567890abcdef"
+                          title: "Amazing Sunset Hike"
+                          content: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+                          publicationStatus: "PUBLIC"
+                          visibility: "PUBLIC"
+                          authorId: "cm1234567890abcdef"
+                          isLocked: false
+                          createdAt: "2024-01-15T10:30:00Z"
+                          updatedAt: "2024-01-15T10:30:00Z"
+                          author:
+                            id: "cm1234567890abcdef"
+                            name: "Alice Johnson"
+                            username: "alice_j"
+                            avatar: "https://api.reedi.com/api/media/serve/avatar123"
+                          media:
+                            - id: "cm1234567890abcdef"
+                              url: "https://api.reedi.com/api/media/serve/photo123"
+                              mediaType: "IMAGE"
+                              processingStatus: "COMPLETED"
+                              width: 1920
+                              height: 1080
+                              thumbnails:
+                                - s3Key: "thumbnails/photo123_thumb.jpg"
+                                  width: 720
+                                  height: 720
+                          hashtags:
+                            - id: "cm1234567890abcdef"
+                              name: "hiking"
+                            - id: "cm1234567890abcdef"
+                              name: "nature"
+                            - id: "cm1234567890abcdef"
+                              name: "sunset"
+                          _count:
+                            comments: 15
+                            reactions: 42
+                      pagination:
+                        page: 1
+                        limit: 20
+                        total: 150
+                        totalPages: 8
+                        hasNext: true
+                        hasPrev: false
+
     post:
       tags: [Posts]
       summary: Create a new post
-      security:
-        - BearerAuth: []
+      description: Create a new post with optional media attachments
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Post'
+              type: object
+              required: [content]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                  description: Post title
+                  example: "Amazing Sunset Hike"
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                  description: Post content
+                  example: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+                visibility:
+                  $ref: '#/components/schemas/Visibility'
+                  default: "PUBLIC"
+                isLocked:
+                  type: boolean
+                  description: Whether the post is locked (requires payment)
+                  default: false
+                unlockPrice:
+                  type: number
+                  minimum: 0
+                  description: Price to unlock the post (in cents)
+                  example: 500
+                mediaIds:
+                  type: array
+                  items:
+                    type: string
+                  description: IDs of media to attach to the post
+                  example: ["cm1234567890abcdef", "cm1234567890abcdef"]
+            examples:
+              text_post:
+                summary: Text-only post
+                value:
+                  content: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+                  visibility: "PUBLIC"
+              post_with_media:
+                summary: Post with media
+                value:
+                  title: "Amazing Sunset Hike"
+                  content: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+                  visibility: "PUBLIC"
+                  mediaIds: ["cm1234567890abcdef", "cm1234567890abcdef"]
+              locked_post:
+                summary: Locked post
+                value:
+                  content: "Exclusive content for my supporters!"
+                  isLocked: true
+                  unlockPrice: 500
+                  visibility: "PUBLIC"
       responses:
         '201':
-          description: Post created
+          description: Post created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          post:
+                            $ref: '#/components/schemas/Post'
+              examples:
+                created_post:
+                  summary: Post created
+                  value:
+                    success: true
+                    data:
+                      post:
+                        id: "cm1234567890abcdef"
+                        title: "Amazing Sunset Hike"
+                        content: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+                        publicationStatus: "PUBLIC"
+                        visibility: "PUBLIC"
+                        authorId: "cm1234567890abcdef"
+                        isLocked: false
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-15T10:30:00Z"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
   /posts/{id}:
     get:
       tags: [Posts]
       summary: Get a post by ID
+      description: Retrieve a specific post by its ID
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Post ID
+          example: "cm1234567890abcdef"
       responses:
         '200':
           description: Post details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          post:
+                            $ref: '#/components/schemas/Post'
+              examples:
+                post_details:
+                  summary: Post details
+                  value:
+                    success: true
+                    data:
+                      post:
+                        id: "cm1234567890abcdef"
+                        title: "Amazing Sunset Hike"
+                        content: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset"
+                        publicationStatus: "PUBLIC"
+                        visibility: "PUBLIC"
+                        authorId: "cm1234567890abcdef"
+                        isLocked: false
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-15T10:30:00Z"
+                        author:
+                          id: "cm1234567890abcdef"
+                          name: "Alice Johnson"
+                          username: "alice_j"
+                          avatar: "https://api.reedi.com/api/media/serve/avatar123"
+                        media:
+                          - id: "cm1234567890abcdef"
+                            url: "https://api.reedi.com/api/media/serve/photo123"
+                            mediaType: "IMAGE"
+                            processingStatus: "COMPLETED"
+                            width: 1920
+                            height: 1080
+                        hashtags:
+                          - id: "cm1234567890abcdef"
+                            name: "hiking"
+                        _count:
+                          comments: 15
+                          reactions: 42
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
     put:
       tags: [Posts]
       summary: Update a post
-      security:
-        - BearerAuth: []
+      description: Update an existing post (only by the author)
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Post ID
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Post'
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                  description: Post title
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                  description: Post content
+                visibility:
+                  $ref: '#/components/schemas/Visibility'
+                isLocked:
+                  type: boolean
+                  description: Whether the post is locked
+                unlockPrice:
+                  type: number
+                  minimum: 0
+                  description: Price to unlock the post (in cents)
+            examples:
+              update_post:
+                summary: Update post
+                value:
+                  title: "Updated: Amazing Sunset Hike"
+                  content: "Just finished an incredible hike to the summit! The sunset was absolutely breathtaking. #hiking #nature #sunset #updated"
       responses:
         '200':
-          description: Updated post
+          description: Post updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          post:
+                            $ref: '#/components/schemas/Post'
+        '403':
+          description: Forbidden - not the post author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
     delete:
       tags: [Posts]
       summary: Delete a post
-      security:
-        - BearerAuth: []
+      description: Delete a post (only by the author)
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Post ID
       responses:
         '200':
-          description: Post deleted
-  /comments:
+          description: Post deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                deleted_post:
+                  summary: Post deleted
+                  value:
+                    success: true
+                    message: "Post deleted successfully"
+        '403':
+          description: Forbidden - not the post author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Media Endpoints
+  /media/upload/initiate:
     post:
-      tags: [Comments]
-      summary: Create a comment
-      security:
-        - BearerAuth: []
+      tags: [Media]
+      summary: Initiate media upload
+      description: Start a chunked upload process for large media files
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Comment'
-      responses:
-        '201':
-          description: Comment created
-  /comments/{id}:
-    put:
-      tags: [Comments]
-      summary: Update a comment
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Comment'
+              type: object
+              required: [filename, contentType, fileSize]
+              properties:
+                filename:
+                  type: string
+                  description: Original filename
+                  example: "vacation_photo.jpg"
+                contentType:
+                  type: string
+                  description: MIME type of the file
+                  example: "image/jpeg"
+                fileSize:
+                  type: integer
+                  description: File size in bytes
+                  example: 2048576
+                altText:
+                  type: string
+                  description: Alt text for accessibility
+                  example: "Sunset over the mountains"
+                caption:
+                  type: string
+                  description: Media caption
+                  example: "Beautiful sunset from our hike today"
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: Tags for the media
+                  example: ["nature", "sunset", "mountains"]
+                visibility:
+                  $ref: '#/components/schemas/Visibility'
+                  default: "PUBLIC"
+            examples:
+              image_upload:
+                summary: Image upload
+                value:
+                  filename: "vacation_photo.jpg"
+                  contentType: "image/jpeg"
+                  fileSize: 2048576
+                  altText: "Sunset over the mountains"
+                  caption: "Beautiful sunset from our hike today"
+                  tags: ["nature", "sunset", "mountains"]
+                  visibility: "PUBLIC"
+              video_upload:
+                summary: Video upload
+                value:
+                  filename: "hiking_video.mp4"
+                  contentType: "video/mp4"
+                  fileSize: 52428800
+                  caption: "Amazing hike to the summit"
+                  tags: ["hiking", "nature", "video"]
+                  visibility: "PUBLIC"
       responses:
         '200':
-          description: Updated comment
-    delete:
-      tags: [Comments]
-      summary: Delete a comment
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Comment deleted
-  /images:
+          description: Upload initiated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          uploadId:
+                            type: string
+                            description: Unique upload ID for this session
+                            example: "upload_1234567890abcdef"
+                          mediaId:
+                            type: string
+                            description: Media ID for tracking
+                            example: "cm1234567890abcdef"
+                          chunkSize:
+                            type: integer
+                            description: Recommended chunk size in bytes
+                            example: 5242880
+              examples:
+                upload_initiated:
+                  summary: Upload initiated
+                  value:
+                    success: true
+                    data:
+                      uploadId: "upload_1234567890abcdef"
+                      mediaId: "cm1234567890abcdef"
+                      chunkSize: 5242880
+
+  /media/upload/chunk:
     post:
-      tags: [Images]
-      summary: Upload an image
-      security:
-        - BearerAuth: []
+      tags: [Media]
+      summary: Upload a chunk
+      description: Upload a chunk of the media file
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required: [uploadId, chunkNumber, chunkData]
               properties:
-                image:
+                uploadId:
+                  type: string
+                  description: Upload ID from initiate endpoint
+                  example: "upload_1234567890abcdef"
+                chunkNumber:
+                  type: integer
+                  description: Chunk number (0-based)
+                  example: 0
+                chunkData:
                   type: string
                   format: binary
-                altText:
-                  type: string
-                caption:
-                  type: string
-                tags:
-                  type: array
-                  items: { type: string }
-      responses:
-        '201':
-          description: Image uploaded
-  /images/{id}:
-    put:
-      tags: [Images]
-      summary: Update an image
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Image'
+                  description: Chunk data
       responses:
         '200':
-          description: Updated image
-    delete:
-      tags: [Images]
-      summary: Delete an image
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Image deleted
-  /galleries:
+          description: Chunk uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                chunk_uploaded:
+                  summary: Chunk uploaded
+                  value:
+                    success: true
+                    message: "Chunk uploaded successfully"
+
+  /media/upload/complete:
     post:
-      tags: [Galleries]
-      summary: Create a gallery
-      security:
-        - BearerAuth: []
+      tags: [Media]
+      summary: Complete upload
+      description: Complete the chunked upload process
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Gallery'
+              type: object
+              required: [uploadId]
+              properties:
+                uploadId:
+                  type: string
+                  description: Upload ID from initiate endpoint
+                  example: "upload_1234567890abcdef"
+            examples:
+              complete_upload:
+                summary: Complete upload
+                value:
+                  uploadId: "upload_1234567890abcdef"
       responses:
-        '201':
-          description: Gallery created
-  /galleries/{id}:
-    put:
-      tags: [Galleries]
-      summary: Update a gallery
-      security:
-        - BearerAuth: []
+        '200':
+          description: Upload completed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          media:
+                            $ref: '#/components/schemas/Media'
+              examples:
+                upload_completed:
+                  summary: Upload completed
+                  value:
+                    success: true
+                    data:
+                      media:
+                        id: "cm1234567890abcdef"
+                        url: "https://api.reedi.com/api/media/serve/cm1234567890abcdef"
+                        mediaType: "IMAGE"
+                        processingStatus: "PENDING"
+                        originalFilename: "vacation_photo.jpg"
+                        altText: "Sunset over the mountains"
+                        caption: "Beautiful sunset from our hike today"
+                        tags: ["nature", "sunset", "mountains"]
+                        visibility: "PUBLIC"
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-15T10:30:00Z"
+
+  /media/serve/{id}:
+    get:
+      tags: [Media]
+      summary: Serve media file
+      description: Get the actual media file content
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Gallery'
+          schema:
+            type: string
+          description: Media ID
+          example: "cm1234567890abcdef"
       responses:
         '200':
-          description: Updated gallery
-    delete:
-      tags: [Galleries]
-      summary: Delete a gallery
-      security:
-        - BearerAuth: []
+          description: Media file content
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Media not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /media/serve/{id}/thumbnail:
+    get:
+      tags: [Media]
+      summary: Serve media thumbnail
+      description: Get the thumbnail image for a media file
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Media ID
+          example: "cm1234567890abcdef"
       responses:
         '200':
-          description: Gallery deleted
-  /friends/request/{userId}:
+          description: Thumbnail image content
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Thumbnail not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Comment Endpoints
+  /comments/post/{postId}:
+    get:
+      tags: [Comments]
+      summary: Get post comments
+      description: Retrieve comments for a specific post
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: string
+          description: Post ID
+          example: "cm1234567890abcdef"
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of comments per page
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+              examples:
+                post_comments:
+                  summary: Post comments
+                  value:
+                    - id: "cm1234567890abcdef"
+                      content: "This looks absolutely amazing! Where was this taken?"
+                      postId: "cm1234567890abcdef"
+                      authorId: "cm1234567890abcdef"
+                      context: "FEED"
+                      createdAt: "2024-01-15T10:30:00Z"
+                      updatedAt: "2024-01-15T10:30:00Z"
+                      author:
+                        id: "cm1234567890abcdef"
+                        name: "Bob Smith"
+                        username: "bob_smith"
+                        avatar: "https://api.reedi.com/api/media/serve/avatar456"
+                      replies:
+                        - id: "cm1234567890abcdef"
+                          content: "Thanks! It was taken at Mount Tamalpais in Marin County."
+                          postId: "cm1234567890abcdef"
+                          parentId: "cm1234567890abcdef"
+                          authorId: "cm1234567890abcdef"
+                          context: "FEED"
+                          createdAt: "2024-01-15T10:35:00Z"
+                          updatedAt: "2024-01-15T10:35:00Z"
+                          author:
+                            id: "cm1234567890abcdef"
+                            name: "Alice Johnson"
+                            username: "alice_j"
+                            avatar: "https://api.reedi.com/api/media/serve/avatar123"
+                      _count:
+                        replies: 1
+
+  /comments/media/{mediaId}:
+    get:
+      tags: [Comments]
+      summary: Get media comments
+      description: Retrieve comments for a specific media item
+      parameters:
+        - in: path
+          name: mediaId
+          required: true
+          schema:
+            type: string
+          description: Media ID
+          example: "cm1234567890abcdef"
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of comments per page
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+
+  /comments:
     post:
-      tags: [Friends]
-      summary: Send a friend request
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: userId
-          required: true
-          schema: { type: string }
+      tags: [Comments]
+      summary: Create a comment
+      description: Create a new comment on a post or media item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                  description: Comment content
+                  example: "This looks absolutely amazing! Where was this taken?"
+                postId:
+                  type: string
+                  description: ID of the post to comment on
+                  example: "cm1234567890abcdef"
+                mediaId:
+                  type: string
+                  description: ID of the media to comment on
+                  example: "cm1234567890abcdef"
+                parentId:
+                  type: string
+                  description: ID of the parent comment (for replies)
+                  example: "cm1234567890abcdef"
+                context:
+                  type: string
+                  enum: [FEED, GROUP]
+                  default: "FEED"
+                  description: Context where the comment is made
+                groupId:
+                  type: string
+                  description: ID of the group (if commenting in a group)
+                  example: "cm1234567890abcdef"
+            examples:
+              post_comment:
+                summary: Comment on post
+                value:
+                  content: "This looks absolutely amazing! Where was this taken?"
+                  postId: "cm1234567890abcdef"
+                  context: "FEED"
+              reply_comment:
+                summary: Reply to comment
+                value:
+                  content: "Thanks! It was taken at Mount Tamalpais in Marin County."
+                  postId: "cm1234567890abcdef"
+                  parentId: "cm1234567890abcdef"
+                  context: "FEED"
       responses:
         '201':
-          description: Friend request sent
-  /friends/accept/{requestId}:
-    put:
-      tags: [Friends]
-      summary: Accept a friend request
-      security:
-        - BearerAuth: []
+          description: Comment created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          comment:
+                            $ref: '#/components/schemas/Comment'
+              examples:
+                comment_created:
+                  summary: Comment created
+                  value:
+                    success: true
+                    data:
+                      comment:
+                        id: "cm1234567890abcdef"
+                        content: "This looks absolutely amazing! Where was this taken?"
+                        postId: "cm1234567890abcdef"
+                        authorId: "cm1234567890abcdef"
+                        context: "FEED"
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-15T10:30:00Z"
+                        author:
+                          id: "cm1234567890abcdef"
+                          name: "Bob Smith"
+                          username: "bob_smith"
+                          avatar: "https://api.reedi.com/api/media/serve/avatar456"
+
+  # Group Endpoints
+  /groups/public:
+    get:
+      tags: [Groups]
+      summary: Get public groups
+      description: Retrieve a list of public groups
       parameters:
-        - in: path
-          name: requestId
-          required: true
-          schema: { type: string }
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Number of groups per page
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [GENERAL, SOCIAL_LEARNING, GAMING, JOBS, BUY_SELL, PARENTING, WORK]
+          description: Filter by group type
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search term for group names and descriptions
       responses:
         '200':
-          description: Friend request accepted
-  /friends/reject/{requestId}:
-    put:
-      tags: [Friends]
-      summary: Reject a friend request
-      security:
-        - BearerAuth: []
+          description: List of public groups
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          groups:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Group'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+              examples:
+                public_groups:
+                  summary: Public groups
+                  value:
+                    success: true
+                    data:
+                      groups:
+                        - id: "cm1234567890abcdef"
+                          name: "Photography Enthusiasts"
+                          username: "photography_enthusiasts"
+                          description: "A community for sharing and discussing photography techniques, gear, and inspiration."
+                          avatarUrl: "https://api.reedi.com/api/media/serve/group_avatar123"
+                          visibility: "PUBLIC"
+                          type: "SOCIAL_LEARNING"
+                          moderationPolicy: "ADMIN_APPROVAL_REQUIRED"
+                          createdById: "cm1234567890abcdef"
+                          memberCount: 1250
+                          isMember: true
+                          role: "MEMBER"
+                          createdAt: "2024-01-15T10:30:00Z"
+                          updatedAt: "2024-01-20T14:22:00Z"
+                      pagination:
+                        page: 1
+                        limit: 20
+                        total: 150
+                        totalPages: 8
+                        hasNext: true
+                        hasPrev: false
+
+  /groups/{identifier}:
+    get:
+      tags: [Groups]
+      summary: Get group by ID or username
+      description: Retrieve a specific group by its ID or username
       parameters:
         - in: path
-          name: requestId
+          name: identifier
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Group ID or username
+          example: "photography_enthusiasts"
       responses:
         '200':
-          description: Friend request rejected
-  /friends/cancel/{requestId}:
-    delete:
-      tags: [Friends]
-      summary: Cancel a sent friend request
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: requestId
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Friend request cancelled
+          description: Group details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          group:
+                            $ref: '#/components/schemas/Group'
+              examples:
+                group_details:
+                  summary: Group details
+                  value:
+                    success: true
+                    data:
+                      group:
+                        id: "cm1234567890abcdef"
+                        name: "Photography Enthusiasts"
+                        username: "photography_enthusiasts"
+                        description: "A community for sharing and discussing photography techniques, gear, and inspiration."
+                        avatarUrl: "https://api.reedi.com/api/media/serve/group_avatar123"
+                        visibility: "PUBLIC"
+                        type: "SOCIAL_LEARNING"
+                        moderationPolicy: "ADMIN_APPROVAL_REQUIRED"
+                        createdById: "cm1234567890abcdef"
+                        memberCount: 1250
+                        isMember: true
+                        role: "MEMBER"
+                        createdAt: "2024-01-15T10:30:00Z"
+                        updatedAt: "2024-01-20T14:22:00Z"
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Friend Endpoints
   /friends/requests/received:
     get:
       tags: [Friends]
       summary: Get received friend requests
-      security:
-        - BearerAuth: []
+      description: Retrieve friend requests received by the current user
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Number of requests per page
       responses:
         '200':
-          description: List of received requests
+          description: List of received friend requests
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          requests:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/FriendRequest'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+              examples:
+                received_requests:
+                  summary: Received friend requests
+                  value:
+                    success: true
+                    data:
+                      requests:
+                        - id: "cm1234567890abcdef"
+                          senderId: "cm1234567890abcdef"
+                          receiverId: "cm1234567890abcdef"
+                          status: "PENDING"
+                          createdAt: "2024-01-15T10:30:00Z"
+                          updatedAt: "2024-01-15T10:30:00Z"
+                          sender:
+                            id: "cm1234567890abcdef"
+                            name: "Bob Smith"
+                            username: "bob_smith"
+                            avatar: "https://api.reedi.com/api/media/serve/avatar456"
+                      pagination:
+                        page: 1
+                        limit: 20
+                        total: 5
+                        totalPages: 1
+                        hasNext: false
+                        hasPrev: false
+
   /friends/requests/sent:
     get:
       tags: [Friends]
       summary: Get sent friend requests
-      security:
-        - BearerAuth: []
+      description: Retrieve friend requests sent by the current user
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Number of requests per page
       responses:
         '200':
-          description: List of sent requests
+          description: List of sent friend requests
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          requests:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/FriendRequest'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+
   /friends/{userId}/friends:
     get:
       tags: [Friends]
-      summary: Get a user's friends
+      summary: Get user's friends
+      description: Retrieve a user's friends list
       parameters:
         - in: path
           name: userId
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: User ID
+          example: "cm1234567890abcdef"
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of friends per page
       responses:
         '200':
           description: List of friends
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+              examples:
+                friends_list:
+                  summary: Friends list
+                  value:
+                    - id: "cm1234567890abcdef"
+                      name: "Bob Smith"
+                      username: "bob_smith"
+                      avatar: "https://api.reedi.com/api/media/serve/avatar456"
+                      isPrivate: false
+                    - id: "cm1234567890abcdef"
+                      name: "Charlie Brown"
+                      username: "charlie_b"
+                      avatar: null
+                      isPrivate: true
+
+  /friends/request/{userId}:
+    post:
+      tags: [Friends]
+      summary: Send a friend request
+      description: Send a friend request to another user
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: ID of the user to send request to
+          example: "cm1234567890abcdef"
+      responses:
+        '201':
+          description: Friend request sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                request_sent:
+                  summary: Friend request sent
+                  value:
+                    success: true
+                    message: "Friend request sent successfully"
+        '400':
+          description: Invalid request (e.g., already friends, request already sent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                already_friends:
+                  summary: Already friends
+                  value:
+                    success: false
+                    error: "You are already friends with this user"
+
+  /friends/accept/{requestId}:
+    put:
+      tags: [Friends]
+      summary: Accept a friend request
+      description: Accept a received friend request
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+          description: ID of the friend request to accept
+          example: "cm1234567890abcdef"
+      responses:
+        '200':
+          description: Friend request accepted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                request_accepted:
+                  summary: Friend request accepted
+                  value:
+                    success: true
+                    message: "Friend request accepted successfully"
+        '404':
+          description: Friend request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /friends/reject/{requestId}:
+    put:
+      tags: [Friends]
+      summary: Reject a friend request
+      description: Reject a received friend request
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+          description: ID of the friend request to reject
+          example: "cm1234567890abcdef"
+      responses:
+        '200':
+          description: Friend request rejected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                request_rejected:
+                  summary: Friend request rejected
+                  value:
+                    success: true
+                    message: "Friend request rejected successfully"
+
+  # Search Endpoints
   /search:
     get:
       tags: [Search]
-      summary: Search users, posts, images, etc.
+      summary: Search content
+      description: Search across users, posts, media, and groups
       parameters:
         - in: query
           name: q
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Search query
+          example: "photography"
         - in: query
           name: type
-          schema: { type: string, enum: [all, users, posts, images, galleries] }
+          schema:
+            type: string
+            enum: [all, users, posts, media, groups]
+          description: Type of content to search
+          default: "all"
         - in: query
           name: page
-          schema: { type: integer }
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
         - in: query
           name: limit
-          schema: { type: integer }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Number of results per page
       responses:
         '200':
-          description: Search results 
+          description: Search results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          results:
+                            type: array
+                            items:
+                              oneOf:
+                                - $ref: '#/components/schemas/User'
+                                - $ref: '#/components/schemas/Post'
+                                - $ref: '#/components/schemas/Media'
+                                - $ref: '#/components/schemas/Group'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+              examples:
+                search_results:
+                  summary: Search results
+                  value:
+                    success: true
+                    data:
+                      results:
+                        - type: "user"
+                          id: "cm1234567890abcdef"
+                          name: "Alice Johnson"
+                          username: "alice_j"
+                          bio: "Photographer and travel enthusiast"
+                        - type: "post"
+                          id: "cm1234567890abcdef"
+                          content: "Just finished an incredible hike! #photography #nature"
+                          author:
+                            name: "Alice Johnson"
+                            username: "alice_j"
+                        - type: "group"
+                          id: "cm1234567890abcdef"
+                          name: "Photography Enthusiasts"
+                          username: "photography_enthusiasts"
+                          description: "A community for sharing photography techniques"
+                      pagination:
+                        page: 1
+                        limit: 20
+                        total: 45
+                        totalPages: 3
+                        hasNext: true
+                        hasPrev: false
+
+  # Facet Endpoints
+  /facets/definitions:
+    get:
+      tags: [Facets]
+      summary: Get facet definitions
+      description: Retrieve available content facets for categorization
+      responses:
+        '200':
+          description: List of facet definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Facet'
+              examples:
+                facet_definitions:
+                  summary: Facet definitions
+                  value:
+                    - id: "cm1234567890abcdef"
+                      name: "Photography"
+                      description: "Content related to photography"
+                      category: "hobbies"
+                      isActive: true
+                      createdAt: "2024-01-15T10:30:00Z"
+                      updatedAt: "2024-01-20T14:22:00Z"
+                    - id: "cm1234567890abcdef"
+                      name: "Travel"
+                      description: "Content related to travel and exploration"
+                      category: "lifestyle"
+                      isActive: true
+                      createdAt: "2024-01-15T10:30:00Z"
+                      updatedAt: "2024-01-20T14:22:00Z"
+        '403':
+          description: Forbidden - insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
