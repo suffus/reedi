@@ -1,0 +1,1265 @@
+
+> reedi-backend@1.0.0 test
+> NODE_ENV=test jest __tests__/integration/
+
+  console.error
+    Error: {
+      message: '\n' +
+        'Invalid `prisma.post.create()` invocation:\n' +
+        '\n' +
+        '{\n' +
+        '  data: {\n' +
+        '    title: undefined,\n' +
+        '    visibility: "PUBLIC",\n' +
+        '    authorId: "cmgwu543l0000zqd4w401xj2u",\n' +
+        '    isLocked: false,\n' +
+        '    unlockPrice: null,\n' +
+        '    hashtags: {\n' +
+        '      connectOrCreate: []\n' +
+        '    },\n' +
+        '+   content: String\n' +
+        '  },\n' +
+        '  include: {\n' +
+        '    author: {\n' +
+        '      select: {\n' +
+        '        id: true,\n' +
+        '        name: true,\n' +
+        '        username: true,\n' +
+        '        avatar: true\n' +
+        '      }\n' +
+        '    },\n' +
+        '    hashtags: true\n' +
+        '  }\n' +
+        '}\n' +
+        '\n' +
+        'Argument `content` is missing.',
+      stack: 'PrismaClientValidationError: \n' +
+        'Invalid `prisma.post.create()` invocation:\n' +
+        '\n' +
+        '{\n' +
+        '  data: {\n' +
+        '    title: undefined,\n' +
+        '    visibility: "PUBLIC",\n' +
+        '    authorId: "cmgwu543l0000zqd4w401xj2u",\n' +
+        '    isLocked: false,\n' +
+        '    unlockPrice: null,\n' +
+        '    hashtags: {\n' +
+        '      connectOrCreate: []\n' +
+        '    },\n' +
+        '+   content: String\n' +
+        '  },\n' +
+        '  include: {\n' +
+        '    author: {\n' +
+        '      select: {\n' +
+        '        id: true,\n' +
+        '        name: true,\n' +
+        '        username: true,\n' +
+        '        avatar: true\n' +
+        '      }\n' +
+        '    },\n' +
+        '    hashtags: true\n' +
+        '  }\n' +
+        '}\n' +
+        '\n' +
+        'Argument `content` is missing.\n' +
+        '    at wn (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:29:1363)\n' +
+        '    at $n.handleRequestError (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:121:6958)\n' +
+        '    at $n.handleAndLogRequestError (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:121:6623)\n' +
+        '    at $n.request (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:121:6307)\n' +
+        '    at l (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:130:9633)\n' +
+        '    at db_1.prisma.$transaction.maxWait (/home/steve/Cursor/reedi/backend/src/routes/posts.ts:539:18)\n' +
+        '    at Proxy._transactionWithCallback (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:130:8000)\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/routes/posts.ts:537:25',
+      url: '/api/posts',
+      method: 'POST',
+      timestamp: '2025-10-29T21:19:01.333Z'
+    }
+
+      62 |
+      63 |   // Log error for debugging
+    > 64 |   console.error('Error:', {
+         |           ^
+      65 |     message: error.message,
+      66 |     stack: error.stack,
+      67 |     url: req.url,
+
+      at errorHandler (src/middleware/errorHandler.ts:64:11)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:71:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:326:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/express/lib/router/index.js:646:15
+      at next (node_modules/express/lib/router/index.js:265:14)
+      at next (node_modules/express/lib/router/route.js:141:14)
+
+  console.error
+    Error: {
+      message: '[\n' +
+        '  {\n' +
+        '    "code": "invalid_type",\n' +
+        '    "expected": "string",\n' +
+        '    "received": "undefined",\n' +
+        '    "path": [\n' +
+        '      "name"\n' +
+        '    ],\n' +
+        '    "message": "Required"\n' +
+        '  }\n' +
+        ']',
+      stack: 'ZodError: [\n' +
+        '  {\n' +
+        '    "code": "invalid_type",\n' +
+        '    "expected": "string",\n' +
+        '    "received": "undefined",\n' +
+        '    "path": [\n' +
+        '      "name"\n' +
+        '    ],\n' +
+        '    "message": "Required"\n' +
+        '  }\n' +
+        ']\n' +
+        '    at Object.get error [as error] (/home/steve/Cursor/reedi/backend/node_modules/zod/dist/cjs/v3/types.js:45:31)\n' +
+        '    at ZodObject.parse (/home/steve/Cursor/reedi/backend/node_modules/zod/dist/cjs/v3/types.js:120:22)\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/routes/groups.ts:141:43',
+      url: '/api/groups',
+      method: 'POST',
+      timestamp: '2025-10-29T21:19:01.821Z'
+    }
+
+      62 |
+      63 |   // Log error for debugging
+    > 64 |   console.error('Error:', {
+         |           ^
+      65 |     message: error.message,
+      66 |     stack: error.stack,
+      67 |     url: req.url,
+
+      at errorHandler (src/middleware/errorHandler.ts:64:11)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:71:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:326:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/express/lib/router/index.js:646:15
+      at next (node_modules/express/lib/router/index.js:265:14)
+      at next (node_modules/express/lib/router/route.js:141:14)
+
+PASS __tests__/integration/comment-context.test.ts (24.946 s)
+  Comment Context Isolation
+    ✓ should create comment with GROUP context (188 ms)
+    ✓ should create comment with FEED context (132 ms)
+    ✓ should only return GROUP comments when fetching with GROUP context (120 ms)
+    ✓ should only return FEED comments when fetching with FEED context (125 ms)
+    ✓ should not show group comments in feed posts (279 ms)
+    ✓ should show group comments in group feed (165 ms)
+    ✓ should reject GROUP context comment without groupId (54 ms)
+    ✓ should reject comment with invalid context (30 ms)
+    ✓ should inherit parent comment context for replies (275 ms)
+
+PASS __tests__/integration/galleries.test.ts (25.877 s)
+  Gallery Formation & Editing (P0)
+    Gallery Creation
+      ✓ should create a new gallery (454 ms)
+      ✓ should create gallery with minimal data (50 ms)
+      ✓ should require gallery name (36 ms)
+      ✓ should require authentication (24 ms)
+    View Galleries
+      ✓ should return user's galleries (456 ms)
+      ✓ should return gallery details with media count (193 ms)
+      ✓ should return single gallery detail (111 ms)
+      ✓ should allow viewing public galleries from other users (56 ms)
+      ✓ should deny viewing private galleries from other users (152 ms)
+    Add Media to Gallery
+      ✓ should add media to gallery (150 ms)
+      ✓ should deny adding someone else's media (110 ms)
+      ✓ should deny non-owner from adding media to gallery (101 ms)
+      ○ skipped should set media order when adding
+    Remove Media from Gallery
+      ✓ should remove media from gallery (176 ms)
+      ✓ should deny non-owner from removing media (104 ms)
+    Reorder Media in Gallery
+      ✓ should reorder media in gallery (12 ms)
+      ✓ should deny non-owner from reordering (10 ms)
+    Edit Gallery
+      ✓ should allow owner to edit gallery name (109 ms)
+      ✓ should allow owner to edit gallery description (140 ms)
+      ✓ should allow owner to change visibility (77 ms)
+      ✓ should allow setting cover photo (16 ms)
+      ✓ should deny non-owner from editing gallery (49 ms)
+    Delete Gallery
+      ✓ should delete gallery and keep media (124 ms)
+      ✓ should deny non-owner from deleting gallery (39 ms)
+      ○ skipped should delete gallery and its media
+
+  console.error
+    Error: {
+      message: '\n' +
+        'Invalid `prisma.comment.create()` invocation in\n' +
+        '/home/steve/Cursor/reedi/backend/src/routes/comments.ts:391:40\n' +
+        '\n' +
+        '  388   }\n' +
+        '  389 }\n' +
+        '  390 \n' +
+        '→ 391 const comment = await prisma.comment.create({\n' +
+        '        data: {\n' +
+        '          postId: "cmgwu54as001kzqd4no6hymdf",\n' +
+        '          mediaId: undefined,\n' +
+        '          parentId: undefined,\n' +
+        '          authorId: "cmgwu54400001zqd4qqv9cnm3",\n' +
+        '          context: "FEED",\n' +
+        '          groupId: undefined,\n' +
+        '      +   content: String\n' +
+        '        },\n' +
+        '        include: {\n' +
+        '          author: {\n' +
+        '            select: {\n' +
+        '              id: true,\n' +
+        '              name: true,\n' +
+        '              username: true,\n' +
+        '              avatar: true\n' +
+        '            }\n' +
+        '          }\n' +
+        '        }\n' +
+        '      })\n' +
+        '\n' +
+        'Argument `content` is missing.',
+      stack: 'PrismaClientValidationError: \n' +
+        'Invalid `prisma.comment.create()` invocation in\n' +
+        '/home/steve/Cursor/reedi/backend/src/routes/comments.ts:391:40\n' +
+        '\n' +
+        '  388   }\n' +
+        '  389 }\n' +
+        '  390 \n' +
+        '→ 391 const comment = await prisma.comment.create({\n' +
+        '        data: {\n' +
+        '          postId: "cmgwu54as001kzqd4no6hymdf",\n' +
+        '          mediaId: undefined,\n' +
+        '          parentId: undefined,\n' +
+        '          authorId: "cmgwu54400001zqd4qqv9cnm3",\n' +
+        '          context: "FEED",\n' +
+        '          groupId: undefined,\n' +
+        '      +   content: String\n' +
+        '        },\n' +
+        '        include: {\n' +
+        '          author: {\n' +
+        '            select: {\n' +
+        '              id: true,\n' +
+        '              name: true,\n' +
+        '              username: true,\n' +
+        '              avatar: true\n' +
+        '            }\n' +
+        '          }\n' +
+        '        }\n' +
+        '      })\n' +
+        '\n' +
+        'Argument `content` is missing.\n' +
+        '    at wn (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:29:1363)\n' +
+        '    at $n.handleRequestError (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:121:6958)\n' +
+        '    at $n.handleAndLogRequestError (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:121:6623)\n' +
+        '    at $n.request (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:121:6307)\n' +
+        '    at l (/home/steve/Cursor/reedi/backend/node_modules/@prisma/client/runtime/library.js:130:9633)\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/routes/comments.ts:391:19',
+      url: '/api/comments',
+      method: 'POST',
+      timestamp: '2025-10-29T21:19:03.283Z'
+    }
+
+      62 |
+      63 |   // Log error for debugging
+    > 64 |   console.error('Error:', {
+         |           ^
+      65 |     message: error.message,
+      66 |     stack: error.stack,
+      67 |     url: req.url,
+
+      at errorHandler (src/middleware/errorHandler.ts:64:11)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:71:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:326:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/express/lib/router/index.js:646:15
+      at next (node_modules/express/lib/router/index.js:265:14)
+      at next (node_modules/express/lib/router/route.js:141:14)
+
+  console.error
+    Error: {
+      message: '[\n' +
+        '  {\n' +
+        '    "code": "invalid_type",\n' +
+        '    "expected": "string",\n' +
+        '    "received": "undefined",\n' +
+        '    "path": [\n' +
+        '      "password"\n' +
+        '    ],\n' +
+        '    "message": "Required"\n' +
+        '  }\n' +
+        ']',
+      stack: 'ZodError: [\n' +
+        '  {\n' +
+        '    "code": "invalid_type",\n' +
+        '    "expected": "string",\n' +
+        '    "received": "undefined",\n' +
+        '    "path": [\n' +
+        '      "password"\n' +
+        '    ],\n' +
+        '    "message": "Required"\n' +
+        '  }\n' +
+        ']\n' +
+        '    at Object.get error [as error] (/home/steve/Cursor/reedi/backend/node_modules/zod/dist/cjs/v3/types.js:45:31)\n' +
+        '    at ZodObject.parse (/home/steve/Cursor/reedi/backend/node_modules/zod/dist/cjs/v3/types.js:120:22)\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/routes/auth.ts:140:43\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/middleware/errorHandler.ts:100:21\n' +
+        '    at Layer.handle [as handle_request] (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/layer.js:95:5)\n' +
+        '    at next (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/route.js:149:13)\n' +
+        '    at Route.dispatch (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/route.js:119:3)\n' +
+        '    at Layer.handle [as handle_request] (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/layer.js:95:5)\n' +
+        '    at /home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:284:15\n' +
+        '    at Function.process_params (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:346:12)\n' +
+        '    at next (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:280:10)\n' +
+        '    at Function.handle (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:175:3)\n' +
+        '    at router (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:47:12)\n' +
+        '    at Layer.handle [as handle_request] (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/layer.js:95:5)\n' +
+        '    at trim_prefix (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:328:13)\n' +
+        '    at /home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:286:9\n' +
+        '    at Function.process_params (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:346:12)\n' +
+        '    at next (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:280:10)\n' +
+        '    at /home/steve/Cursor/reedi/backend/node_modules/body-parser/lib/read.js:137:5\n' +
+        '    at AsyncResource.runInAsyncScope (node:async_hooks:214:14)\n' +
+        '    at invokeCallback (/home/steve/Cursor/reedi/backend/node_modules/raw-body/index.js:238:16)\n' +
+        '    at done (/home/steve/Cursor/reedi/backend/node_modules/raw-body/index.js:227:7)\n' +
+        '    at IncomingMessage.onEnd (/home/steve/Cursor/reedi/backend/node_modules/raw-body/index.js:287:7)\n' +
+        '    at IncomingMessage.emit (node:events:519:28)\n' +
+        '    at endReadableNT (node:internal/streams/readable:1698:12)\n' +
+        '    at processTicksAndRejections (node:internal/process/task_queues:90:21)',
+      url: '/api/auth/login',
+      method: 'POST',
+      timestamp: '2025-10-29T21:19:03.290Z'
+    }
+
+      62 |
+      63 |   // Log error for debugging
+    > 64 |   console.error('Error:', {
+         |           ^
+      65 |     message: error.message,
+      66 |     stack: error.stack,
+      67 |     url: req.url,
+
+      at errorHandler (src/middleware/errorHandler.ts:64:11)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:71:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:326:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/express/lib/router/index.js:646:15
+      at next (node_modules/express/lib/router/index.js:265:14)
+      at next (node_modules/express/lib/router/route.js:141:14)
+
+  console.error
+    Error: {
+      message: '[\n' +
+        '  {\n' +
+        '    "validation": "email",\n' +
+        '    "code": "invalid_string",\n' +
+        '    "message": "Invalid email address",\n' +
+        '    "path": [\n' +
+        '      "email"\n' +
+        '    ]\n' +
+        '  }\n' +
+        ']',
+      stack: 'ZodError: [\n' +
+        '  {\n' +
+        '    "validation": "email",\n' +
+        '    "code": "invalid_string",\n' +
+        '    "message": "Invalid email address",\n' +
+        '    "path": [\n' +
+        '      "email"\n' +
+        '    ]\n' +
+        '  }\n' +
+        ']\n' +
+        '    at Object.get error [as error] (/home/steve/Cursor/reedi/backend/node_modules/zod/dist/cjs/v3/types.js:45:31)\n' +
+        '    at ZodObject.parse (/home/steve/Cursor/reedi/backend/node_modules/zod/dist/cjs/v3/types.js:120:22)\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/routes/auth.ts:140:43\n' +
+        '    at /home/steve/Cursor/reedi/backend/src/middleware/errorHandler.ts:100:21\n' +
+        '    at Layer.handle [as handle_request] (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/layer.js:95:5)\n' +
+        '    at next (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/route.js:149:13)\n' +
+        '    at Route.dispatch (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/route.js:119:3)\n' +
+        '    at Layer.handle [as handle_request] (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/layer.js:95:5)\n' +
+        '    at /home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:284:15\n' +
+        '    at Function.process_params (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:346:12)\n' +
+        '    at next (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:280:10)\n' +
+        '    at Function.handle (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:175:3)\n' +
+        '    at router (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:47:12)\n' +
+        '    at Layer.handle [as handle_request] (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/layer.js:95:5)\n' +
+        '    at trim_prefix (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:328:13)\n' +
+        '    at /home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:286:9\n' +
+        '    at Function.process_params (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:346:12)\n' +
+        '    at next (/home/steve/Cursor/reedi/backend/node_modules/express/lib/router/index.js:280:10)\n' +
+        '    at /home/steve/Cursor/reedi/backend/node_modules/body-parser/lib/read.js:137:5\n' +
+        '    at AsyncResource.runInAsyncScope (node:async_hooks:214:14)\n' +
+        '    at invokeCallback (/home/steve/Cursor/reedi/backend/node_modules/raw-body/index.js:238:16)\n' +
+        '    at done (/home/steve/Cursor/reedi/backend/node_modules/raw-body/index.js:227:7)\n' +
+        '    at IncomingMessage.onEnd (/home/steve/Cursor/reedi/backend/node_modules/raw-body/index.js:287:7)\n' +
+        '    at IncomingMessage.emit (node:events:519:28)\n' +
+        '    at endReadableNT (node:internal/streams/readable:1698:12)\n' +
+        '    at processTicksAndRejections (node:internal/process/task_queues:90:21)',
+      url: '/api/auth/login',
+      method: 'POST',
+      timestamp: '2025-10-29T21:19:03.440Z'
+    }
+
+      62 |
+      63 |   // Log error for debugging
+    > 64 |   console.error('Error:', {
+         |           ^
+      65 |     message: error.message,
+      66 |     stack: error.stack,
+      67 |     url: req.url,
+
+      at errorHandler (src/middleware/errorHandler.ts:64:11)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:71:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:326:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/express/lib/router/index.js:646:15
+      at next (node_modules/express/lib/router/index.js:265:14)
+      at next (node_modules/express/lib/router/route.js:141:14)
+
+PASS __tests__/integration/search.test.ts (26.561 s)
+  Search (P1)
+    Media Search by Tags
+      ✓ should search media by single tag (488 ms)
+      ✓ should search media by multiple tags (121 ms)
+      ✓ should require tags parameter (63 ms)
+      ✓ should support pagination (108 ms)
+      ✓ should filter by visibility (public only for unauthenticated) (41 ms)
+      ✓ should include friends' media for authenticated users (35 ms)
+    Global Search
+      ✓ should search all content types (148 ms)
+      ✓ should require search query (48 ms)
+      ✓ should support type filter: posts (177 ms)
+      ✓ should support type filter: users (104 ms)
+      ✓ should support type filter: groups (31 ms)
+      ✓ should support type filter: galleries (36 ms)
+      ✓ should support type filter: media (50 ms)
+      ✓ should support pagination (105 ms)
+      ✓ should work without authentication (81 ms)
+    Search Results Content
+      ✓ should include author info in post results (88 ms)
+      ✓ should include relevant fields in user results (70 ms)
+    Search Suggestions
+      ✓ should provide search suggestions (28 ms)
+      ✓ should limit suggestion results (42 ms)
+      ✓ should work without query parameter (11 ms)
+    Search Access Control
+      ✓ should only return public posts for unauthenticated users (34 ms)
+      ✓ should only return visible groups for search (28 ms)
+    Search Performance
+      ✓ should handle empty results gracefully (71 ms)
+      ✓ should handle special characters in query (59 ms)
+      ✓ should handle very long queries (54 ms)
+
+  console.error
+    🖼️ [cmhci056a0007r7kz58yaolxb] No thumbnail found in thumbnails array
+
+      885 |
+      886 |     if (!thumbnailS3Key) {
+    > 887 |       console.error(`🖼️ [${id}] No thumbnail found in thumbnails array`)
+          |               ^
+      888 |       res.status(404).json({
+      889 |         success: false,
+      890 |         error: 'No thumbnail found'
+
+      at src/routes/mediaServe.ts:887:15
+
+PASS __tests__/integration/friends.test.ts
+  Friends & Following (P0)
+    Friend Requests
+      Send Friend Request
+        ✓ should send friend request to non-friend (362 ms)
+        ✓ should reject duplicate friend request (130 ms)
+        ✓ should reject friend request to self (44 ms)
+        ✓ should require authentication (17 ms)
+        ✓ should reject request to non-existent user (35 ms)
+        ○ skipped should reject friend request to already-friend
+      Accept Friend Request
+        ✓ should allow receiver to accept friend request (107 ms)
+        ✓ should deny sender from accepting their own request (65 ms)
+        ✓ should deny unrelated user from accepting request (57 ms)
+        ✓ should return 404 for non-existent request (54 ms)
+      Reject Friend Request
+        ✓ should allow receiver to reject friend request (102 ms)
+        ✓ should deny sender from rejecting their own request (69 ms)
+      Cancel Friend Request
+        ✓ should allow sender to cancel their pending request (11 ms)
+        ✓ should deny receiver from canceling request (4 ms)
+    Friend Management
+      View Friends List
+        ○ skipped should return user's friends list
+        ○ skipped should return empty array for user with no friends
+        ○ skipped should not require authentication for viewing friends list
+      View Pending Requests
+        ○ skipped should return pending incoming requests
+        ○ skipped should return pending outgoing requests
+      Remove Friend
+        ○ skipped should allow user to unfriend another user
+        ○ skipped should work from either side of friendship
+        ○ skipped should return 404 when trying to unfriend non-friend
+    Following System
+      Follow User
+        ○ skipped should allow user to follow another user
+        ○ skipped should reject duplicate follow
+        ○ skipped should reject following self
+        ○ skipped should allow following non-friends
+      Unfollow User
+        ○ skipped should allow user to unfollow another user
+        ○ skipped should return 404 when unfollowing someone not followed
+      View Followers/Following
+        ○ skipped should return user's followers list
+        ○ skipped should return user's following list
+        ○ skipped should return empty arrays for user with no followers/following
+    Content Visibility Based on Friendship
+      ✓ should affect post visibility (28 ms)
+
+PASS __tests__/integration/auth.test.ts (27.4 s)
+  Authentication & Authorization (P0)
+    Login & JWT Authentication
+      POST /api/auth/login
+        ✓ should generate valid JWT token with correct credentials (1146 ms)
+        ✓ should reject login with invalid email (39 ms)
+        ✓ should reject login with invalid password (339 ms)
+        ✓ should reject login with missing credentials (208 ms)
+        ✓ should reject login with malformed email (32 ms)
+      JWT Token Validation
+        ✓ should allow access to protected routes with valid JWT token (159 ms)
+        ✓ should reject access to protected routes without token (14 ms)
+        ✓ should reject expired JWT tokens (20 ms)
+        ✓ should reject malformed JWT tokens (17 ms)
+        ✓ should reject token with invalid signature (15 ms)
+        ✓ should reject token without Bearer prefix (10 ms)
+    Authorization & Permissions
+      Private Content Access
+        ✓ should allow users to access their own private content (273 ms)
+        ✓ should deny access to other users' private content (104 ms)
+      Friends-Only Content Access
+        ✓ should allow friends to access FRIENDS_ONLY content (72 ms)
+        ✓ should deny non-friends access to FRIENDS_ONLY content (64 ms)
+      Public Content Access
+        ✓ should allow all authenticated users to access public content (72 ms)
+      Locked Post Permissions
+        ✓ should allow users with canPublishLockedMedia to create locked posts (28 ms)
+        ✓ should deny users without canPublishLockedMedia from creating locked posts (27 ms)
+
+  console.error
+    🖼️ [cmhci05dk0009r7kz38dqikhw] Error serving thumbnail: NoSuchKey: The specified key does not exist.
+        at de_NoSuchKeyRes (/home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/client-s3/dist-cjs/index.js:5113:21)
+        at de_CommandError (/home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/client-s3/dist-cjs/index.js:5000:19)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+        at /home/steve/Cursor/reedi/backend/node_modules/@smithy/middleware-serde/dist-cjs/index.js:36:20
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-sdk-s3/dist-cjs/index.js:484:18
+        at /home/steve/Cursor/reedi/backend/node_modules/@smithy/middleware-retry/dist-cjs/index.js:320:38
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-sdk-s3/dist-cjs/index.js:110:22
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-sdk-s3/dist-cjs/index.js:137:14
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-logger/dist-cjs/index.js:33:22
+        at getImageFromS3 (/home/steve/Cursor/reedi/backend/src/utils/s3Service.ts:265:20)
+        at /home/steve/Cursor/reedi/backend/src/routes/mediaServe.ts:899:29 {
+      '$fault': 'client',
+      '$metadata': {
+        httpStatusCode: 404,
+        requestId: '187312FA11E5CE99',
+        extendedRequestId: undefined,
+        cfId: undefined,
+        attempts: 1,
+        totalRetryDelay: 0
+      },
+      Code: 'NoSuchKey',
+      Key: 'thumbnails/has-thumbnail_thumb.jpg',
+      BucketName: 'reedi-dev',
+      Resource: '/reedi-dev/thumbnails/has-thumbnail_thumb.jpg',
+      RequestId: '187312FA11E5CE99',
+      HostId: '89ea9724-b6ae-492b-be39-92c3dc78afcb'
+    }
+
+      911 |
+      912 |   } catch (error) {
+    > 913 |     console.error(`🖼️ [${id}] Error serving thumbnail:`, error)
+          |             ^
+      914 |     res.status(500).json({
+      915 |       success: false,
+      916 |       error: 'Error serving thumbnail'
+
+      at src/routes/mediaServe.ts:913:13
+
+  console.warn
+    Image processing service not available, skipping image processing
+
+      458 |       }
+      459 |     } else {
+    > 460 |       console.warn('Image processing service not available, skipping image processing')
+          |               ^
+      461 |     }
+      462 |   }
+      463 |
+
+      at src/routes/media.ts:460:15
+
+FAIL __tests__/integration/media-thumbnails.test.ts (27.788 s)
+  Media Thumbnails (Integration)
+    Thumbnail Creation and Storage
+      ✓ should store thumbnail in thumbnails array when image processing completes (172 ms)
+      ✓ should handle thumbnailS3Key at top level when imageVersions not available (61 ms)
+      ✕ should retrieve thumbnail from thumbnails array in API response (329 ms)
+    Thumbnail Endpoint
+      ✓ should return 404 when media has no thumbnails (259 ms)
+      ✓ should return thumbnail data when thumbnails array exists (831 ms)
+      ✓ should use first thumbnail from thumbnails array when multiple thumbnails exist (35 ms)
+    Thumbnail in User Media Query
+      ✓ should include thumbnails in user media list response (76 ms)
+
+  ● Media Thumbnails (Integration) › Thumbnail Creation and Storage › should retrieve thumbnail from thumbnails array in API response
+
+    expect(received).toHaveProperty(path)
+
+    Matcher error: received value must not be null nor undefined
+
+    Received has value: undefined
+
+      217 |
+      218 |       expect(response.body.success).toBe(true)
+    > 219 |       expect(response.body.media).toHaveProperty('thumbnails')
+          |                                   ^
+      220 |       
+      221 |       const thumbnails = response.body.media.thumbnails
+      222 |       expect(Array.isArray(thumbnails)).toBe(true)
+
+      at Object.<anonymous> (__tests__/integration/media-thumbnails.test.ts:219:35)
+
+PASS __tests__/integration/simple-mediaType-test.test.ts (27.853 s)
+  Simple MediaType Validation Tests
+    Posts API - mediaType Presence
+      ✓ should include mediaType in posts feed when media exists (557 ms)
+      ✓ should include mediaType in personalized feed when media exists (97 ms)
+      ✓ should include mediaType in user public posts when media exists (65 ms)
+      ✓ should include mediaType in single post when media exists (63 ms)
+    Media API - mediaType Presence
+      ✓ should include mediaType in user media (55 ms)
+      ✓ should include mediaType in public user media (46 ms)
+    Messages API - mediaType Presence
+      ✓ should include mediaType in conversations when media exists (77 ms)
+      ✓ should include mediaType in messages when media exists (63 ms)
+    Galleries API - mediaType Presence
+      ✓ should include mediaType in gallery media (65 ms)
+      ✓ should include mediaType in gallery details (47 ms)
+    Edge Cases
+      ✓ should handle posts with no media gracefully (79 ms)
+      ✓ should not have undefined or null mediaType values (56 ms)
+
+  console.warn
+    Zip processing service not available, skipping zip processing
+
+      525 |       }
+      526 |     } else {
+    > 527 |       console.warn('Zip processing service not available, skipping zip processing')
+          |               ^
+      528 |     }
+      529 |   }
+      530 |
+
+      at src/routes/media.ts:527:15
+
+PASS __tests__/integration/messages.test.ts
+  Messaging (P1)
+    Create Conversations
+      ✓ should create direct conversation (272 ms)
+      ✓ should return existing direct conversation instead of creating duplicate (136 ms)
+      ✓ should require participantId for direct conversation (27 ms)
+      ✓ should create group conversation (54 ms)
+      ✓ should require name for group conversation (20 ms)
+      ✓ should require authentication to create conversation (9 ms)
+      ○ skipped should require at least one participant for group conversation
+    View Conversations
+      ✓ should get user's conversations list (57 ms)
+      ✓ should include last message in conversations list (47 ms)
+      ✓ should get conversation detail (77 ms)
+      ✓ should deny access to conversation user is not part of (44 ms)
+      ✓ should return 404 for non-existent conversation (20 ms)
+      ✓ should require authentication to view conversations (9 ms)
+    View Messages
+      ✓ should get messages in conversation (33 ms)
+      ✓ should support pagination for messages (37 ms)
+      ✓ should include sender and media info in messages (26 ms)
+      ✓ should deny access to messages in conversation user is not part of (27 ms)
+      ✓ should return 404 for messages in non-existent conversation (20 ms)
+    Send Messages
+      ○ skipped should send text message
+      ○ skipped should send message with media
+      ○ skipped should update lastMessageAt timestamp
+      ○ skipped should send message to group conversation
+      ○ skipped should deny non-participant from sending message
+    Delete Messages
+      ○ skipped should delete own message
+      ○ skipped should deny deleting others' messages
+      ○ skipped should return 404 for non-existent message
+    Manage Participants
+      ✓ should add participant to group conversation (34 ms)
+      ✓ should reject adding participant to direct conversation (47 ms)
+      ✓ should require participantIds to add participant (17 ms)
+      ✓ should deny non-participant from adding participants (19 ms)
+      ✓ should leave group conversation (54 ms)
+      ✓ should deny leaving direct conversation (41 ms)
+      ○ skipped should remove participant from group conversation (admin only)
+    Message Reactions
+      ○ skipped should react to message
+      ○ skipped should change reaction
+      ○ skipped should remove reaction
+      ○ skipped should get reactions on message
+    Message Status
+      ○ skipped should mark message as delivered
+      ○ skipped should mark message as read
+      ○ skipped should get unread message count
+
+  console.error
+    Error: {
+      message: 'Only image, video, and zip files are allowed',
+      stack: 'Error: Only image, video, and zip files are allowed\n' +
+        '    at fileFilter (/home/steve/Cursor/reedi/backend/src/routes/media.ts:66:8)\n' +
+        '    at wrappedFileFilter (/home/steve/Cursor/reedi/backend/node_modules/multer/index.js:44:7)\n' +
+        '    at Multipart.<anonymous> (/home/steve/Cursor/reedi/backend/node_modules/multer/lib/make-middleware.js:109:7)\n' +
+        '    at Multipart.emit (node:events:519:28)\n' +
+        '    at HeaderParser.cb (/home/steve/Cursor/reedi/backend/node_modules/busboy/lib/types/multipart.js:358:14)\n' +
+        '    at HeaderParser.push (/home/steve/Cursor/reedi/backend/node_modules/busboy/lib/types/multipart.js:162:20)\n' +
+        '    at SBMH.ssCb [as _cb] (/home/steve/Cursor/reedi/backend/node_modules/busboy/lib/types/multipart.js:394:37)\n' +
+        '    at feed (/home/steve/Cursor/reedi/backend/node_modules/streamsearch/lib/sbmh.js:219:14)\n' +
+        '    at SBMH.push (/home/steve/Cursor/reedi/backend/node_modules/streamsearch/lib/sbmh.js:104:16)\n' +
+        '    at Multipart._write (/home/steve/Cursor/reedi/backend/node_modules/busboy/lib/types/multipart.js:567:19)\n' +
+        '    at writeOrBuffer (node:internal/streams/writable:572:12)\n' +
+        '    at _write (node:internal/streams/writable:501:10)\n' +
+        '    at Multipart.Writable.write (node:internal/streams/writable:510:10)\n' +
+        '    at IncomingMessage.ondata (node:internal/streams/readable:1009:22)\n' +
+        '    at IncomingMessage.emit (node:events:519:28)\n' +
+        '    at IncomingMessage.Readable.read (node:internal/streams/readable:782:10)\n' +
+        '    at flow (node:internal/streams/readable:1283:53)\n' +
+        '    at resume_ (node:internal/streams/readable:1262:3)\n' +
+        '    at processTicksAndRejections (node:internal/process/task_queues:90:21)',
+      url: '/api/media/upload',
+      method: 'POST',
+      timestamp: '2025-10-29T21:19:05.129Z'
+    }
+
+      62 |
+      63 |   // Log error for debugging
+    > 64 |   console.error('Error:', {
+         |           ^
+      65 |     message: error.message,
+      66 |     stack: error.stack,
+      67 |     url: req.url,
+
+      at errorHandler (src/middleware/errorHandler.ts:64:11)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:71:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:326:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/express/lib/router/index.js:646:15
+      at next (node_modules/express/lib/router/index.js:265:14)
+      at next (node_modules/express/lib/router/route.js:141:14)
+      at Layer.handle_error (node_modules/express/lib/router/layer.js:67:12)
+      at next (node_modules/express/lib/router/route.js:147:13)
+      at done (node_modules/multer/lib/make-middleware.js:47:7)
+      at node_modules/multer/lib/make-middleware.js:67:11
+      at removeUploadedFiles (node_modules/multer/lib/remove-uploaded-files.js:5:28)
+      at node_modules/multer/lib/make-middleware.js:63:9
+      at Counter.onceZero (node_modules/multer/lib/counter.js:23:29)
+      at abortWithError (node_modules/multer/lib/make-middleware.js:58:21)
+      at node_modules/multer/lib/make-middleware.js:112:18
+      at fileFilter (src/routes/media.ts:66:5)
+      at wrappedFileFilter (node_modules/multer/index.js:44:7)
+      at Multipart.<anonymous> (node_modules/multer/lib/make-middleware.js:109:7)
+      at HeaderParser.cb (node_modules/busboy/lib/types/multipart.js:358:14)
+      at HeaderParser.push (node_modules/busboy/lib/types/multipart.js:162:20)
+      at SBMH.ssCb [as _cb] (node_modules/busboy/lib/types/multipart.js:394:37)
+      at feed (node_modules/streamsearch/lib/sbmh.js:219:14)
+      at SBMH.push (node_modules/streamsearch/lib/sbmh.js:104:16)
+      at Multipart._write (node_modules/busboy/lib/types/multipart.js:567:19)
+
+PASS __tests__/integration/users.test.ts (28.003 s)
+  User Profiles (P1)
+    View Profile
+      ✓ should get user profile by ID (334 ms)
+      ✓ should get user profile by username (29 ms)
+      ✓ should get public profile (no auth required) (53 ms)
+      ✓ should include user statistics (45 ms)
+      ✓ should return 404 for non-existent user (29 ms)
+      ✓ should get list of all users (authenticated) (41 ms)
+      ✓ should require authentication to get users list (10 ms)
+    Edit Profile
+      ✓ should update profile name (84 ms)
+      ✓ should update profile bio (50 ms)
+      ✓ should update username (66 ms)
+      ✓ should reject duplicate username (37 ms)
+      ✓ should update location and website (40 ms)
+      ✓ should update multiple fields at once (56 ms)
+      ✓ should require authentication (29 ms)
+    Privacy Settings
+      ✓ should set profile to private (35 ms)
+      ✓ should set profile to public (84 ms)
+    Follow System
+      ✓ should follow a user (49 ms)
+      ✓ should reject duplicate follow (53 ms)
+      ✓ should reject self-follow (23 ms)
+      ✓ should unfollow a user (54 ms)
+      ✓ should return 404 when unfollowing non-followed user (20 ms)
+      ✓ should require authentication to follow (10 ms)
+      ✓ should require authentication to unfollow (11 ms)
+    Followers & Following
+      ✓ should get user's followers list (41 ms)
+      ✓ should get user's following list (15 ms)
+      ✓ should include user info in followers list (22 ms)
+      ✓ should include user info in following list (15 ms)
+      ✓ should return empty list for user with no followers (15 ms)
+      ✓ should work without authentication (14 ms)
+    Avatar Upload
+      ○ skipped should upload avatar
+      ○ skipped should validate image file type
+      ○ skipped should enforce file size limit
+
+PASS __tests__/integration/groups.test.ts (28.062 s)
+  Groups (P1)
+    Create & Setup Groups
+      ✓ should create new group (568 ms)
+      ✓ should require group name (412 ms)
+      ✓ should require unique username (130 ms)
+      ✓ should set creator as owner (207 ms)
+      ✓ should require authentication (58 ms)
+    View Groups
+      ✓ should get public groups list (101 ms)
+      ✓ should get user's groups (177 ms)
+      ✓ should get group detail by identifier (124 ms)
+      ✓ should search groups (104 ms)
+    Group Membership - Applications
+      ✓ should apply to join private group (99 ms)
+      ✓ should reject duplicate application (86 ms)
+      ✓ should get pending applications (admin only) (101 ms)
+      ✓ should deny non-admin from viewing applications (51 ms)
+    Group Membership - Invitations
+      ✓ should send invitation (admin/owner only) (50 ms)
+      ✓ should deny non-admin from sending invitations (53 ms)
+      ✓ should accept invitation (132 ms)
+    Application Review
+      ✓ should approve application (admin only) (132 ms)
+      ✓ should reject application (admin only) (168 ms)
+    Group Roles
+      ✓ should deny non-admin from changing roles (49 ms)
+      ○ skipped should change member role (owner/admin only)
+    Group Posts
+      ✓ should post to group (57 ms)
+      ✓ should deny non-member from posting (24 ms)
+      ✓ should get group feed (59 ms)
+    Post Moderation
+      ✓ should approve pending post (admin only) (28 ms)
+      ✓ should moderate post (admin/moderator only) (28 ms)
+    Group Members
+      ✓ should get group members list (34 ms)
+      ✓ should include member role information (34 ms)
+    Edit Group Settings
+      ✓ should edit group settings (owner/admin only) (46 ms)
+      ✓ should change visibility (42 ms)
+      ✓ should change moderation policy (38 ms)
+      ✓ should deny non-admin from editing group (30 ms)
+    Group Activity
+      ✓ should get group activity log (admin only) (43 ms)
+
+PASS __tests__/integration/posts.test.ts (28.038 s)
+  Posts Creation & Management (P0)
+    Post Creation
+      Text-Only Posts
+        ✓ should create a simple text-only post (495 ms)
+        ✓ should create post with title and content (133 ms)
+        ✓ should reject post without content (556 ms)
+        ✓ should require authentication (43 ms)
+      Posts with Hashtags
+        ○ skipped should create post and extract hashtags
+        ○ skipped should handle duplicate hashtags
+      Post Visibility
+        ✓ should create PUBLIC post (134 ms)
+        ✓ should create FRIENDS_ONLY post (66 ms)
+        ✓ should create PRIVATE post (95 ms)
+        ✓ should default to PUBLIC if visibility not specified (114 ms)
+      Locked Posts
+        ✓ should allow user with permission to create locked post (172 ms)
+        ✓ should deny user without permission from creating locked post (49 ms)
+        ✓ should require unlock price for locked posts (52 ms)
+    Post Viewing & Feeds
+      Get All Posts (Feed)
+        ✓ should return paginated posts feed (144 ms)
+        ✓ should respect pagination parameters (100 ms)
+        ✓ should only show PUBLIC posts to non-friends (322 ms)
+        ✓ should show PUBLIC and FRIENDS_ONLY posts to friends (161 ms)
+        ○ skipped should require authentication
+      Get Single Post
+        ✓ should return public post details (188 ms)
+        ✓ should allow owner to view their private post (292 ms)
+        ✓ should deny non-owner access to private post (60 ms)
+        ✓ should return 404 for non-existent post (28 ms)
+      Get User Posts
+        ✓ should return user's own posts (all visibility) (74 ms)
+        ✓ should return only public posts for non-friends (78 ms)
+        ✓ should return public and friends-only posts for friends (72 ms)
+        ✓ should return empty array for user with no posts (52 ms)
+      Search Posts by Hashtag
+        ○ skipped should find posts by hashtag
+        ○ skipped should return empty for non-existent hashtag
+    Post Editing
+      ✓ should allow owner to edit post content (224 ms)
+      ✓ should allow owner to edit post title (151 ms)
+      ✓ should allow owner to change visibility (131 ms)
+      ✓ should deny non-owner from editing post (74 ms)
+      ✓ should return 404 for non-existent post (65 ms)
+    Post Deletion
+      ✓ should allow owner to delete post (83 ms)
+      ✓ should deny non-owner from deleting post (76 ms)
+      ✓ should return 404 for non-existent post (65 ms)
+      ✓ should cascade delete associated data (116 ms)
+    Post Status Management
+      ✓ should not return PAUSED posts in public feed (49 ms)
+      ✓ should allow owner to view their PAUSED posts (37 ms)
+    MediaType Validation
+      ✓ should include mediaType in posts feed response (57 ms)
+      ✓ should include mediaType in personalized feed response (66 ms)
+      ✓ should include mediaType in user public posts response (48 ms)
+      ✓ should include mediaType in public posts response (33 ms)
+      ✓ should include mediaType in single post response (48 ms)
+      ✓ should handle posts with no media gracefully (40 ms)
+      ✓ should validate mediaType values are valid enum values (44 ms)
+
+PASS __tests__/integration/comments.test.ts (28.331 s)
+  Comments & Reactions (P1)
+    Comment on Posts
+      ✓ should create comment on post (730 ms)
+      ✓ should require authentication (26 ms)
+      ✓ should reject comment without content (345 ms)
+      ✓ should reject comment without postId or mediaId (32 ms)
+      ✓ should reject comment with both postId and mediaId (28 ms)
+    Reply to Comments (Nested)
+      ✓ should create reply to comment (173 ms)
+      ✓ should include replies when fetching comments (257 ms)
+    Comment on Media
+      ✓ should create comment on media (114 ms)
+      ✓ should get comments for media (169 ms)
+    View Comments
+      ✓ should get post comments with pagination (127 ms)
+      ✓ should include author information (79 ms)
+      ✓ should include reaction counts (81 ms)
+    Edit Comments
+      ✓ should edit own comment (98 ms)
+      ✓ should deny editing others' comments (89 ms)
+      ✓ should return 404 for non-existent comment (81 ms)
+    Delete Comments
+      ✓ should delete own comment (308 ms)
+      ✓ should deny deleting others' comments (82 ms)
+      ✓ should return 404 for non-existent comment (70 ms)
+    Reactions on Posts
+      ✓ should add reaction to post (46 ms)
+      ✓ should change existing reaction (56 ms)
+      ✓ should remove reaction from post (43 ms)
+      ✓ should get reactions for post (30 ms)
+      ✓ should include author information in reactions (28 ms)
+    Access Control
+      ✓ should allow owner to comment on own private post (17 ms)
+      ✓ should allow friends to comment on friends-only post (31 ms)
+      ✓ should deny non-friends from commenting on private post (23 ms)
+      ✓ should allow anyone to comment on public post (29 ms)
+
+PASS __tests__/integration/api-response-validation.test.ts (28.427 s)
+  API Response Validation - mediaType Field
+    Posts API - mediaType Validation
+      ✓ should include mediaType in posts feed response (444 ms)
+      ✓ should include mediaType in personalized feed response (149 ms)
+      ✓ should include mediaType in user public posts response (72 ms)
+      ✓ should include mediaType in public posts response (47 ms)
+      ✓ should include mediaType in single post response (69 ms)
+    Media API - mediaType Validation
+      ✓ should include mediaType in user media response (59 ms)
+      ✓ should include mediaType in public user media response (47 ms)
+      ✓ should include mediaType in media search response (24 ms)
+    Messages API - mediaType Validation
+      ✓ should include mediaType in conversations response (95 ms)
+      ✓ should include mediaType in messages response (74 ms)
+    Galleries API - mediaType Validation
+      ✓ should include mediaType in gallery media response (42 ms)
+      ✓ should include mediaType in gallery details response (37 ms)
+    Edge Cases and Error Handling
+      ✓ should handle posts with no media gracefully (88 ms)
+      ✓ should handle media with different types correctly (51 ms)
+      ✓ should validate mediaType values are valid enum values (42 ms)
+    Users API - Structure Validation
+      ✓ should validate users list response structure (23 ms)
+      ✓ should validate single user profile response structure (35 ms)
+      ✓ should validate user profile by username response structure (23 ms)
+    Groups API - Structure Validation
+      ✓ should validate public groups response structure (46 ms)
+      ✓ should validate single group response structure (35 ms)
+      ✓ should validate group search response structure (26 ms)
+    Facets API - Structure Validation
+      ✓ should validate facets definitions response structure (120 ms)
+    Friends API - Structure Validation
+      ✓ should validate received friend requests response structure (11 ms)
+      ✓ should validate sent friend requests response structure (13 ms)
+      ✓ should validate user friends list response structure (20 ms)
+    Comments API - Structure Validation
+      ✓ should validate post comments response structure (29 ms)
+      ✓ should validate media comments response structure (28 ms)
+
+FAIL __tests__/integration/media-deletion-invalidation.test.ts (28.51 s)
+  Media Deletion Invalidation (Integration)
+    Delete Media from Gallery
+      ✓ should remove media from gallery and update gallery media list (889 ms)
+      ✓ should update user media list after removing media from gallery (365 ms)
+    Delete Media Entirely
+      ✕ should remove media from all galleries when media is deleted (253 ms)
+      ✓ should remove media from user media list after deletion (743 ms)
+      ✓ should cascade delete PostMedia relationships when media is deleted (174 ms)
+    Media List Refresh After Operations
+      ✓ should reflect media deletions in filtered media queries (152 ms)
+      ✓ should update gallery count after removing media from gallery (117 ms)
+
+  ● Media Deletion Invalidation (Integration) › Delete Media Entirely › should remove media from all galleries when media is deleted
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      270 |         .expect(200)
+      271 |
+    > 272 |       expect(gallery1Before.body.data.gallery.media.length).toBe(1)
+          |                                                             ^
+      273 |       expect(gallery2Before.body.data.gallery.media.length).toBe(1)
+      274 |
+      275 |       // Delete the media entirely
+
+      at Object.<anonymous> (__tests__/integration/media-deletion-invalidation.test.ts:272:61)
+
+PASS __tests__/integration/media-gallery.test.ts (28.712 s)
+  Media Gallery Management (P0)
+    View Media Gallery
+      ✓ should return user's media gallery (305 ms)
+      ✓ should support pagination (46 ms)
+      ✓ should not require authentication for public endpoint (48 ms)
+    Filter Media
+      Filter by Type
+        ✓ should filter by IMAGE type (66 ms)
+        ✓ should filter by VIDEO type (42 ms)
+      Filter by Tags
+        ✓ should filter by single tag (51 ms)
+        ✓ should filter by multiple tags (28 ms)
+        ✓ should return empty array for non-existent tag (23 ms)
+      Filter by Date Range
+        ✓ should filter by date range (72 ms)
+      Filter by Organization Status
+        ✓ should filter unorganized media (not in any gallery) (80 ms)
+        ○ skipped should filter organized media (in galleries)
+      Filter by Processing Status
+        ○ skipped should filter by COMPLETED status
+        ○ skipped should filter by PENDING status
+        ○ skipped should filter by FAILED status
+      Filter by Visibility
+        ✓ should filter by PUBLIC visibility (36 ms)
+        ✓ should filter by PRIVATE visibility (36 ms)
+    View Media Detail
+      ✓ should return media detail (34 ms)
+      ✓ should allow owner to view their media (32 ms)
+      ✓ should allow viewing public media from other users (35 ms)
+      ✓ should deny access to private media from other users (222 ms)
+      ✓ should return 404 for non-existent media (22 ms)
+    Edit Media Metadata
+      ✓ should allow owner to edit media title (79 ms)
+      ✓ should allow owner to edit media description (45 ms)
+      ✓ should allow owner to update tags (44 ms)
+      ✓ should allow owner to change visibility (38 ms)
+      ✓ should deny non-owner from editing media (30 ms)
+      ✓ should return 404 for non-existent media (27 ms)
+    Delete Media
+      ✓ should allow owner to delete media (501 ms)
+      ✓ should deny non-owner from deleting media (21 ms)
+      ✓ should return 404 for non-existent media (16 ms)
+      ✓ should cascade delete related records (156 ms)
+    Bulk Operations
+      Bulk Edit
+        ✓ should bulk update tags (merge mode) (79 ms)
+        ✓ should bulk update tags (replace mode) (30 ms)
+        ✓ should bulk update visibility (27 ms)
+        ✓ should only update media owned by user (25 ms)
+
+PASS __tests__/integration/mediaType-validation.test.ts (28.498 s)
+  MediaType Validation Tests
+    Posts API - mediaType Validation
+      ✓ should include mediaType in posts feed (215 ms)
+      ✓ should include mediaType in personalized feed (45 ms)
+      ✓ should include mediaType in user public posts (32 ms)
+      ✓ should include mediaType in public posts (28 ms)
+      ✓ should include mediaType in single post (36 ms)
+    Media API - mediaType Validation
+      ✓ should include mediaType in user media (35 ms)
+      ✓ should include mediaType in public user media (31 ms)
+      ✓ should include mediaType in media search (20 ms)
+    Messages API - mediaType Validation
+      ✓ should include mediaType in conversations (29 ms)
+      ✓ should include mediaType in messages (24 ms)
+    Galleries API - mediaType Validation
+      ✓ should include mediaType in gallery media (19 ms)
+      ✓ should include mediaType in gallery details (18 ms)
+    Edge Cases and Error Handling
+      ✓ should handle posts with no media gracefully (40 ms)
+      ✓ should validate mediaType values are valid enum values (23 ms)
+      ✓ should handle different media types correctly (15 ms)
+      ✓ should not have undefined or null mediaType values (24 ms)
+    Performance and Consistency
+      ✓ should return consistent mediaType across different endpoints (52 ms)
+
+  console.error
+    Failed to complete multipart upload: InvalidPart: One or more of the specified parts could not be found.  The part may not have been uploaded, or the specified entity tag may not match the part's entity tag.
+        at throwDefaultError (/home/steve/Cursor/reedi/backend/node_modules/@smithy/smithy-client/dist-cjs/index.js:425:20)
+        at /home/steve/Cursor/reedi/backend/node_modules/@smithy/smithy-client/dist-cjs/index.js:434:5
+        at de_CommandError (/home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/client-s3/dist-cjs/index.js:5024:14)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+        at /home/steve/Cursor/reedi/backend/node_modules/@smithy/middleware-serde/dist-cjs/index.js:36:20
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-sdk-s3/dist-cjs/index.js:484:18
+        at /home/steve/Cursor/reedi/backend/node_modules/@smithy/middleware-retry/dist-cjs/index.js:320:38
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-sdk-s3/dist-cjs/index.js:110:22
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-sdk-s3/dist-cjs/index.js:137:14
+        at /home/steve/Cursor/reedi/backend/node_modules/@aws-sdk/middleware-logger/dist-cjs/index.js:33:22
+        at MultipartUploadService.completeMultipartUpload (/home/steve/Cursor/reedi/backend/src/utils/multipartUploadService.ts:174:22)
+        at /home/steve/Cursor/reedi/backend/src/routes/media.ts:713:19 {
+      '$fault': 'client',
+      '$metadata': {
+        httpStatusCode: 400,
+        requestId: '187312FA66F8DF81',
+        extendedRequestId: undefined,
+        cfId: undefined,
+        attempts: 1,
+        totalRetryDelay: 0
+      },
+      Code: 'InvalidPart',
+      Key: 'uploads/cmgwu543l0000zqd4w401xj2u/1761772745732.zip',
+      BucketName: 'reedi-dev',
+      Resource: '/reedi-dev/uploads/cmgwu543l0000zqd4w401xj2u/1761772745732.zip',
+      RequestId: '187312FA66F8DF81',
+      HostId: '89ea9724-b6ae-492b-be39-92c3dc78afcb'
+    }
+
+      808 |     })
+      809 |   } catch (error) {
+    > 810 |     console.error('Failed to complete multipart upload:', error)
+          |             ^
+      811 |     res.status(500).json({ success: false, error: 'Failed to complete upload' })
+      812 |   }
+      813 | }))
+
+      at src/routes/media.ts:810:13
+
+FAIL __tests__/integration/zip-upload.test.ts (29.002 s)
+  ZIP Upload Integration Tests
+    POST /api/media/upload (Direct Upload)
+      ✕ should upload a small zip file directly (1546 ms)
+      ✕ should reject non-zip files (120 ms)
+      ✓ should require authentication (16 ms)
+    POST /api/media/upload/initiate (Chunked Upload)
+      ✓ should initiate multipart upload for large zip file (373 ms)
+      ✓ should require authentication for initiate (9 ms)
+      ✓ should require all required fields (18 ms)
+    POST /api/media/upload/chunk
+      ✕ should upload a chunk (13 ms)
+      ✓ should require authentication for chunk upload (7 ms)
+    POST /api/media/upload/complete
+      ✕ should complete multipart upload and create media record (206 ms)
+      ✓ should require authentication for complete (4 ms)
+
+  ● ZIP Upload Integration Tests › POST /api/media/upload (Direct Upload) › should upload a small zip file directly
+
+    expect(received).toHaveProperty(path)
+
+    Matcher error: received value must not be null nor undefined
+
+    Received has value: undefined
+
+       98 |
+       99 |       expect(response.body.success).toBe(true);
+    > 100 |       expect(response.body.media).toHaveProperty('id');
+          |                                   ^
+      101 |       expect(response.body.media).toHaveProperty('mediaType', 'ZIP');
+      102 |       expect(response.body.media).toHaveProperty('originalFilename', 'test.zip');
+      103 |       expect(response.body.media).toHaveProperty('processingStatus', 'PENDING');
+
+      at Object.<anonymous> (__tests__/integration/zip-upload.test.ts:100:35)
+
+  ● ZIP Upload Integration Tests › POST /api/media/upload (Direct Upload) › should reject non-zip files
+
+    expected 400 "Bad Request", got 500 "Internal Server Error"
+
+      120 |         .set('Authorization', `Bearer ${authToken}`)
+      121 |         .attach('media', textBuffer, 'test.txt')
+    > 122 |         .expect(400);
+          |          ^
+      123 |     });
+      124 |
+      125 |     it('should require authentication', async () => {
+
+      at Object.<anonymous> (__tests__/integration/zip-upload.test.ts:122:10)
+      ----
+      at Test._assertStatus (node_modules/supertest/lib/test.js:309:14)
+      at node_modules/supertest/lib/test.js:365:13
+      at Test._assertFunction (node_modules/supertest/lib/test.js:342:13)
+      at Test.assert (node_modules/supertest/lib/test.js:195:23)
+      at localAssert (node_modules/supertest/lib/test.js:138:14)
+      at Server.<anonymous> (node_modules/supertest/lib/test.js:152:11)
+
+  ● ZIP Upload Integration Tests › POST /api/media/upload/chunk › should upload a chunk
+
+    expected 200 "OK", got 400 "Bad Request"
+
+      216 |           chunk: chunkData.toString('base64')
+      217 |         })
+    > 218 |         .expect(200);
+          |          ^
+      219 |
+      220 |       expect(response.body.success).toBe(true);
+      221 |       expect(response.body).toHaveProperty('etag');
+
+      at Object.<anonymous> (__tests__/integration/zip-upload.test.ts:218:10)
+      ----
+      at Test._assertStatus (node_modules/supertest/lib/test.js:309:14)
+      at node_modules/supertest/lib/test.js:365:13
+      at Test._assertFunction (node_modules/supertest/lib/test.js:342:13)
+      at Test.assert (node_modules/supertest/lib/test.js:195:23)
+      at localAssert (node_modules/supertest/lib/test.js:138:14)
+      at Server.<anonymous> (node_modules/supertest/lib/test.js:152:11)
+
+  ● ZIP Upload Integration Tests › POST /api/media/upload/complete › should complete multipart upload and create media record
+
+    expected 200 "OK", got 500 "Internal Server Error"
+
+      285 |           fileSize: 1024
+      286 |         })
+    > 287 |         .expect(200);
+          |          ^
+      288 |
+      289 |       expect(response.body.success).toBe(true);
+      290 |       expect(response.body.media).toHaveProperty('id');
+
+      at Object.<anonymous> (__tests__/integration/zip-upload.test.ts:287:10)
+      ----
+      at Test._assertStatus (node_modules/supertest/lib/test.js:309:14)
+      at node_modules/supertest/lib/test.js:365:13
+      at Test._assertFunction (node_modules/supertest/lib/test.js:342:13)
+      at Test.assert (node_modules/supertest/lib/test.js:195:23)
+      at localAssert (node_modules/supertest/lib/test.js:138:14)
+      at Server.<anonymous> (node_modules/supertest/lib/test.js:152:11)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Test Suites: 3 failed, 14 passed, 17 total
+Tests:       6 failed, 50 skipped, 345 passed, 401 total
+Snapshots:   0 total
+Time:        31.348 s, estimated 44 s
+Ran all test suites matching __tests__/integration/.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

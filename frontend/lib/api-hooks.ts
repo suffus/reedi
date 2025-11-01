@@ -1029,6 +1029,11 @@ export const useUpdateMedia = () => {
       // Invalidate media queries
       queryClient.invalidateQueries({ queryKey: ['media'] })
       
+      // Invalidate user media queries - match all query key patterns
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-filtered-media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['filtered-media', 'user'] })
+      
       // Invalidate posts queries since they contain media
       queryClient.invalidateQueries({ queryKey: ['posts'] })
       queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
@@ -1037,9 +1042,6 @@ export const useUpdateMedia = () => {
       queryClient.invalidateQueries({ queryKey: ['gallery'] })
       queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
-      
-      // Invalidate user media queries
-      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }
@@ -1260,6 +1262,11 @@ export const useBulkUpdateMedia = () => {
       // Invalidate media queries
       queryClient.invalidateQueries({ queryKey: ['media'] })
       
+      // Invalidate user media queries - match all query key patterns
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-filtered-media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['filtered-media', 'user'] })
+      
       // Invalidate posts queries since they contain media
       queryClient.invalidateQueries({ queryKey: ['posts'] })
       queryClient.invalidateQueries({ queryKey: ['infinite-posts'] })
@@ -1268,9 +1275,6 @@ export const useBulkUpdateMedia = () => {
       queryClient.invalidateQueries({ queryKey: ['gallery'] })
       queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
-      
-      // Invalidate user media queries
-      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }
@@ -1296,8 +1300,13 @@ export const useDeleteMedia = () => {
     onSuccess: () => {
       console.log('Invalidating media queries and related data after deletion...')
       
-      // Invalidate media queries
+      // Invalidate media queries (general)
       queryClient.invalidateQueries({ queryKey: ['media'] })
+      
+      // Invalidate user media queries - need to match the actual query keys used
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-filtered-media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['filtered-media', 'user'] })
       
       // Invalidate posts queries since they contain media
       queryClient.invalidateQueries({ queryKey: ['posts'] })
@@ -1307,9 +1316,6 @@ export const useDeleteMedia = () => {
       queryClient.invalidateQueries({ queryKey: ['gallery'] })
       queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
-      
-      // Invalidate user media queries
-      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
     }
   })
 }
@@ -1725,9 +1731,16 @@ export const useRemoveMediaFromGallery = () => {
       return data
     },
     onSuccess: (_, variables) => {
+      // Invalidate gallery queries
       queryClient.invalidateQueries({ queryKey: ['galleries', 'my'] })
       queryClient.invalidateQueries({ queryKey: ['gallery', variables.galleryId] })
+      queryClient.invalidateQueries({ queryKey: ['gallery-media'] })
+      
+      // Invalidate media queries to refresh media library view
       queryClient.invalidateQueries({ queryKey: ['media'] })
+      queryClient.invalidateQueries({ queryKey: ['media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['infinite-filtered-media', 'user'] })
+      queryClient.invalidateQueries({ queryKey: ['filtered-media', 'user'] })
     }
   })
 }

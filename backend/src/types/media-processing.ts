@@ -51,6 +51,7 @@ export interface MediaProcessingResult extends BaseMediaMessage {
   status: 'COMPLETED' | 'FAILED'
   result?: {
     s3Key?: string
+    thumbnailS3Key?: string
     width?: number
     height?: number
     duration?: number
@@ -58,6 +59,7 @@ export interface MediaProcessingResult extends BaseMediaMessage {
     // For zip files, this contains extracted media info
     extractedMedia?: Array<{
       s3Key: string
+      thumbnailS3Key?: string
       originalFilename: string
       mimeType: string
       width?: number
