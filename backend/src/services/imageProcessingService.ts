@@ -160,7 +160,6 @@ export class ImageProcessingService extends BaseMediaProcessingService {
           if (result.s3Key) {
             // Use the result data directly
             mediaUpdateData.url = result.s3Key
-            // Note: thumbnail and thumbnailS3Key are no longer used - all thumbnail data is in thumbnails JSON array
             
             if (result.width && result.height) {
               mediaUpdateData.width = result.width
@@ -169,6 +168,32 @@ export class ImageProcessingService extends BaseMediaProcessingService {
             
             if (result.metadata) {
               mediaUpdateData.metadata = result.metadata
+              
+              // Extract thumbnail from imageVersions if available
+              if (result.metadata.imageVersions) {
+                const thumbnailVersion = result.metadata.imageVersions.find((version: any) => version.quality === 'thumbnail')
+                if (thumbnailVersion) {
+                  mediaUpdateData.thumbnails = [{
+                    s3Key: thumbnailVersion.s3Key,
+                    width: thumbnailVersion.width,
+                    height: thumbnailVersion.height,
+                    fileSize: thumbnailVersion.fileSize
+                  }]
+                  console.log(`🖼️ [IMAGE-SERVICE] Extracted thumbnail from imageVersions: ${thumbnailVersion.s3Key}`)
+                }
+                mediaUpdateData.versions = result.metadata.imageVersions
+              }
+            }
+            
+            // Also check for thumbnailS3Key at top level (backward compatibility)
+            const resultAny = result as any
+            if (!mediaUpdateData.thumbnails && resultAny.thumbnailS3Key) {
+              mediaUpdateData.thumbnails = [{
+                s3Key: resultAny.thumbnailS3Key,
+                width: result.width,
+                height: result.height
+              }]
+              console.log(`🖼️ [IMAGE-SERVICE] Using thumbnailS3Key from result: ${resultAny.thumbnailS3Key}`)
             }
             
             console.log(`🖼️ [IMAGE-SERVICE] Media update data:`, JSON.stringify(mediaUpdateData, null, 2))
@@ -181,7 +206,27 @@ export class ImageProcessingService extends BaseMediaProcessingService {
             const highQualityVersion = imageVersions.find((version: any) => version.quality === '1080p')
             const mediumQualityVersion = imageVersions.find((version: any) => version.quality === '720p')
             
-            // Note: thumbnail and thumbnailS3Key are no longer used - all thumbnail data is in thumbnails JSON array
+            // Extract thumbnail and add to thumbnails array
+            if (thumbnailVersion) {
+              mediaUpdateData.thumbnails = [{
+                s3Key: thumbnailVersion.s3Key,
+                width: thumbnailVersion.width,
+                height: thumbnailVersion.height,
+                fileSize: thumbnailVersion.fileSize
+              }]
+              console.log(`🖼️ [IMAGE-SERVICE] Extracted thumbnail from imageVersions (legacy): ${thumbnailVersion.s3Key}`)
+            } else {
+              // Fallback to thumbnailS3Key if no thumbnail version found
+              const resultAny = result as any
+              if (resultAny.thumbnailS3Key) {
+                mediaUpdateData.thumbnails = [{
+                  s3Key: resultAny.thumbnailS3Key,
+                  width: result.width || thumbnailVersion?.width,
+                  height: result.height || thumbnailVersion?.height
+                }]
+                console.log(`🖼️ [IMAGE-SERVICE] Using thumbnailS3Key fallback: ${resultAny.thumbnailS3Key}`)
+              }
+            }
             
             // Update main image fields - use highest quality available for URL and size
             if (highQualityVersion) {
