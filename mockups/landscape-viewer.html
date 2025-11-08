@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mobile Media Viewer - Landscape Mode</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #000;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      padding: 6px 16px;
+      z-index: 50;
+      transition: opacity 300ms ease;
+    }
+
+    .header.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .header-back {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      background: transparent;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .header-title {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 500;
+      color: white;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 16px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .header-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      background: transparent;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 100ms;
+    }
+
+    .header-btn:active {
+      transform: scale(0.9);
+    }
+
+    /* Media Container */
+    .media-container {
+      width: 100vw;
+      height: calc(100vh - 44px);
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      margin-top: 44px;
+    }
+
+    .media-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    /* Show Info Button */
+    .show-info-btn {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      height: 44px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      border: none;
+      border-radius: 22px;
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      z-index: 20;
+      transition: opacity 300ms, transform 200ms;
+    }
+
+    .show-info-btn.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .show-info-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* Drawer Backdrop */
+    .drawer-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 60;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 300ms ease;
+    }
+
+    .drawer-backdrop.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Drawer */
+    .drawer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 60vh;
+      background: white;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+      z-index: 70;
+      transform: translateY(100%);
+      transition: transform 300ms cubic-bezier(0.0, 0.0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .drawer.open {
+      transform: translateY(0);
+    }
+
+    .drawer-handle {
+      width: 40px;
+      height: 4px;
+      background: #D1D5DB;
+      border-radius: 2px;
+      margin: 8px auto;
+      cursor: grab;
+    }
+
+    .drawer-handle:active {
+      cursor: grabbing;
+    }
+
+    .drawer-content {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Metadata in Drawer */
+    .drawer-metadata {
+      padding: 16px;
+      border-bottom: 1px solid #E5E7EB;
+    }
+
+    .metadata-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #E5E7EB;
+    }
+
+    .user-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .username {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .timestamp {
+      font-size: 12px;
+      color: #6B7280;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      color: #6B7280;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 0;
+    }
+
+    .caption {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #111827;
+      margin-bottom: 12px;
+    }
+
+    .tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      background: #EFF6FF;
+      color: #2563EB;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* Comments in Drawer */
+    .drawer-comments {
+      padding: 0;
+    }
+
+    .comments-header {
+      padding: 16px;
+      border-bottom: 1px solid #E5E7EB;
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .comment-list {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .comment {
+      display: flex;
+      gap: 12px;
+    }
+
+    .comment-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #E5E7EB;
+      flex-shrink: 0;
+    }
+
+    .comment-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .comment-username {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .comment-text {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #374151;
+    }
+
+    .comment-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      color: #6B7280;
+      margin-top: 4px;
+    }
+
+    /* Icons */
+    .icon {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    /* Landscape orientation message */
+    @media (orientation: portrait) {
+      body::before {
+        content: 'Please rotate your device to landscape mode to view this demo';
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 24px 32px;
+        border-radius: 12px;
+        text-align: center;
+        z-index: 1000;
+        max-width: 80%;
+      }
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Header -->
+  <header class="header" id="header">
+    <button class="header-back" onclick="alert('Back')">
+      <svg class="icon" viewBox="0 0 24 24">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    </button>
+    <div class="header-title">Mountain Landscape - IMG_5678.jpg</div>
+    <div class="header-actions">
+      <button class="header-btn" onclick="alert('Share')">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+          <polyline points="16 6 12 2 8 6"></polyline>
+          <line x1="12" y1="2" x2="12" y2="15"></line>
+        </svg>
+      </button>
+      <button class="header-btn" onclick="alert('Download')">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+      </button>
+      <button class="header-btn" onclick="alert('More')">
+        <svg class="icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="1"></circle>
+          <circle cx="12" cy="5" r="1"></circle>
+          <circle cx="12" cy="19" r="1"></circle>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Media Container -->
+  <div class="media-container">
+    <img 
+      src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&h=800&fit=crop" 
+      alt="Mountain Landscape"
+      class="media-image"
+    >
+
+    <!-- Show Info Button -->
+    <button class="show-info-btn" id="showInfoBtn" onclick="openDrawer()">
+      <svg class="icon" viewBox="0 0 24 24">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+      Show Info
+    </button>
+  </div>
+
+  <!-- Drawer Backdrop -->
+  <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+
+  <!-- Drawer -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-handle" id="drawerHandle"></div>
+    
+    <div class="drawer-content">
+      <!-- Metadata -->
+      <div class="drawer-metadata">
+        <div class="metadata-header">
+          <div class="avatar"></div>
+          <div class="user-info">
+            <div class="username">alex_explorer</div>
+            <div class="timestamp">3 hours ago</div>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="action-btn">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+            </svg>
+            <span>42</span>
+          </button>
+          <button class="action-btn">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>8</span>
+          </button>
+          <button class="action-btn">
+            <svg class="icon" viewBox="0 0 24 24">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span>Favorite</span>
+          </button>
+        </div>
+
+        <div class="caption">
+          Epic mountain view from our hike yesterday. The landscape here is absolutely breathtaking! Highly recommend this trail. 🏔️🌄
+        </div>
+
+        <div class="tags">
+          <span class="tag">#hiking</span>
+          <span class="tag">#mountains</span>
+          <span class="tag">#adventure</span>
+          <span class="tag">#nature</span>
+          <span class="tag">#outdoors</span>
+          <span class="tag">#wanderlust</span>
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="drawer-comments">
+        <div class="comments-header">Comments (8)</div>
+        
+        <div class="comment-list">
+          <div class="comment">
+            <div class="comment-avatar"></div>
+            <div class="comment-content">
+              <div class="comment-username">jenny_trails</div>
+              <div class="comment-text">Which trail is this? Looks amazing!</div>
+              <div class="comment-meta">
+                <span>2h ago</span>
+                <button>Reply</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="comment">
+            <div class="comment-avatar"></div>
+            <div class="comment-content">
+              <div class="comment-username">tom_photos</div>
+              <div class="comment-text">Perfect composition! The lighting is incredible 📸</div>
+              <div class="comment-meta">
+                <span>1h ago</span>
+                <button>Reply</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="comment">
+            <div class="comment-avatar"></div>
+            <div class="comment-content">
+              <div class="comment-username">nature_lover_99</div>
+              <div class="comment-text">Adding this to my must-visit list!</div>
+              <div class="comment-meta">
+                <span>30min ago</span>
+                <button>Reply</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const drawer = document.getElementById('drawer');
+    const drawerBackdrop = document.getElementById('drawerBackdrop');
+    const drawerHandle = document.getElementById('drawerHandle');
+    const showInfoBtn = document.getElementById('showInfoBtn');
+    const header = document.getElementById('header');
+    let controlsTimeout = null;
+    let dragStartY = 0;
+    let drawerStartY = 0;
+    let isDragging = false;
+
+    function showControls() {
+      header.classList.remove('hidden');
+      showInfoBtn.classList.remove('hidden');
+      
+      clearTimeout(controlsTimeout);
+      controlsTimeout = setTimeout(() => {
+        if (!drawer.classList.contains('open')) {
+          header.classList.add('hidden');
+          showInfoBtn.classList.add('hidden');
+        }
+      }, 3000);
+    }
+
+    function openDrawer() {
+      drawer.classList.add('open');
+      drawerBackdrop.classList.add('visible');
+      showInfoBtn.classList.add('hidden');
+    }
+
+    function closeDrawer() {
+      drawer.classList.remove('open');
+      drawerBackdrop.classList.remove('visible');
+      showControls();
+    }
+
+    // Drawer drag functionality
+    drawerHandle.addEventListener('mousedown', startDrag);
+    drawerHandle.addEventListener('touchstart', startDrag);
+
+    function startDrag(e) {
+      isDragging = true;
+      dragStartY = e.touches ? e.touches[0].clientY : e.clientY;
+      drawerStartY = 0;
+      drawer.style.transition = 'none';
+    }
+
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('touchmove', drag);
+
+    function drag(e) {
+      if (!isDragging) return;
+      
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const deltaY = clientY - dragStartY;
+      
+      if (deltaY > 0) { // Only allow dragging down
+        drawer.style.transform = `translateY(${deltaY}px)`;
+      }
+    }
+
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchend', endDrag);
+
+    function endDrag() {
+      if (!isDragging) return;
+      isDragging = false;
+      
+      drawer.style.transition = 'transform 300ms cubic-bezier(0.0, 0.0, 0.2, 1)';
+      
+      const currentTransform = drawer.style.transform;
+      const translateY = parseFloat(currentTransform.match(/translateY\(([-\d.]+)px\)/)?.[1] || 0);
+      
+      if (translateY > 100) {
+        closeDrawer();
+      } else {
+        drawer.style.transform = 'translateY(0)';
+      }
+    }
+
+    // Initialize controls
+    showControls();
+    document.addEventListener('mousemove', showControls);
+    document.addEventListener('touchstart', showControls);
+  </script>
+
+</body>
+</html>
+
