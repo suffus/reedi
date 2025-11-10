@@ -5,6 +5,8 @@ backend/node_modules
 backend/.env
 backend/uploads
 out/
+tribe/
+tribe
 media-processor/logs
 media-processor/node_modules
 media-processor/dist
